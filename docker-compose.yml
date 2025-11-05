@@ -1,0 +1,22 @@
+services:
+  modbus-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: modbus-api
+    ports:
+      - "8000:8000"
+    environment:
+      # Set these to your external Modbus server
+      # Values can come from .env file or environment variables
+      - MODBUS_HOST=${MODBUS_HOST}
+      - MODBUS_PORT=${MODBUS_PORT:-502}
+      - MODBUS_UNIT_ID=${MODBUS_UNIT_ID:-1}
+      - MODBUS_TIMEOUT_S=${MODBUS_TIMEOUT_S:-5.0}
+      - MODBUS_RETRIES=${MODBUS_RETRIES:-3}
+    volumes:
+      # Mount .env file if it exists (optional - environment variables take precedence)
+      - ./.env:/app/.env:ro
+    restart: unless-stopped
+    # No network isolation needed - connects directly to external Modbus server
+
