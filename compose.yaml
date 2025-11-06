@@ -2,7 +2,7 @@ services:
   modbus-api:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: docker/Dockerfile
     container_name: modbus-api
     ports:
       - "8000:8000"

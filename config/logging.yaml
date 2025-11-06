@@ -1,0 +1,22 @@
+# Structured logging configuration
+# TODO: Configure structured logging (structlog/loguru/stdlib)
+version: 1
+disable_existing_loggers: false
+
+formatters:
+  default:
+    format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  structured:
+    format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s - %(context)s"
+
+handlers:
+  console:
+    class: logging.StreamHandler
+    level: INFO
+    formatter: default
+    stream: ext://sys.stdout
+
+root:
+  level: INFO
+  handlers: [console]
+

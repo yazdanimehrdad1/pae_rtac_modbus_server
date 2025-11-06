@@ -1,4 +1,4 @@
-.PHONY: help up down build restart logs shell clean ps health up-build
+.PHONY: help up down build restart logs shell clean ps health up-build dev test lint fmt migrate run
 
 # Default target
 help:
@@ -13,45 +13,81 @@ help:
 	@echo "  make ps       - View container status"
 	@echo "  make health   - Check service health"
 	@echo "  make clean    - Stop containers and remove images"
+	@echo ""
+	@echo "Development commands:"
+	@echo "  make dev      - Start development environment"
+	@echo "  make test     - Run tests"
+	@echo "  make lint     - Run linters (ruff, mypy)"
+	@echo "  make fmt      - Format code (black, ruff)"
+	@echo "  make migrate  - Run database migrations"
+	@echo "  make run      - Run service locally (non-Docker)"
 
 # Start containers
 up:
-	docker-compose up -d
+	docker-compose -f compose.yaml up -d
 
 # Stop and remove containers
 down:
-	docker-compose down
+	docker-compose -f compose.yaml down
 
 # Build the Docker image
 build:
-	docker-compose build
+	docker-compose -f compose.yaml build
 
 # Build and start containers
 up-build:
-	docker-compose up -d --build
+	docker-compose -f compose.yaml up -d --build
 
 # Restart containers
 restart:
-	docker-compose restart
+	docker-compose -f compose.yaml restart
 
 # View logs
 logs:
-	docker-compose logs -f modbus-api
+	docker-compose -f compose.yaml logs -f modbus-api
 
 # Open a shell in the container
 shell:
-	docker-compose exec modbus-api /bin/bash
+	docker-compose -f compose.yaml exec modbus-api /bin/bash
 
 # Clean up containers and images
 clean:
-	docker-compose down
+	docker-compose -f compose.yaml down
 	docker rmi modbus-api 2>/dev/null || true
 
 # View container status
 ps:
-	docker-compose ps
+	docker-compose -f compose.yaml ps
 
-# Check health
+# Check service health
 health:
-	@python -c "import urllib.request, json; print(json.dumps(json.loads(urllib.request.urlopen('http://localhost:8000/health').read()), indent=2))" 2>/dev/null || echo "Service not available"
+	@curl -s http://localhost:8000/healthz || echo "Service not responding"
+
+# Development commands
+dev:
+	@echo "Starting development environment..."
+	# TODO: Add development setup (install deps, run tests, etc.)
+
+# Run tests
+test:
+	@pytest tests/ -v
+
+# Run linting
+lint:
+	@ruff check src/ tests/
+	@mypy src/
+
+# Format code
+fmt:
+	@black src/ tests/
+	@ruff check --fix src/ tests/
+
+# Run database migrations
+migrate:
+	@python scripts/migrate_db.py
+
+# Run the service locally (non-Docker)
+run:
+	@python -m rtac_modbus_service.main
+
 

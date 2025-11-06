@@ -1,0 +1,9 @@
+# Kubernetes Service (placeholder)
+# TODO: Implement Kubernetes service manifest
+apiVersion: v1
+kind: Service
+metadata:
+  name: rtac-modbus-service
+spec:
+  # TODO: Add service spec
+

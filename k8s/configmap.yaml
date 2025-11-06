@@ -1,0 +1,9 @@
+# Kubernetes ConfigMap (placeholder)
+# TODO: Implement ConfigMap for non-sensitive configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rtac-modbus-service-config
+data:
+  # TODO: Add configuration data
+

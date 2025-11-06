@@ -1,0 +1,10 @@
+# Kubernetes Deployment (placeholder)
+# TODO: Implement Kubernetes deployment manifest
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rtac-modbus-service
+spec:
+  replicas: 2
+  # TODO: Add deployment spec
+
