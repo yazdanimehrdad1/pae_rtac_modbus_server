@@ -1,9 +1,24 @@
 services:
-  modbus-api:
+  redis:
+    image: redis:7-alpine
+    container_name: pae-rtac-server-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  pae-rtac-server:
     build:
       context: .
       dockerfile: docker/Dockerfile
-    container_name: modbus-api
+    container_name: pae-rtac-server
     ports:
       - "8000:8000"
     environment:
@@ -14,9 +29,19 @@ services:
       - MODBUS_UNIT_ID=${MODBUS_UNIT_ID:-1}
       - MODBUS_TIMEOUT_S=${MODBUS_TIMEOUT_S:-5.0}
       - MODBUS_RETRIES=${MODBUS_RETRIES:-3}
+      # Redis configuration
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
     volumes:
       # Mount .env file if it exists (optional - environment variables take precedence)
       - ./.env:/app/.env:ro
+    depends_on:
+      redis:
+        condition: service_healthy
     restart: unless-stopped
     # No network isolation needed - connects directly to external Modbus server
+
+volumes:
+  redis-data:
 

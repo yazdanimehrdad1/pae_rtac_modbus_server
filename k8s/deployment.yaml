@@ -3,7 +3,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: rtac-modbus-service
+  name: pae-rtac-server
 spec:
   replicas: 2
   # TODO: Add deployment spec

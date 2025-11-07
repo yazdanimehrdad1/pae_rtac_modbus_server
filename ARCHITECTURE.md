@@ -1,5 +1,3 @@
-# Expert Software Engineering Suggestions for RTAC Modbus Service
-
 ## Structure Overview
 
 The project has been organized following modern Python microservice best practices:

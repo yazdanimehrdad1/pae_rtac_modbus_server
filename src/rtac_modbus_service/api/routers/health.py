@@ -4,6 +4,7 @@ from fastapi import APIRouter
 
 from rtac_modbus_service.schemas.api_models import HealthResponse
 from rtac_modbus_service.modbus.client import ModbusClient
+from rtac_modbus_service.cache.connection import check_redis_health
 
 router = APIRouter()
 
@@ -37,6 +38,11 @@ async def readiness_check():
     Readiness check endpoint.
     
     Returns 200 if the service is ready to accept requests.
-    This endpoint does not check Modbus connectivity.
+    Checks Redis connectivity in addition to basic readiness.
     """
-    return {"status": "ready"}
+    redis_ok = await check_redis_health()
+    
+    if redis_ok:
+        return {"status": "ready", "redis": "connected"}
+    else:
+        return {"status": "ready", "redis": "disconnected"}

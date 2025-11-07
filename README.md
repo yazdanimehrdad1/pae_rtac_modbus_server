@@ -152,7 +152,7 @@ API documentation (Swagger UI) available at: `http://localhost:8000/docs`
 
 **Build the image:**
 ```bash
-docker build -t modbus-api .
+docker build -t pae-rtac-server .
 ```
 
 **Run the container:**
@@ -160,7 +160,7 @@ docker build -t modbus-api .
 docker run -p 8000:8000 \
   -e MODBUS_HOST=192.168.1.100 \
   -e MODBUS_PORT=502 \
-  modbus-api
+  pae-rtac-server
 ```
 
 **Run with docker-compose (connects to external Modbus server):**
@@ -176,7 +176,7 @@ docker-compose down
 
 **View logs:**
 ```bash
-docker-compose logs -f modbus-api
+docker-compose logs -f pae-rtac-server
 ```
 
 ## Example curl Commands

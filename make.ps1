@@ -45,11 +45,11 @@ switch ($Command.ToLower()) {
     }
     "logs" {
         Write-Host "Viewing container logs (Ctrl+C to exit)..." -ForegroundColor Cyan
-        docker-compose logs -f modbus-api
+        docker-compose logs -f pae-rtac-server
     }
     "shell" {
         Write-Host "Opening shell in container..." -ForegroundColor Cyan
-        docker-compose exec modbus-api /bin/bash
+        docker-compose exec pae-rtac-server /bin/bash
     }
     "ps" {
         Write-Host "Container status:" -ForegroundColor Cyan
@@ -69,7 +69,7 @@ switch ($Command.ToLower()) {
     "clean" {
         Write-Host "Cleaning up containers and images..." -ForegroundColor Yellow
         docker-compose down
-        docker rmi modbus-api 2>$null
+        docker rmi pae-rtac-server 2>$null
         if ($LASTEXITCODE -ne 0) {
             Write-Host "Image not found or already removed" -ForegroundColor Yellow
         }

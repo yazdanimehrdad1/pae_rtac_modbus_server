@@ -23,6 +23,21 @@ class Settings(BaseSettings):
     api_port: int = Field(default=8000, alias="API_PORT")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     
+    # Redis Configuration
+    redis_host: str = Field(default="localhost", alias="REDIS_HOST")
+    redis_port: int = Field(default=6379, alias="REDIS_PORT")
+    redis_db: int = Field(default=0, alias="REDIS_DB")
+    redis_password: str | None = Field(default=None, alias="REDIS_PASSWORD")
+    redis_socket_timeout: float = Field(default=5.0, alias="REDIS_SOCKET_TIMEOUT")
+    redis_socket_connect_timeout: float = Field(default=5.0, alias="REDIS_SOCKET_CONNECT_TIMEOUT")
+    redis_max_connections: int = Field(default=50, alias="REDIS_MAX_CONNECTIONS")
+    redis_decode_responses: bool = Field(default=True, alias="REDIS_DECODE_RESPONSES")
+    redis_health_check_interval: int = Field(default=30, alias="REDIS_HEALTH_CHECK_INTERVAL")
+    
+    # Cache Configuration
+    cache_default_ttl: int = Field(default=3600, alias="CACHE_DEFAULT_TTL")  # 1 hour default
+    cache_key_prefix: str = Field(default="rtac_modbus", alias="CACHE_KEY_PREFIX")
+    
     # Database Configuration (TODO: Add when implementing TimescaleDB)
     # database_url: str = Field(..., alias="DATABASE_URL")
     # database_pool_size: int = Field(default=10, alias="DATABASE_POOL_SIZE")

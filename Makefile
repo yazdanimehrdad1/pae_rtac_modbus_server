@@ -44,16 +44,16 @@ restart:
 
 # View logs
 logs:
-	docker-compose -f compose.yaml logs -f modbus-api
+	docker-compose -f compose.yaml logs -f pae-rtac-server
 
 # Open a shell in the container
 shell:
-	docker-compose -f compose.yaml exec modbus-api /bin/bash
+	docker-compose -f compose.yaml exec pae-rtac-server /bin/bash
 
 # Clean up containers and images
 clean:
 	docker-compose -f compose.yaml down
-	docker rmi modbus-api 2>/dev/null || true
+	docker rmi pae-rtac-server 2>/dev/null || true
 
 # View container status
 ps:

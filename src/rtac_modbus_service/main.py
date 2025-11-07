@@ -12,7 +12,7 @@ from rtac_modbus_service.logging import get_logger
 logger = get_logger(__name__)
 
 if __name__ == "__main__":
-    logger.info(f"Starting RTAC Modbus Service on {settings.api_host}:{settings.api_port}")
+    logger.info(f"Starting PAE RTAC Server on {settings.api_host}:{settings.api_port}")
     uvicorn.run(
         "rtac_modbus_service.app:app",
         host=settings.api_host,

@@ -3,7 +3,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: rtac-modbus-service-config
+  name: pae-rtac-server-config
 data:
   # TODO: Add configuration data
 

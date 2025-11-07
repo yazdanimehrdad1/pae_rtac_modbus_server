@@ -23,7 +23,7 @@ def create_app() -> FastAPI:
         Configured FastAPI app instance
     """
     app = FastAPI(
-        title="RTAC Modbus Service",
+        title="PAE RTAC Server",
         description="Modbus TCP service for polling and storing time-series data",
         version="1.0.0"
     )
@@ -43,18 +43,33 @@ def create_app() -> FastAPI:
     # - Request logging
     # - Error handling
     
-    # TODO: Add lifecycle hooks
-    # @app.on_event("startup")
-    # async def startup():
-    #     logger.info("Starting RTAC Modbus Service")
-    #     # Initialize scheduler
-    #     # Initialize database connections
-    # 
-    # @app.on_event("shutdown")
-    # async def shutdown():
-    #     logger.info("Shutting down RTAC Modbus Service")
-    #     # Stop scheduler
-    #     # Close database connections
+    # Lifecycle hooks
+    @app.on_event("startup")
+    async def startup():
+        """Initialize services on application startup."""
+        logger.info("Starting PAE RTAC Server")
+        # Initialize Redis connection
+        from rtac_modbus_service.cache.connection import get_redis_client, check_redis_health
+        try:
+            await get_redis_client()
+            health_ok = await check_redis_health()
+            if health_ok:
+                logger.info("Redis cache initialized successfully")
+            else:
+                logger.warning("Redis health check failed, but continuing startup")
+        except Exception as e:
+            logger.error(f"Failed to initialize Redis: {e}")
+            # Continue startup even if Redis fails (graceful degradation)
+    
+    @app.on_event("shutdown")
+    async def shutdown():
+        """Cleanup resources on application shutdown."""
+        logger.info("Shutting down PAE RTAC Server")
+        # Close Redis connection
+        from rtac_modbus_service.cache.connection import close_redis_client
+        await close_redis_client()
+        # TODO: Stop scheduler
+        # TODO: Close database connections
     
     logger.info("FastAPI application created")
     return app

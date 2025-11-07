@@ -1,2 +1,2 @@
-"""API layer for RTAC Modbus Service."""
+"""API layer for PAE RTAC Server."""
 

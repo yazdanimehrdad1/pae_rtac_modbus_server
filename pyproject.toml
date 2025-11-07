@@ -1,5 +1,5 @@
 [project]
-name = "rtac-modbus-service"
+name = "pae-rtac-server"
 version = "1.0.0"
 description = "RTAC Modbus TCP service for polling and storing time-series data"
 readme = "README.md"
@@ -12,6 +12,8 @@ dependencies = [
     "pydantic-settings>=2.0.0",
     "python-dotenv>=1.0.0",
     "pandas>=2.0.0",  # For register map DataFrame operations
+    "redis>=5.0.0",  # Redis client for caching
+    "hiredis>=2.2.0",  # C extension for faster Redis parsing (optional but recommended)
     # TODO: Add when implementing database
     # "asyncpg>=0.29.0",  # PostgreSQL async driver
     # "sqlalchemy[asyncio]>=2.0.0",
