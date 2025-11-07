@@ -1,4 +1,4 @@
-.PHONY: help up down build restart logs shell clean ps health up-build dev test lint fmt migrate run
+.PHONY: help up down build restart logs shell clean ps health up-build dev test-setup test lint fmt migrate run
 
 # Default target
 help:
@@ -15,12 +15,13 @@ help:
 	@echo "  make clean    - Stop containers and remove images"
 	@echo ""
 	@echo "Development commands:"
-	@echo "  make dev      - Start development environment"
-	@echo "  make test     - Run tests"
-	@echo "  make lint     - Run linters (ruff, mypy)"
-	@echo "  make fmt      - Format code (black, ruff)"
-	@echo "  make migrate  - Run database migrations"
-	@echo "  make run      - Run service locally (non-Docker)"
+	@echo "  make dev        - Start development environment"
+	@echo "  make test-setup - Prepare test environment (ensure containers are running)"
+	@echo "  make test       - Run tests (ensures containers are up first)"
+	@echo "  make lint       - Run linters (ruff, mypy)"
+	@echo "  make fmt        - Format code (black, ruff)"
+	@echo "  make migrate    - Run database migrations"
+	@echo "  make run        - Run service locally (non-Docker)"
 
 # Start containers
 up:
@@ -68,9 +69,29 @@ dev:
 	@echo "Starting development environment..."
 	# TODO: Add development setup (install deps, run tests, etc.)
 
-# Run tests
-test:
-	@pytest tests/ -v
+# Prepare test environment - ensure Redis container is running
+test-setup:
+	@echo "Preparing test environment..."
+	@echo "Checking if Redis container is running..."
+	@docker-compose -f compose.yaml ps redis | grep -q "Up" || docker-compose -f compose.yaml up -d redis
+	@echo "Waiting for Redis to be healthy..."
+	@timeout=30; \
+	while [ $$timeout -gt 0 ]; do \
+		if docker-compose -f compose.yaml exec -T redis redis-cli ping > /dev/null 2>&1; then \
+			echo "Redis is ready!"; \
+			break; \
+		fi; \
+		sleep 1; \
+		timeout=$$((timeout-1)); \
+	done; \
+	if [ $$timeout -eq 0 ]; then \
+		echo "Warning: Redis health check timeout"; \
+	fi
+
+# Run tests - ensures containers are up first
+test: test-setup
+	@echo "Running tests..."
+	@PYTHONPATH=src pytest tests/ -v
 
 # Run linting
 lint:

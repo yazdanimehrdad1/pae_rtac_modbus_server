@@ -185,25 +185,6 @@ class CacheService:
             logger.warning(f"Cache get_ttl failed for key '{key}': {e}")
             return None
     
-    async def increment(self, key: str, amount: int = 1) -> Optional[int]:
-        """
-        Increment a numeric value in cache.
-        
-        Args:
-            key: Cache key (will be prefixed automatically)
-            amount: Amount to increment by (default: 1)
-            
-        Returns:
-            New value after increment, None if operation failed
-        """
-        try:
-            client = await get_redis_client()
-            full_key = self._make_key(key)
-            return await client.incrby(full_key, amount)
-        except Exception as e:
-            logger.warning(f"Cache increment failed for key '{key}': {e}")
-            return None
-
 
 # Global cache service instance
 cache = CacheService()

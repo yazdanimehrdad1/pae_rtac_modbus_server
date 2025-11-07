@@ -19,7 +19,47 @@ function Show-Help {
     Write-Host "  .\make.ps1 health     - Check service health"
     Write-Host "  .\make.ps1 clean      - Stop containers and remove images"
     Write-Host ""
+    Write-Host "Development commands:"
+    Write-Host "  .\make.ps1 test-setup - Prepare test environment (ensure containers are running)"
+    Write-Host "  .\make.ps1 test       - Run tests (ensures containers are up first)"
+    Write-Host ""
     Write-Host "Or use: make.ps1 <command>"
+}
+
+function Invoke-TestSetup {
+    Write-Host "Preparing test environment..." -ForegroundColor Green
+    Write-Host "Checking if Redis container is running..." -ForegroundColor Cyan
+    
+    $redisStatus = docker-compose ps redis 2>$null | Select-String "Up"
+    if (-not $redisStatus) {
+        Write-Host "Starting Redis container..." -ForegroundColor Yellow
+        docker-compose up -d redis
+    } else {
+        Write-Host "Redis container is already running" -ForegroundColor Green
+    }
+    
+    Write-Host "Waiting for Redis to be healthy..." -ForegroundColor Cyan
+    $timeout = 30
+    $ready = $false
+    
+    while ($timeout -gt 0) {
+        try {
+            $result = docker-compose exec -T redis redis-cli ping 2>$null
+            if ($result -match "PONG") {
+                Write-Host "Redis is ready!" -ForegroundColor Green
+                $ready = $true
+                break
+            }
+        } catch {
+            # Continue waiting
+        }
+        Start-Sleep -Seconds 1
+        $timeout--
+    }
+    
+    if (-not $ready) {
+        Write-Host "Warning: Redis health check timeout" -ForegroundColor Yellow
+    }
 }
 
 switch ($Command.ToLower()) {
@@ -72,6 +112,20 @@ switch ($Command.ToLower()) {
         docker rmi pae-rtac-server 2>$null
         if ($LASTEXITCODE -ne 0) {
             Write-Host "Image not found or already removed" -ForegroundColor Yellow
+        }
+    }
+    "test-setup" {
+        Invoke-TestSetup
+    }
+    "test" {
+        Invoke-TestSetup
+        
+        Write-Host "Running tests..." -ForegroundColor Green
+        $env:PYTHONPATH = "src"
+        pytest tests/ -v
+        
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "Tests completed with exit code: $LASTEXITCODE" -ForegroundColor Yellow
         }
     }
     default {
