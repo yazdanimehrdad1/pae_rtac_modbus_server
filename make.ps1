@@ -8,11 +8,13 @@ param(
 
 function Show-Help {
     Write-Host "Available commands:"
-    Write-Host "  .\make.ps1 up-build  - Build and start containers"
-    Write-Host "  .\make.ps1 up         - Start containers"
-    Write-Host "  .\make.ps1 down       - Stop and remove containers"
-    Write-Host "  .\make.ps1 build     - Build the Docker image"
-    Write-Host "  .\make.ps1 restart    - Restart the containers"
+    Write-Host "  .\make.ps1 up-build   - Build and start containers"
+    Write-Host "  .\make.ps1 up          - Start containers"
+    Write-Host "  .\make.ps1 down        - Stop and remove containers"
+    Write-Host "  .\make.ps1 build       - Build the Docker image (uses cache)"
+    Write-Host "  .\make.ps1 rebuild     - Rebuild the Docker image (no cache, forces fresh build)"
+    Write-Host "  .\make.ps1 up-rebuild  - Rebuild (no cache) and start containers"
+    Write-Host "  .\make.ps1 restart     - Restart the containers"
     Write-Host "  .\make.ps1 logs       - View container logs"
     Write-Host "  .\make.ps1 shell      - Open a shell in the container"
     Write-Host "  .\make.ps1 ps         - View container status"
@@ -76,8 +78,18 @@ switch ($Command.ToLower()) {
         docker-compose down
     }
     "build" {
-        Write-Host "Building Docker image..." -ForegroundColor Green
+        Write-Host "Building Docker image (using cache)..." -ForegroundColor Green
         docker-compose build
+    }
+    "rebuild" {
+        Write-Host "Rebuilding Docker image (no cache - forces fresh build)..." -ForegroundColor Yellow
+        docker-compose build --no-cache
+    }
+    "up-rebuild" {
+        Write-Host "Rebuilding Docker image (no cache)..." -ForegroundColor Yellow
+        docker-compose build --no-cache
+        Write-Host "Starting containers..." -ForegroundColor Green
+        docker-compose up -d
     }
     "restart" {
         Write-Host "Restarting containers..." -ForegroundColor Yellow

@@ -19,6 +19,19 @@ class RegisterData(BaseModel):
     name: str = Field(..., description="Register name from register map")
     value: Union[int, bool] = Field(..., description="Register value")
     Type: Optional[str] = Field(None, description="Data type of the register")
+    scale_factor: Optional[float] = Field(None, description="Scale factor to apply to raw value")
+    unit: Optional[str] = Field(None, description="Physical unit (e.g., 'V', 'A', 'kW')")
+    
+    model_config = {
+        "populate_by_name": True,
+        "json_encoders": {},
+    }
+
+
+class RegisterValue(BaseModel):
+    """Simple register value pair for POST /read endpoint."""
+    register_number: int = Field(..., description="Register address number", alias="register")
+    value: Union[int, bool] = Field(..., description="Register value")
     
     model_config = {"populate_by_name": True}
 
@@ -33,6 +46,19 @@ class ReadResponse(BaseModel):
     unit_id: int
     data: dict[int, RegisterData] = Field(
         ..., description="Dictionary mapping register addresses to their data (name, value, type)"
+    )
+
+
+class SimpleReadResponse(BaseModel):
+    """Simplified response model for POST /read endpoint with array of register:value pairs."""
+    ok: bool
+    timestamp: str = Field(..., description="ISO format timestamp of when the read operation completed")
+    kind: str
+    address: int
+    count: int
+    unit_id: int
+    data: List[RegisterValue] = Field(
+        default_factory=list, description="Array of register number and value pairs"
     )
 
 

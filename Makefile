@@ -1,4 +1,4 @@
-.PHONY: help up down build restart logs shell clean ps health up-build dev test-setup test lint fmt migrate run
+.PHONY: help up down build rebuild up-build up-rebuild restart logs shell clean ps health dev test-setup test lint fmt migrate run
 
 # Default target
 help:
@@ -6,8 +6,10 @@ help:
 	@echo "  make up       - Start the containers"
 	@echo "  make up-build - Build and start containers"
 	@echo "  make down     - Stop and remove containers"
-	@echo "  make build    - Build the Docker image"
-	@echo "  make restart  - Restart the containers"
+	@echo "  make build     - Build the Docker image (uses cache)"
+	@echo "  make rebuild   - Rebuild the Docker image (no cache, forces fresh build)"
+	@echo "  make up-rebuild - Rebuild (no cache) and start containers"
+	@echo "  make restart   - Restart the containers"
 	@echo "  make logs     - View container logs"
 	@echo "  make shell    - Open a shell in the container"
 	@echo "  make ps       - View container status"
@@ -31,13 +33,22 @@ up:
 down:
 	docker-compose -f compose.yaml down
 
-# Build the Docker image
+# Build the Docker image (uses cache)
 build:
 	docker-compose -f compose.yaml build
+
+# Rebuild the Docker image (no cache - forces fresh build)
+rebuild:
+	docker-compose -f compose.yaml build --no-cache
 
 # Build and start containers
 up-build:
 	docker-compose -f compose.yaml up -d --build
+
+# Rebuild and start containers (no cache)
+up-rebuild:
+	docker-compose -f compose.yaml build --no-cache
+	docker-compose -f compose.yaml up -d
 
 # Restart containers
 restart:
