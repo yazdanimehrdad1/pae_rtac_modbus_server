@@ -5,7 +5,7 @@ from typing import Optional
 
 import pandas as pd
 
-from rtac_modbus_service.schemas.modbus_models import RegisterPoint, RegisterMap
+from schemas.modbus_models import RegisterPoint, RegisterMap
 
 
 def load_register_map_from_csv(csv_path: Path) -> RegisterMap:

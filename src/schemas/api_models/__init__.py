@@ -1,6 +1,6 @@
 """API request/response models."""
 
-from rtac_modbus_service.schemas.api_models.models import (
+from schemas.api_models.models import (
     ReadRequest,
     ReadResponse,
     RegisterData,

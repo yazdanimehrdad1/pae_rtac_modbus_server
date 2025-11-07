@@ -1,12 +1,12 @@
 """Schema module - organized by domain."""
 
 # Convenience imports for common schemas
-from rtac_modbus_service.schemas.api_models import (
+from schemas.api_models import (
     ReadRequest,
     ReadResponse,
     HealthResponse,
 )
-from rtac_modbus_service.schemas.modbus_models import (
+from schemas.modbus_models import (
     RegisterPoint,
     RegisterMap,
 )

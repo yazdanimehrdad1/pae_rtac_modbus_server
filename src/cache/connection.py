@@ -7,8 +7,8 @@ Handles Redis client creation, connection pooling, and lifecycle management.
 import redis.asyncio as aioredis
 from typing import Optional
 
-from rtac_modbus_service.config import settings
-from rtac_modbus_service.logging import get_logger
+from config import settings
+from logger import get_logger
 
 logger = get_logger(__name__)
 

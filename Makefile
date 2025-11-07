@@ -88,6 +88,6 @@ migrate:
 
 # Run the service locally (non-Docker)
 run:
-	@python -m rtac_modbus_service.main
+	@cd src && python -m main
 
 

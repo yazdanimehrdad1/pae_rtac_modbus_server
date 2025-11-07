@@ -10,9 +10,9 @@ from datetime import timedelta
 
 import redis.asyncio as aioredis
 
-from rtac_modbus_service.cache.connection import get_redis_client
-from rtac_modbus_service.config import settings
-from rtac_modbus_service.logging import get_logger
+from cache.connection import get_redis_client
+from config import settings
+from logger import get_logger
 
 logger = get_logger(__name__)
 

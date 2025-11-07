@@ -2,9 +2,9 @@
 
 from fastapi import APIRouter
 
-from rtac_modbus_service.schemas.api_models import HealthResponse
-from rtac_modbus_service.modbus.client import ModbusClient
-from rtac_modbus_service.cache.connection import check_redis_health
+from schemas.api_models import HealthResponse
+from modbus.client import ModbusClient
+from cache.connection import check_redis_health
 
 router = APIRouter()
 

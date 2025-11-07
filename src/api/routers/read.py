@@ -5,9 +5,9 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, status
 
-from rtac_modbus_service.schemas.api_models import ReadRequest, ReadResponse, RegisterData
-from rtac_modbus_service.modbus.client import ModbusClient, translate_modbus_error
-from rtac_modbus_service.utils.dataframe import load_register_map_from_csv
+from schemas.api_models import ReadRequest, ReadResponse, RegisterData
+from modbus.client import ModbusClient, translate_modbus_error
+from utils.dataframe import load_register_map_from_csv
 
 router = APIRouter()
 

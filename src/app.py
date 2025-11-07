@@ -7,8 +7,8 @@ Creates and configures the FastAPI app instance with routers, middleware, and li
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
-from rtac_modbus_service.config import settings
-from rtac_modbus_service.logging import setup_logging, get_logger
+from config import settings
+from logger import setup_logging, get_logger
 
 # Setup logging
 setup_logging(log_level=settings.log_level)
@@ -29,12 +29,12 @@ def create_app() -> FastAPI:
     )
     
     # Mount routers
-    from rtac_modbus_service.api.routers import health, read
+    from api.routers import health, read
     app.include_router(health.router, tags=["health"])
     app.include_router(read.router, tags=["modbus"])
     
     # TODO: Add other routers when implemented
-    # from rtac_modbus_service.api.routers import points, metrics
+    # from api.routers import points, metrics
     # app.include_router(points.router, prefix="/api/v1/points", tags=["points"])
     # app.include_router(metrics.router, tags=["metrics"])
     
@@ -49,7 +49,7 @@ def create_app() -> FastAPI:
         """Initialize services on application startup."""
         logger.info("Starting PAE RTAC Server")
         # Initialize Redis connection
-        from rtac_modbus_service.cache.connection import get_redis_client, check_redis_health
+        from cache.connection import get_redis_client, check_redis_health
         try:
             await get_redis_client()
             health_ok = await check_redis_health()
@@ -66,7 +66,7 @@ def create_app() -> FastAPI:
         """Cleanup resources on application shutdown."""
         logger.info("Shutting down PAE RTAC Server")
         # Close Redis connection
-        from rtac_modbus_service.cache.connection import close_redis_client
+        from cache.connection import close_redis_client
         await close_redis_client()
         # TODO: Stop scheduler
         # TODO: Close database connections
