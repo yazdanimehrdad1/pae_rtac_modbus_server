@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 
 from config import settings
 from logger import setup_logging, get_logger
+from scheduler.engine import start_scheduler, stop_scheduler
 
 # Setup logging
 setup_logging(log_level=settings.log_level)
@@ -61,15 +62,19 @@ def create_app() -> FastAPI:
         except Exception as e:
             logger.error(f"Failed to initialize Redis: {e}")
             # Continue startup even if Redis fails (graceful degradation)
+        
+        # Start scheduler
+        await start_scheduler()
     
     @app.on_event("shutdown")
     async def shutdown():
         """Cleanup resources on application shutdown."""
         logger.info("Shutting down PAE RTAC Server")
+        # Stop scheduler
+        await stop_scheduler()
         # Close Redis connection
         from cache.connection import close_redis_client
         await close_redis_client()
-        # TODO: Stop scheduler
         # TODO: Close database connections
     
     logger.info("FastAPI application created")

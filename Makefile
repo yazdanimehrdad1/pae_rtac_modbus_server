@@ -1,4 +1,4 @@
-.PHONY: help up down build rebuild up-build up-rebuild restart logs shell clean ps health dev test-setup test lint fmt migrate run
+.PHONY: help up down build rebuild up-build up-rebuild restart logs shell clean ps health dev test-setup test lint format migrate run
 
 # Default target
 help:
@@ -21,7 +21,7 @@ help:
 	@echo "  make test-setup - Prepare test environment (ensure containers are running)"
 	@echo "  make test       - Run tests (ensures containers are up first)"
 	@echo "  make lint       - Run linters (ruff, mypy)"
-	@echo "  make fmt        - Format code (black, ruff)"
+	@echo "  make format     - Format code (black, ruff)"
 	@echo "  make migrate    - Run database migrations"
 	@echo "  make run        - Run service locally (non-Docker)"
 
@@ -110,9 +110,13 @@ lint:
 	@mypy src/
 
 # Format code
-fmt:
-	@black src/ tests/
-	@ruff check --fix src/ tests/
+format:
+	@echo "Formatting Python files with black..."
+	@docker-compose -f compose.yaml exec pae-rtac-server black src/ 2>/dev/null || echo "Note: Running black in container..."
+	@echo "Running ruff to fix import sorting and other issues..."
+	@docker-compose -f compose.yaml exec pae-rtac-server ruff check --fix src/ 2>/dev/null || echo "Note: Running ruff in container..."
+	@echo "Formatting complete!"
+
 
 # Run database migrations
 migrate:

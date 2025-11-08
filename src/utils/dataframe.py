@@ -91,26 +91,3 @@ def register_map_to_dataframe(register_map: RegisterMap) -> pd.DataFrame:
     return pd.DataFrame(data)
 
 
-def create_register_map_template_csv(output_path: Path) -> None:
-    """
-    Create a template CSV file with example register points.
-    
-    Args:
-        output_path: Path where to save the template CSV
-    """
-    template_data = {
-        "name": ["Voltage_L1", "Current_L1", "Power_Active", "Status_Bit"],
-        "address": [0, 1, 10, 100],
-        "kind": ["holding", "holding", "holding", "coils"],
-        "size": [1, 1, 2, 1],
-        "unit_id": [1, 1, 1, 1],
-        "data_type": ["uint16", "uint16", "uint32", "bool"],
-        "scale_factor": [0.1, 0.01, 1.0, 1.0],
-        "unit": ["V", "A", "W", ""],
-        "tags": ["voltage,electrical", "current,electrical", "power,electrical", "status"],
-    }
-    
-    df = pd.DataFrame(template_data)
-    df.to_csv(output_path, index=False)
-    print(f"Template CSV created at: {output_path}")
-

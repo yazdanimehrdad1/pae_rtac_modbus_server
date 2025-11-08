@@ -24,6 +24,8 @@ function Show-Help {
     Write-Host "Development commands:"
     Write-Host "  .\make.ps1 test-setup - Prepare test environment (ensure containers are running)"
     Write-Host "  .\make.ps1 test       - Run tests (ensures containers are up first)"
+    Write-Host "  .\make.ps1 format     - Format all Python files (black, ruff)"
+    Write-Host "  .\make.ps1 lint       - Run linters (ruff, mypy)"
     Write-Host ""
     Write-Host "Or use: make.ps1 <command>"
 }
@@ -138,6 +140,35 @@ switch ($Command.ToLower()) {
         
         if ($LASTEXITCODE -ne 0) {
             Write-Host "Tests completed with exit code: $LASTEXITCODE" -ForegroundColor Yellow
+        }
+    }
+    "format" {
+        Write-Host "Formatting Python files with black..." -ForegroundColor Green
+        docker-compose -f compose.yaml exec pae-rtac-server black src/
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "Error running black in container" -ForegroundColor Red
+            exit $LASTEXITCODE
+        }
+        
+        Write-Host "Running ruff to fix import sorting and other issues..." -ForegroundColor Green
+        docker-compose -f compose.yaml exec pae-rtac-server ruff check --fix src/
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "Ruff found issues (some may be non-fixable)" -ForegroundColor Yellow
+        }
+        
+        Write-Host "Formatting complete!" -ForegroundColor Green
+    }
+    "lint" {
+        Write-Host "Running ruff linter..." -ForegroundColor Green
+        ruff check src/ tests/
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "Ruff found issues" -ForegroundColor Yellow
+        }
+        
+        Write-Host "Running mypy type checker..." -ForegroundColor Green
+        mypy src/
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "MyPy found type issues" -ForegroundColor Yellow
         }
     }
     default {

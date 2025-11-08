@@ -9,6 +9,11 @@ A FastAPI-based REST API service for communicating with Modbus TCP servers using
 - Robust error handling with proper HTTP status codes
 - Environment variable configuration
 - Clean connection management (no socket leaks)
+- **Distributed Scheduler**: APScheduler with Redis-based leader election for multi-replica Kubernetes deployments
+
+## Scheduler Implementation
+
+The service includes a distributed scheduler system for periodic Modbus polling and data storage jobs. **Step 1**: Added APScheduler dependency to requirements.txt for async job scheduling. **Step 2**: Configured scheduler settings in config.py including leader lock TTL, heartbeat interval, and pod identification. **Step 3**: Implemented Redis-based distributed locking system with leader election and per-job execution locks in scheduler/locks.py. **Step 4**: Created scheduler engine in scheduler/engine.py that wraps all jobs with lock verification before execution. **Step 5**: Integrated scheduler lifecycle into FastAPI app startup/shutdown hooks for automatic initialization and cleanup.
 
 ## Installation
 

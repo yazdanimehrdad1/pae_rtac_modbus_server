@@ -43,10 +43,24 @@ class Settings(BaseSettings):
     # database_pool_size: int = Field(default=10, alias="DATABASE_POOL_SIZE")
     # database_max_overflow: int = Field(default=20, alias="DATABASE_MAX_OVERFLOW")
     
-    # Scheduler Configuration (TODO: Add when implementing polling)
-    # poll_interval_seconds: int = Field(default=60, alias="POLL_INTERVAL_SECONDS")
-    # poll_jitter_seconds: int = Field(default=5, alias="POLL_JITTER_SECONDS")
-    # max_concurrent_polls: int = Field(default=10, alias="MAX_CONCURRENT_POLLS")
+    # Scheduler Configuration
+    scheduler_enabled: bool = Field(default=True, alias="SCHEDULER_ENABLED")
+    scheduler_leader_lock_ttl: int = Field(default=30, alias="SCHEDULER_LEADER_LOCK_TTL")
+    scheduler_heartbeat_interval: int = Field(default=10, alias="SCHEDULER_HEARTBEAT_INTERVAL")
+    scheduler_job_lock_ttl: int = Field(default=300, alias="SCHEDULER_JOB_LOCK_TTL")
+    scheduler_leader_retry_interval: int = Field(default=5, alias="SCHEDULER_LEADER_RETRY_INTERVAL")
+    
+    # Polling Job Configuration
+    poll_interval_seconds: int = Field(default=60, alias="POLL_INTERVAL_SECONDS")
+    poll_register_map_path: str = Field(default="config/sel_751_register_map.csv", alias="POLL_REGISTER_MAP_PATH")
+    poll_cache_ttl: int = Field(default=3600, alias="POLL_CACHE_TTL")  # 1 hour default
+    poll_address: int = Field(default=1400, alias="POLL_ADDRESS")  # Fixed Modbus address to read from
+    poll_count: int = Field(default=100, alias="POLL_COUNT")  # Fixed number of registers to read
+    poll_kind: str = Field(default="holding", alias="POLL_KIND")  # Register type: holding, input, coils, discretes
+    poll_unit_id: int = Field(default=1, alias="POLL_UNIT_ID")  # Modbus unit ID
+    
+    # Pod identification (for Kubernetes)
+    pod_name: str = Field(default="", alias="POD_NAME")  # Falls back to HOSTNAME if not set
     
     class Config:
         env_file = ".env"
