@@ -22,7 +22,7 @@ modbus_utils = ModbusUtils(modbus_client)
 async def get_register_map():
     """Get the register map from the CSV file."""
     main_sel_751_register_map_path = Path("config/sel_751_register_map.csv")
-    register_map = load_register_map_from_csv(csv_path)
+    register_map = load_register_map_from_csv(main_sel_751_register_map_path)
     return register_map
 
 
