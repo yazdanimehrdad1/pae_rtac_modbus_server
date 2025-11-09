@@ -49,9 +49,9 @@ async def cron_job_poll_modbus_registers() -> None:
         
         # 2. Make a single modbus client call to poll points from a fixed index, and fixed range
         logger.debug(
-            f"Reading Modbus registers: kind={settings.poll_kind}, "
-            f"address={settings.poll_address}, count={settings.poll_count}, "
-            f"unit_id={settings.poll_unit_id}"
+            f"Reading Modbus registers: kind={settings.main_sel_751_poll_kind}, "
+            f"address={settings.main_sel_751_poll_address}, count={settings.main_sel_751_poll_count}, "
+            f"unit_id={settings.main_sel_751_poll_unit_id}"
         )
         
         modbus_data = modbus_utils.read_device_registers_main_sel_751()

@@ -56,8 +56,9 @@ def load_register_map_from_csv(csv_path: Path) -> RegisterMap:
             point_data["unit"] = str(row["unit"])
         
         if "tags" in df.columns and pd.notna(row.get("tags")):
-            tags_str = str(row["tags"])
-            point_data["tags"] = [t.strip() for t in tags_str.split(",") if t.strip()]
+            tags_str = str(row["tags"]).strip()
+            # Split comma-separated tags and filter out empty strings
+            point_data["tags"] = [tag.strip() for tag in tags_str.split(",") if tag.strip()]
         
         points.append(RegisterPoint(**point_data))
     

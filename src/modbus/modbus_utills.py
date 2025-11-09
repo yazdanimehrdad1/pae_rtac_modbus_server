@@ -13,7 +13,7 @@ class ModbusUtils:
 
     # TODO: use config instead of hard coded address and count
     def read_device_registers_main_sel_751(self) -> List[Union[int, bool]]:
-        return self.modbus_client.read_registers(kind=settings.poll_kind,
-            address=settings.poll_address,
-            count=settings.poll_count,
-            unit_id=settings.poll_unit_id)
+        return self.modbus_client.read_registers(kind=settings.main_sel_751_poll_kind,
+            address=settings.main_sel_751_poll_address,
+            count=settings.main_sel_751_poll_count,
+            unit_id=settings.main_sel_751_poll_unit_id)

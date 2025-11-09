@@ -34,6 +34,7 @@ async def start_scheduler() -> None:
     
     Only starts if scheduler is enabled and Redis is available.
     """
+    # Initialize the scheduler
     global _scheduler
     
     if not settings.scheduler_enabled:

@@ -54,10 +54,11 @@ class Settings(BaseSettings):
     poll_interval_seconds: int = Field(default=60, alias="POLL_INTERVAL_SECONDS")
     poll_register_map_path: str = Field(default="config/sel_751_register_map.csv", alias="POLL_REGISTER_MAP_PATH")
     poll_cache_ttl: int = Field(default=3600, alias="POLL_CACHE_TTL")  # 1 hour default
-    poll_address: int = Field(default=1400, alias="POLL_ADDRESS")  # Fixed Modbus address to read from
-    poll_count: int = Field(default=100, alias="POLL_COUNT")  # Fixed number of registers to read
-    poll_kind: str = Field(default="holding", alias="POLL_KIND")  # Register type: holding, input, coils, discretes
-    poll_unit_id: int = Field(default=1, alias="POLL_UNIT_ID")  # Modbus unit ID
+    
+    main_sel_751_poll_address: int = Field(default=1400, alias="MAIN_SEL_751_POLL_ADDRESS")  # Fixed Modbus address to read from
+    main_sel_751_poll_count: int = Field(default=100, alias="MAIN_SEL_751_POLL_COUNT")  # Fixed number of registers to read
+    main_sel_751_poll_kind: str = Field(default="holding", alias="MAIN_SEL_751_POLL_KIND")  # Register type: holding, input, coils, discretes
+    main_sel_751_poll_unit_id: int = Field(default=1, alias="MAIN_SEL_751_POLL_UNIT_ID")  # Modbus unit ID
     
     # Pod identification (for Kubernetes)
     pod_name: str = Field(default="", alias="POD_NAME")  # Falls back to HOSTNAME if not set
