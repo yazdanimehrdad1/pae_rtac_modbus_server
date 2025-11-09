@@ -23,7 +23,20 @@ async def get_register_map():
     """Get the register map from the CSV file."""
     main_sel_751_register_map_path = Path("config/sel_751_register_map.csv")
     register_map = load_register_map_from_csv(main_sel_751_register_map_path)
-    return register_map
+    
+    # Convert RegisterPoint objects to RegisterData objects
+    # Note: value is set to 0 as placeholder since we don't have actual values yet
+    register_data_list = [
+        RegisterData(
+            name=point.name,
+            value=0,  # Placeholder value - actual values come from polling
+            Type=point.data_type,
+            scale_factor=point.scale_factor,
+            unit=point.unit
+        )
+        for point in register_map.points
+    ]
+    return register_data_list
 
 
 @router.get("/read/main-sel-751", response_model=ReadResponse)
