@@ -118,12 +118,12 @@ async def cron_job_poll_modbus_registers() -> None:
             # Store in cache with keys: poll:main-sel-751:latest and poll:main-sel-751:{timestamp}
             cache_key_latest = "poll:main-sel-751:latest"
             cache_key_timestamped = f"poll:main-sel-751:{timestamp}"
+        
             
             logger.info(f"Cache key latest: {cache_key_latest}")
             logger.info(f"Cache key timestamped: {cache_key_timestamped}")
             logger.info(f"Storing {len(register_data_dict)} registers in cache")
-            logger.info(f"Cache TTL: {settings.poll_cache_ttl}")
-            
+            logger.info(f"Cache TTL: {settings.poll_cache_ttl}")  
             # Store latest value (overwrites previous latest)
             await cache_service.set(
                 key=cache_key_latest,

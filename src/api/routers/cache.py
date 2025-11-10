@@ -75,3 +75,41 @@ async def cache_exists(key: str):
         "exists": exists
     }
 
+
+@router.get("/cache/keys")
+async def cache_list_keys(pattern: Optional[str] = None):
+    """
+    List all cached keys, optionally filtered by pattern.
+    
+    Args:
+        pattern: Optional pattern to match (e.g., "poll:*"). 
+                If not provided, returns all keys.
+    
+    Returns:
+        Dictionary with list of keys and count
+    """
+    keys = await cache.list_keys(pattern=pattern)
+    return {
+        "keys": keys,
+        "count": len(keys),
+        "pattern": pattern if pattern else "*"
+    }
+
+
+@router.delete("/cache/clear")
+async def cache_clear_all():
+    """
+    Delete all cache keys and associated data.
+    
+    WARNING: This is a destructive operation that will permanently delete
+    all cached data. Use with caution.
+    
+    Returns:
+        Dictionary with number of keys deleted
+    """
+    deleted_count = await cache.clear_all()
+    return {
+        "success": True,
+        "deleted_count": deleted_count,
+        "message": f"Deleted {deleted_count} cache keys"
+    }

@@ -26,7 +26,7 @@ class RegisterPoint(BaseModel):
         default=1.0, description="Scale factor to apply to raw value"
     )
     unit: Optional[str] = Field(None, description="Physical unit (e.g., 'V', 'A', 'kW')")
-    tags: Optional[list[str]] = Field(default_factory=list, description="Tags for categorization/filtering")
+    tags: Optional[str] = Field(default="", description="Tags for categorization/filtering")
     
     @field_validator("size")
     @classmethod

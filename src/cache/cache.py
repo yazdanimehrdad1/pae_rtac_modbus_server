@@ -185,6 +185,68 @@ class CacheService:
             logger.warning(f"Cache get_ttl failed for key '{key}': {e}")
             return None
     
+    async def list_keys(self, pattern: Optional[str] = None) -> list[str]:
+        """
+        List all cache keys, optionally filtered by pattern.
+        
+        Args:
+            pattern: Optional pattern to match (e.g., "poll:*"). 
+                    If None, returns all keys with the prefix.
+                    Pattern should not include the key prefix.
+        
+        Returns:
+            List of cache keys (without prefix)
+        """
+        try:
+            client = await get_redis_client()
+            keys = []
+            
+            # Build the full pattern with prefix
+            if pattern:
+                full_pattern = self._make_key(pattern)
+            else:
+                full_pattern = f"{self.key_prefix}:*"
+            
+            # Use scan_iter to avoid blocking on large key sets
+            async for key in client.scan_iter(match=full_pattern):
+                # Remove prefix from key before returning
+                key_str = key.decode() if isinstance(key, bytes) else key
+                if key_str.startswith(f"{self.key_prefix}:"):
+                    # Remove prefix and return the original key
+                    keys.append(key_str[len(f"{self.key_prefix}:"):])
+                else:
+                    keys.append(key_str)
+            
+            return sorted(keys)
+        except Exception as e:
+            logger.warning(f"Cache list_keys failed for pattern '{pattern}': {e}")
+            return []
+    
+    async def clear_all(self) -> int:
+        """
+        Delete all cache keys with the configured prefix.
+        
+        WARNING: This is a destructive operation that will delete all cached data.
+        
+        Returns:
+            Number of keys deleted
+        """
+        try:
+            client = await get_redis_client()
+            full_pattern = f"{self.key_prefix}:*"
+            deleted = 0
+            
+            # Use scan_iter to avoid blocking on large key sets
+            async for key in client.scan_iter(match=full_pattern):
+                await client.delete(key)
+                deleted += 1
+            
+            logger.info(f"Cleared {deleted} cache keys with prefix '{self.key_prefix}'")
+            return deleted
+        except Exception as e:
+            logger.error(f"Cache clear_all failed: {e}", exc_info=True)
+            return 0
+    
 
 # Global cache service instance
 cache = CacheService()

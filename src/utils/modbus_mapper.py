@@ -30,11 +30,11 @@ class MappedRegisterData:
         kind: str,
         size: int,
         unit_id: int,
-        value: List[Union[int, bool]],
+        value: Union[int, float],
         data_type: str = "uint16",
         scale_factor: float = 1.0,
         unit: str = "",
-        tags: List[str] = None
+        tags: str = None
     ):
         self.name = name
         self.address = address
@@ -45,7 +45,7 @@ class MappedRegisterData:
         self.data_type = data_type
         self.scale_factor = scale_factor
         self.unit = unit
-        self.tags = tags or []
+        self.tags = tags or ""
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary representation."""
@@ -141,10 +141,24 @@ def map_modbus_data_to_registers(
         # If the point.size is 8 and the point.data_type is "uint64" then the value should be the first 8 registers concatenated together and then converted to a uint64.
         # So the output of map_modbus_data_to_registers should contain the calculated value for registers that are 32 bits, ...
 
-        # Extract the value(s) for this register point
-        # For size=1: [value]
-        # For size=2: [value1, value2] (e.g., for 32-bit values)
-        point_value = modbus_read_data[data_index:data_index + point.size]
+        # Extract the value(s) for this register point and convert to single value
+        # For size=1: extract single value
+        # For size>1: combine registers based on data_type (TODO: implement 32-bit, 64-bit conversion)
+        point_values = modbus_read_data[data_index:data_index + point.size]
+        
+        # Convert array to single value based on size and data_type
+        if point.size == 1:
+            # Single register: use the value directly
+            point_value = point_values[0]
+        else:
+            # Multi-register: for now, use first value (TODO: implement proper 32-bit/64-bit conversion)
+            # This should be expanded based on the TODO comments above
+            point_value = point_values[0]
+            logger.warning(
+                f"Register '{point.name}' has size={point.size} but multi-register conversion not yet implemented. "
+                f"Using first value only."
+            )
+        
         
         # 4. Create MappedRegisterData object linking register info with values
         mapped_register = MappedRegisterData(
@@ -157,7 +171,7 @@ def map_modbus_data_to_registers(
             data_type=point.data_type or "uint16",
             scale_factor=point.scale_factor or 1.0,
             unit=point.unit or "",
-            tags=point.tags or []
+            tags=point.tags or ""
         )
         
         mapped_registers.append(mapped_register)
