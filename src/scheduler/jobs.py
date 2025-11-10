@@ -71,63 +71,82 @@ async def cron_job_poll_modbus_registers() -> None:
         
         # 4. Store data in Redis cache with timestamp
         timestamp = datetime.now(timezone.utc).isoformat()
-        successful_reads = 0
-        failed_reads = 0
         
-        for register_data in mapped_registers:
-            try:
-                # Prepare data structure for cache using the mapped register data
-                cache_data: Dict[str, Any] = {
+        logger.info("Storing data in Redis cache")
+        logger.info(f"Register map: {len(register_map.points)} points")
+        
+        try:
+            # Build a single large object containing all mapped registers, similar to ReadResponse
+            # Store all data from mapped_registers in a structure similar to /read/main-sel-751
+            register_data_dict: Dict[int, Dict[str, Any]] = {}
+            
+            for register_data in mapped_registers:
+                # Create RegisterData-like structure with all fields from MappedRegisterData
+                register_entry: Dict[str, Any] = {
                     "name": register_data.name,
+                    "value": register_data.value,
                     "address": register_data.address,
                     "kind": register_data.kind,
                     "size": register_data.size,
                     "unit_id": register_data.unit_id,
-                    "timestamp": timestamp,
-                    "value": register_data.value,
                 }
                 
                 # Add optional metadata
                 if register_data.data_type:
-                    cache_data["data_type"] = register_data.data_type
+                    register_entry["Type"] = register_data.data_type
                 if register_data.scale_factor:
-                    cache_data["scale_factor"] = register_data.scale_factor
+                    register_entry["scale_factor"] = register_data.scale_factor
                 if register_data.unit:
-                    cache_data["unit"] = register_data.unit
+                    register_entry["unit"] = register_data.unit
                 if register_data.tags:
-                    cache_data["tags"] = register_data.tags
+                    register_entry["tags"] = register_data.tags
                 
-                # Store in cache with key: poll:{point_name}:{timestamp}
-                # Also store latest with key: poll:{point_name}:latest
-                cache_key_latest = f"poll:{register_data.name}:latest"
-                cache_key_timestamped = f"poll:{register_data.name}:{timestamp}"
-                
-                # Store latest value (overwrites previous latest)
-                await cache_service.set(
-                    key=cache_key_latest,
-                    value=cache_data,
-                    ttl=settings.poll_cache_ttl
-                )
-                
-                # Store timestamped value (for historical tracking)
-                await cache_service.set(
-                    key=cache_key_timestamped,
-                    value=cache_data,
-                    ttl=settings.poll_cache_ttl
-                )
-                
-                successful_reads += 1
-                logger.debug(
-                    f"Polled register point: {register_data.name} "
-                    f"(address={register_data.address}, value={register_data.value})"
-                )
-                
-            except Exception as e:
-                failed_reads += 1
-                logger.warning(
-                    f"Failed to process point '{register_data.name}' (address={register_data.address}): {e}"
-                )
-                # Continue with next point
+                # Use address as key (similar to ReadResponse.data structure)
+                register_data_dict[register_data.address] = register_entry
+            
+            # Create cache object similar to ReadResponse structure
+            cache_data: Dict[str, Any] = {
+                "ok": True,
+                "timestamp": timestamp,
+                "kind": settings.main_sel_751_poll_kind,
+                "address": settings.main_sel_751_poll_address,
+                "count": settings.main_sel_751_poll_count,
+                "unit_id": settings.main_sel_751_poll_unit_id,
+                "data": register_data_dict
+            }
+            
+            # Store in cache with keys: poll:main-sel-751:latest and poll:main-sel-751:{timestamp}
+            cache_key_latest = "poll:main-sel-751:latest"
+            cache_key_timestamped = f"poll:main-sel-751:{timestamp}"
+            
+            logger.info(f"Cache key latest: {cache_key_latest}")
+            logger.info(f"Cache key timestamped: {cache_key_timestamped}")
+            logger.info(f"Storing {len(register_data_dict)} registers in cache")
+            logger.info(f"Cache TTL: {settings.poll_cache_ttl}")
+            
+            # Store latest value (overwrites previous latest)
+            await cache_service.set(
+                key=cache_key_latest,
+                value=cache_data,
+                ttl=settings.poll_cache_ttl
+            )
+            
+            # Store timestamped value (for historical tracking)
+            await cache_service.set(
+                key=cache_key_timestamped,
+                value=cache_data,
+                ttl=settings.poll_cache_ttl
+            )
+            
+            successful_reads = len(register_data_dict)
+            failed_reads = 0
+            
+            logger.info(f"Successfully stored {successful_reads} registers in cache")
+            
+        except Exception as e:
+            logger.error(f"Failed to store data in cache: {e}", exc_info=True)
+            successful_reads = 0
+            failed_reads = len(mapped_registers)
         
         logger.info(
             f"Modbus polling job completed: {successful_reads} successful, {failed_reads} failed "

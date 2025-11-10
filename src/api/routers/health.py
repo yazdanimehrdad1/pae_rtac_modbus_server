@@ -11,10 +11,26 @@ router = APIRouter()
 # Initialize Modbus client wrapper
 modbus_client = ModbusClient()
 
+#@healthz is for the api health check while health_modbus_client is checking the health of mobus can read from the modbus server
+#  
 
-@router.get("/health", response_model=HealthResponse)
 @router.get("/healthz", response_model=HealthResponse)
 async def health_check():
+    """
+    Health check endpoint that verifies API is running.
+    
+    Returns basic health status without performing Modbus operations.
+    """
+    return HealthResponse(
+        ok=True,
+        host=modbus_client.host,
+        port=modbus_client.port,
+        unit_id=modbus_client.default_unit_id,
+        detail="API is healthy"
+    )
+
+@router.get("/health_modbus_client", response_model=HealthResponse)
+async def health_modbus_client():
     """
     Health check endpoint that verifies connectivity and performs a small test read.
     
@@ -22,7 +38,6 @@ async def health_check():
     at address 0 to confirm end-to-end communication is working.
     """
     ok, detail = modbus_client.health_check()
-    
     return HealthResponse(
         ok=ok,
         host=modbus_client.host,
@@ -31,18 +46,9 @@ async def health_check():
         detail=detail
     )
 
-
-@router.get("/readyz")
-async def readiness_check():
+@router.get("/redis_health")
+async def redis_health():
     """
-    Readiness check endpoint.
-    
-    Returns 200 if the service is ready to accept requests.
-    Checks Redis connectivity in addition to basic readiness.
+    Redis health check endpoint.
     """
-    redis_ok = await check_redis_health()
-    
-    if redis_ok:
-        return {"status": "ready", "redis": "connected"}
-    else:
-        return {"status": "ready", "redis": "disconnected"}
+    return await check_redis_health()
