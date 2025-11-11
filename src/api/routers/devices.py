@@ -1,16 +1,17 @@
 """Device management endpoints."""
 
-from typing import List
+from pathlib import Path
+from typing import List, Dict, Any
 
 from fastapi import APIRouter, HTTPException, status
 
 from schemas.db_models.models import DeviceCreate, DeviceUpdate, DeviceResponse
 from db.devices import create_device, get_all_devices, get_device_by_id, update_device, delete_device
+from utils.map_csv_to_json import map_csv_to_json, get_register_map_csv_path
 from logger import get_logger
 
 router = APIRouter(prefix="/devices", tags=["devices"])
 logger = get_logger(__name__)
-
 
 @router.get("/device", response_model=List[DeviceResponse])
 async def get_all_devices_endpoint():
@@ -148,5 +149,57 @@ async def delete_existing_device(device_id: int):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to delete device"
+        )
+
+
+@router.get("/device/{device_name}/register_map", response_model=Dict[str, Any])
+async def get_device_register_map(device_name: str):
+    """
+    Get register map for a device in JSON format.
+    
+    Args:
+        device_name: Device identifier (e.g., "sel_751")
+        
+    Returns:
+        JSON structure with metadata and registers array
+        
+    Raises:
+        HTTPException: If device name not found or CSV file error occurs
+    """
+    try:
+        # Get CSV file path based on device name
+        csv_path = get_register_map_csv_path(device_name)
+        
+        # Convert CSV to JSON
+        json_data = map_csv_to_json(csv_path)
+        
+        return json_data
+        
+    except ValueError as e:
+        # Device name not found in mapping or CSV file is invalid
+        error_msg = str(e)
+        if "not found" in error_msg.lower():
+            # Device name not found
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=error_msg
+            )
+        else:
+            # CSV file is invalid or empty
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid register map file: {error_msg}"
+            )
+    except FileNotFoundError as e:
+        # CSV file doesn't exist
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Register map file not found: {str(e)}"
+        )
+    except Exception as e:
+        logger.error(f"Error getting register map for device '{device_name}': {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve register map"
         )
 

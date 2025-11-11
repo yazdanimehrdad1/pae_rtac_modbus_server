@@ -15,6 +15,39 @@ from logger import get_logger
 logger = get_logger(__name__)
 
 
+
+def get_register_map_csv_path(device_name: str) -> Path:
+    """
+    Map device name to register map CSV file path.
+    
+    Args:
+        device_name: Device identifier (e.g., "sel_751")
+        
+    Returns:
+        Path to the CSV file
+        
+    Raises:
+        ValueError: If device name is not recognized
+    """
+    # Map device names to CSV files
+    device_map = {
+        "sel_751": "sel_751_register_map.csv",
+        # Add more device mappings here as needed
+        # "sel_750": "sel_750_register_map.csv",
+    }
+    
+    if device_name not in device_map:
+        available = ", ".join(device_map.keys())
+        raise ValueError(f"Device '{device_name}' not found. Available devices: {available}")
+    
+    csv_filename = device_map[device_name]
+    csv_path = Path("config") / csv_filename
+    
+    return csv_path
+
+
+
+
 def map_csv_to_json(
     csv_path: Path
 ) -> Dict[str, Any]:
