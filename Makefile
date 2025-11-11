@@ -1,4 +1,4 @@
-.PHONY: help up down build rebuild up-build up-rebuild restart logs shell clean ps health dev test-setup test lint format migrate run
+.PHONY: help up down build rebuild up-build up-rebuild restart logs shell clean ps health dev test-setup test lint format migrate apply-migration run
 
 # Default target
 help:
@@ -23,6 +23,7 @@ help:
 	@echo "  make lint       - Run linters (ruff, mypy)"
 	@echo "  make format     - Format code (black, ruff)"
 	@echo "  make migrate    - Run database migrations"
+	@echo "  make apply-migration - Apply database migrations (in container)"
 	@echo "  make run        - Run service locally (non-Docker)"
 
 # Start containers
@@ -121,6 +122,10 @@ format:
 # Run database migrations
 migrate:
 	@python scripts/migrate_db.py
+
+# Apply database migrations (in container)
+apply-migration:
+	@docker-compose -f compose.yaml exec pae-rtac-server python scripts/migrate_db.py
 
 # Run the service locally (non-Docker)
 run:
