@@ -29,11 +29,12 @@ def create_app() -> FastAPI:
         version="1.0.0"
     )
     
-    # Mount routers
-    from api.routers import health, read, cache
-    app.include_router(health.router, tags=["health"])
-    app.include_router(read.router, tags=["modbus"])
-    app.include_router(cache.router, tags=["cache"])
+    # Mount routers with /api prefix
+    from api.routers import health, read, cache, devices
+    app.include_router(health.router, prefix="/api", tags=["health"])
+    app.include_router(read.router, prefix="/api", tags=["modbus"])
+    app.include_router(cache.router, prefix="/api", tags=["cache"])
+    app.include_router(devices.router, prefix="/api", tags=["devices"])
     
     # TODO: Add other routers when implemented
     # from api.routers import points, metrics
@@ -63,6 +64,19 @@ def create_app() -> FastAPI:
             logger.error(f"Failed to initialize Redis: {e}")
             # Continue startup even if Redis fails (graceful degradation)
         
+        # Initialize database connection
+        from db.connection import get_db_pool, check_db_health
+        try:
+            await get_db_pool()
+            health_ok = await check_db_health()
+            if health_ok:
+                logger.info("PostgreSQL database initialized successfully")
+            else:
+                logger.warning("Database health check failed, but continuing startup")
+        except Exception as e:
+            logger.error(f"Failed to initialize database: {e}")
+            # Continue startup even if database fails (graceful degradation)
+        
         # Start scheduler
         await start_scheduler()
     
@@ -75,7 +89,9 @@ def create_app() -> FastAPI:
         # Close Redis connection
         from cache.connection import close_redis_client
         await close_redis_client()
-        # TODO: Close database connections
+        # Close database connection
+        from db.connection import close_db_pool
+        await close_db_pool()
     
     logger.info("FastAPI application created")
     return app
