@@ -15,6 +15,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 COPY pyproject.toml ./
 COPY src/ ./src/
 COPY config/ ./config/
+COPY scripts/ ./scripts/
 
 # Install dependencies
 # TODO: Consider using uv/pdm/poetry for better dependency management
