@@ -5,66 +5,9 @@ from typing import Optional
 
 import pandas as pd
 
-from schemas.modbus_models import RegisterPoint, RegisterMap
+from schemas.modbus_models import RegisterMap
 
-
-def load_register_map_from_csv(csv_path: Path) -> RegisterMap:
-    """
-    Load register map from CSV file.
-    
-    CSV expected columns:
-    - name: Register name/label
-    - address: Modbus address (0-65535)
-    - kind: Register type (holding, input, coils, discretes)
-    - size: Number of registers/bits to read
-    - unit_id: Optional Modbus unit ID
-    - data_type: Optional data type (int16, uint16, int32, uint32, float32, bool)
-    - scale_factor: Optional scale factor (default 1.0)
-    - unit: Optional physical unit
-    - tags: Optional comma-separated tags
-    
-    Args:
-        csv_path: Path to CSV file
-        
-    Returns:
-        RegisterMap object with validated points
-    """
-    df = pd.read_csv(csv_path, quotechar='"', escapechar='\\')
-    
-    # Convert DataFrame rows to RegisterPoint objects
-    points = []
-    for _, row in df.iterrows():
-        # Handle optional fields
-        point_data = {
-            "name": str(row["name"]),
-            "address": int(row["address"]),
-            "kind": str(row["kind"]).lower(),
-            "size": int(row["size"]),
-        }
-        
-        # Optional fields
-        if "unit_id" in df.columns and pd.notna(row.get("unit_id")):
-            point_data["unit_id"] = int(row["unit_id"])
-        
-        if "data_type" in df.columns and pd.notna(row.get("data_type")):
-            point_data["data_type"] = str(row["data_type"]).lower()
-        
-        if "scale_factor" in df.columns and pd.notna(row.get("scale_factor")):
-            point_data["scale_factor"] = float(row["scale_factor"])
-        
-        if "unit" in df.columns and pd.notna(row.get("unit")):
-            point_data["unit"] = str(row["unit"])
-        
-        if "tags" in df.columns and pd.notna(row.get("tags")):
-            tags_str = str(row["tags"]).strip()
-            # Store tags as comma-separated string (tags will never contain commas)
-            point_data["tags"] = tags_str
-        
-        points.append(RegisterPoint(**point_data))
-    
-    return RegisterMap(points=points)
-
-
+# TODO: this DF should also contain the values read for each register
 def register_map_to_dataframe(register_map: RegisterMap) -> pd.DataFrame:
     """
     Convert RegisterMap to pandas DataFrame.

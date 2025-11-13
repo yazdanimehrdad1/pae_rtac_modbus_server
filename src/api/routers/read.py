@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException, status
 from schemas.api_models import ReadRequest, ReadResponse, RegisterData, SimpleReadResponse, RegisterValue
 from modbus.client import ModbusClient, translate_modbus_error
 from modbus.modbus_utills import ModbusUtils
-from utils.dataframe import load_register_map_from_csv
+from utils.map_csv_to_json import map_csv_to_json, json_to_register_map
 
 router = APIRouter()
 
@@ -21,8 +21,9 @@ modbus_utils = ModbusUtils(modbus_client)
 @router.get("/read/register_map", response_model=List[RegisterData])
 async def get_register_map():
     """Get the register map from the CSV file."""
-    main_sel_751_register_map_path = Path("config/sel_751_register_map.csv")
-    register_map = load_register_map_from_csv(main_sel_751_register_map_path)
+    main_sel_751_register_map_path = Path("config/main_sel_751_register_map.csv")
+    json_data = map_csv_to_json(main_sel_751_register_map_path)
+    register_map = json_to_register_map(json_data)
     
     # Convert RegisterPoint objects to RegisterData objects
     # Note: value is set to 0 as placeholder since we don't have actual values yet
@@ -46,8 +47,9 @@ async def read_main_sel_751_data():
         data = modbus_utils.read_device_registers_main_sel_751()
         
         # Map data to register map for better response
-        main_sel_751_register_map_path = Path("config/sel_751_register_map.csv")
-        register_map = load_register_map_from_csv(main_sel_751_register_map_path)
+        main_sel_751_register_map_path = Path("config/main_sel_751_register_map.csv")
+        json_data = map_csv_to_json(main_sel_751_register_map_path)
+        register_map = json_to_register_map(json_data)
         
         # Create list of register data
         response_data = {}

@@ -10,7 +10,7 @@ from db.devices import create_device, get_all_devices, get_device_by_id, update_
 from utils.map_csv_to_json import map_csv_to_json, get_register_map_csv_path
 from logger import get_logger
 
-router = APIRouter(prefix="/devices", tags=["devices"])
+router = APIRouter( tags=["devices"])
 logger = get_logger(__name__)
 
 @router.get("/device", response_model=List[DeviceResponse])

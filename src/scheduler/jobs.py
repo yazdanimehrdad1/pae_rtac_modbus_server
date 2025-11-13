@@ -9,7 +9,7 @@ from modbus.modbus_utills import ModbusUtils
 from cache.cache import CacheService
 from config import settings
 from logger import get_logger
-from utils.dataframe import load_register_map_from_csv
+from utils.map_csv_to_json import map_csv_to_json, json_to_register_map
 from utils.modbus_mapper import map_modbus_data_to_registers
 
 logger = get_logger(__name__)
@@ -40,7 +40,8 @@ async def cron_job_poll_modbus_registers() -> None:
             logger.error(f"Register map file not found: {register_map_path}")
             return
         
-        register_map = load_register_map_from_csv(register_map_path)
+        json_data = map_csv_to_json(register_map_path)
+        register_map = json_to_register_map(json_data)
         logger.info(f"Loaded {len(register_map.points)} register points from {register_map_path}")
         
         if not register_map.points:
@@ -119,6 +120,25 @@ async def cron_job_poll_modbus_registers() -> None:
             cache_key_latest = "poll:main-sel-751:latest"
             cache_key_timestamped = f"poll:main-sel-751:{timestamp}"
         
+            # TODO: Optimize caching strategy using Redis Sorted Sets (Option B)
+            # Current approach stores full objects in timestamped keys, which is inefficient for:
+            # - Memory usage (redundant metadata in each entry)
+            # - Querying past hour (requires fetching 60+ keys per device)
+            # 
+            # Proposed optimization:
+            # 1. Keep current structure for latest: poll:{device}:latest (full object)
+            # 2. Use Redis Sorted Set for history: poll:{device}:history (ZSET)
+            #    - Score: timestamp (Unix epoch)
+            #    - Value: JSON string with only {address: value} pairs (no metadata)
+            # 3. Store metadata separately: register_map:{device} (static, no TTL)
+            # 4. Query past hour: ZRANGEBYSCORE poll:{device}:history <1-hour-ago> +inf WITHSCORES
+            # 5. Cleanup old data: ZREMRANGEBYSCORE poll:{device}:history -inf <1-hour-ago>
+            # 
+            # Benefits:
+            # - 90% memory reduction (only values, not metadata)
+            # - Single Redis call per device for past hour queries
+            # - Efficient time-range queries
+            # - Better scalability for 10+ devices
             
             logger.info(f"Cache key latest: {cache_key_latest}")
             logger.info(f"Cache key timestamped: {cache_key_timestamped}")

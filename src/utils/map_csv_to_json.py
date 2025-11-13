@@ -10,6 +10,7 @@ from datetime import datetime
 
 import pandas as pd
 
+from schemas.modbus_models import RegisterMap, RegisterPoint
 from logger import get_logger
 
 logger = get_logger(__name__)
@@ -31,7 +32,7 @@ def get_register_map_csv_path(device_name: str) -> Path:
     """
     # Map device names to CSV files
     device_map = {
-        "sel_751": "sel_751_register_map.csv",
+        "main-sel-751": "main_sel_751_register_map.csv",
         # Add more device mappings here as needed
         # "sel_750": "sel_750_register_map.csv",
     }
@@ -135,4 +136,46 @@ def map_csv_to_json(
     }
     
     return json_data
+
+
+def json_to_register_map(json_data: Dict[str, Any]) -> RegisterMap:
+    """
+    Convert JSON structure (from map_csv_to_json) to RegisterMap object.
+    
+    Args:
+        json_data: Dictionary with 'metadata' and 'registers' keys from map_csv_to_json
+        
+    Returns:
+        RegisterMap object with RegisterPoint objects
+    """
+    registers = json_data.get("registers", [])
+    points = []
+    
+    for reg in registers:
+        point_data = {
+            "name": reg["name"],
+            "address": reg["address"],
+            "kind": reg["kind"],
+            "size": reg["size"],
+        }
+        
+        # Optional fields
+        if "unit_id" in reg and reg["unit_id"] is not None:
+            point_data["unit_id"] = reg["unit_id"]
+        
+        if "data_type" in reg and reg["data_type"] is not None:
+            point_data["data_type"] = reg["data_type"]
+        
+        if "scale_factor" in reg and reg["scale_factor"] is not None:
+            point_data["scale_factor"] = reg["scale_factor"]
+        
+        if "unit" in reg and reg["unit"] is not None:
+            point_data["unit"] = reg["unit"]
+        
+        if "tags" in reg and reg["tags"] is not None:
+            point_data["tags"] = reg["tags"]
+        
+        points.append(RegisterPoint(**point_data))
+    
+    return RegisterMap(points=points)
 
