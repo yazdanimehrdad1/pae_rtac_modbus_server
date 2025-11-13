@@ -30,11 +30,12 @@ def create_app() -> FastAPI:
     )
     
     # Mount routers with /api prefix
-    from api.routers import health, read, cache, devices
+    from api.routers import health, read, cache, devices, register_map
     app.include_router(health.router, prefix="/api", tags=["health"])
     app.include_router(read.router, prefix="/api", tags=["modbus"])
     app.include_router(cache.router, prefix="/api", tags=["cache"])
     app.include_router(devices.router, prefix="/api", tags=["devices"])
+    app.include_router(register_map.router, prefix="/api", tags=["register_map"])
     
     # TODO: Add other routers when implemented
     # from api.routers import points, metrics
