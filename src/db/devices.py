@@ -9,7 +9,7 @@ from typing import Optional
 import asyncpg
 
 from db.connection import get_db_pool
-from schemas.db_models.models import DeviceCreate, DeviceUpdate, DeviceResponse
+from schemas.db_models.models import DeviceCreate, DeviceUpdate, DeviceResponse, DeviceListItem
 from logger import get_logger
 
 logger = get_logger(__name__)
@@ -48,6 +48,7 @@ async def create_device(device: DeviceCreate) -> DeviceResponse:
                 port=row['port'],
                 unit_id=row['unit_id'],
                 description=row['description'],
+                register_map=None,  # New devices don't have register map initially
                 created_at=row['created_at'],
                 updated_at=row['updated_at']
             )
@@ -60,12 +61,12 @@ async def create_device(device: DeviceCreate) -> DeviceResponse:
             raise
 
 
-async def get_all_devices() -> list[DeviceResponse]:
+async def get_all_devices() -> list[DeviceListItem]:
     """
     Get all devices from the database.
     
     Returns:
-        List of all devices, ordered by ID
+        List of all devices (without register_map for performance), ordered by ID
     """
     pool = await get_db_pool()
     
@@ -77,7 +78,7 @@ async def get_all_devices() -> list[DeviceResponse]:
         """)
         
         return [
-            DeviceResponse(
+            DeviceListItem(
                 id=row['id'],
                 name=row['name'],
                 host=row['host'],

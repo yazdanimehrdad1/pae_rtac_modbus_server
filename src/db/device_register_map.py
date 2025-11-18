@@ -36,8 +36,18 @@ async def get_register_map_by_device_id(device_id: int) -> Optional[Dict[str, An
         if row is None or row['register_map'] is None:
             return None
         
-        # asyncpg returns JSONB as dict automatically
-        return row['register_map']
+        # asyncpg returns JSONB as dict automatically, but sometimes as string
+        register_map = row['register_map']
+        
+        # If it's a string, parse it as JSON
+        if isinstance(register_map, str):
+            try:
+                register_map = json.loads(register_map)
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse register_map JSON for device ID {device_id}: {e}")
+                return None
+        
+        return register_map
 
 
 async def get_register_map_by_device_name(device_name: str) -> Optional[Dict[str, Any]]:
@@ -63,8 +73,18 @@ async def get_register_map_by_device_name(device_name: str) -> Optional[Dict[str
         if row is None or row['register_map'] is None:
             return None
         
-        # asyncpg returns JSONB as dict automatically
-        return row['register_map']
+        # asyncpg returns JSONB as dict automatically, but sometimes as string
+        register_map = row['register_map']
+        
+        # If it's a string, parse it as JSON
+        if isinstance(register_map, str):
+            try:
+                register_map = json.loads(register_map)
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse register_map JSON for device '{device_name}': {e}")
+                return None
+        
+        return register_map
 
 # TODO: adjust this function to add json b based on the excel file
 async def create_register_map(device_id: int, register_map: Dict[str, Any]) -> bool:
