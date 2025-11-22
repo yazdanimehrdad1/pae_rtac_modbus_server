@@ -126,6 +126,31 @@ async def get_device_by_id(device_id: int) -> Optional[DeviceResponse]:
         )
 
 
+async def get_device_id_by_name(device_name: str) -> Optional[int]:
+    """
+    Get device ID by device name.
+    
+    Args:
+        device_name: Device name/identifier
+        
+    Returns:
+        Device ID if found, None otherwise
+    """
+    pool = await get_db_pool()
+    
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow("""
+            SELECT id
+            FROM devices
+            WHERE name = $1
+        """, device_name)
+        
+        if row is None:
+            return None
+        
+        return row['id']
+
+
 async def update_device(device_id: int, device_update: DeviceUpdate) -> DeviceResponse:
     """
     Update a device in the database.

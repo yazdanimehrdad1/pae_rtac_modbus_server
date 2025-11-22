@@ -72,11 +72,86 @@ async def insert_register_reading(
         logger.error(f"Unexpected error inserting register reading: {e}", exc_info=True)
         return False
 
-#TODO: Implement this function
-# async def insert_register_readings_batch(
-#     readings: List[Dict[str, Any]],
-#     batch_size: int = 500
-# ) -> int:
+
+async def insert_register_readings_batch(
+    readings: List[Dict[str, Any]]
+) -> int:
+    """
+    Insert multiple register readings in a single batch operation.
+    
+    Args:
+        readings: List of reading dictionaries, each containing:
+            - device_id (int)
+            - register_address (int)
+            - value (float)
+            - timestamp (datetime)
+            - quality (str, optional, default 'good')
+            - register_name (str, optional)
+            - unit (str, optional)
+        
+    Returns:
+        Number of successfully inserted readings
+        
+    Raises:
+        asyncpg.PostgresError: For database errors
+    """
+    if not readings:
+        logger.debug("No readings to insert in batch")
+        return 0
+    
+    pool = await get_db_pool()
+    
+    try:
+        async with pool.acquire() as conn:
+            # Prepare values for batch insert
+            values = []
+            for reading in readings:
+                timestamp = reading.get('timestamp')
+                if timestamp is None:
+                    timestamp = datetime.now(timezone.utc)
+                
+                values.append((
+                    timestamp,
+                    reading['device_id'],
+                    reading['register_address'],
+                    float(reading['value']),  # Ensure it's a float
+                    reading.get('quality', 'good'),
+                    reading.get('register_name'),
+                    reading.get('unit')
+                ))
+            
+            # Build batch INSERT query
+            # Using INSERT ... VALUES with ON CONFLICT for idempotency
+            query = """
+                INSERT INTO register_readings (
+                    timestamp, device_id, register_address, value,
+                    quality, register_name, unit
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                ON CONFLICT (timestamp, device_id, register_address) 
+                DO UPDATE SET
+                    value = EXCLUDED.value,
+                    quality = EXCLUDED.quality,
+                    register_name = EXCLUDED.register_name,
+                    unit = EXCLUDED.unit
+            """
+            
+            # Execute batch insert
+            result = await conn.executemany(query, values)
+            
+            # result is a string like "INSERT 0 5" - extract the number
+            inserted_count = len(values)
+            logger.debug(f"Batch inserted {inserted_count} register readings")
+            
+            return inserted_count
+            
+    except asyncpg.PostgresError as e:
+        logger.error(f"Database error in batch insert: {e}")
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error in batch insert: {e}", exc_info=True)
+        # Return 0 on unexpected errors
+        return 0
 
 async def get_all_readings(
     device_id: Optional[int] = None,
@@ -208,4 +283,60 @@ async def get_latest_reading(
             'register_name': row['register_name'],
             'unit': row['unit']
         }
+
+
+async def get_latest_readings_for_device(
+    device_id: int,
+    register_addresses: Optional[List[int]] = None
+) -> List[Dict[str, Any]]:
+    """
+    Get latest readings for all registers (or specific registers) of a device.
+    
+    Args:
+        device_id: Device ID
+        register_addresses: Optional list of specific register addresses.
+                          If None, returns latest for all registers of the device.
+        
+    Returns:
+        List of latest reading dictionaries, one per register
+    """
+    pool = await get_db_pool()
+    
+    async with pool.acquire() as conn:
+        if register_addresses:
+            # Get latest for specific registers
+            query = """
+                SELECT DISTINCT ON (register_address)
+                    timestamp, device_id, register_address, value,
+                    quality, register_name, unit
+                FROM register_readings
+                WHERE device_id = $1
+                AND register_address = ANY($2::int[])
+                ORDER BY register_address, timestamp DESC
+            """
+            rows = await conn.fetch(query, device_id, register_addresses)
+        else:
+            # Get latest for all registers of the device
+            query = """
+                SELECT DISTINCT ON (register_address)
+                    timestamp, device_id, register_address, value,
+                    quality, register_name, unit
+                FROM register_readings
+                WHERE device_id = $1
+                ORDER BY register_address, timestamp DESC
+            """
+            rows = await conn.fetch(query, device_id)
+        
+        return [
+            {
+                'timestamp': row['timestamp'],
+                'device_id': row['device_id'],
+                'register_address': row['register_address'],
+                'value': row['value'],
+                'quality': row['quality'],
+                'register_name': row['register_name'],
+                'unit': row['unit']
+            }
+            for row in rows
+        ]
 

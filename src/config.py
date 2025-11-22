@@ -61,8 +61,9 @@ class Settings(BaseSettings):
     
     # Polling Job Configuration
     poll_interval_seconds: int = Field(default=60, alias="POLL_INTERVAL_SECONDS")
-    poll_register_map_path: str = Field(default="config/sel_751_register_map.csv", alias="POLL_REGISTER_MAP_PATH")
+    poll_register_map_path: str = Field(default="config/main_sel_751_register_map.csv", alias="POLL_REGISTER_MAP_PATH")
     poll_cache_ttl: int = Field(default=3600, alias="POLL_CACHE_TTL")  # 1 hour default
+    poll_device_name: str = Field(default="main-sel-751", alias="POLL_DEVICE_NAME")  # Device name for polling and database storage
     
     main_sel_751_poll_address: int = Field(default=1400, alias="MAIN_SEL_751_POLL_ADDRESS")  # Fixed Modbus address to read from
     main_sel_751_poll_count: int = Field(default=100, alias="MAIN_SEL_751_POLL_COUNT")  # Fixed number of registers to read
