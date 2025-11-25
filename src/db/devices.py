@@ -2,14 +2,18 @@
 Device database operations.
 
 Handles CRUD operations for devices table.
+Uses SQLAlchemy 2.0+ async ORM.
 """
 
 from datetime import datetime
 from typing import Optional
-import asyncpg
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import IntegrityError
 
-from db.connection import get_db_pool
+from db.connection import get_async_session_factory
 from schemas.db_models.models import DeviceCreate, DeviceUpdate, DeviceResponse, DeviceListItem
+from schemas.db_models.orm_models import Device
 from logger import get_logger
 
 logger = get_logger(__name__)
@@ -26,37 +30,56 @@ async def create_device(device: DeviceCreate) -> DeviceResponse:
         Created device with ID and timestamps
         
     Raises:
-        asyncpg.UniqueViolationError: If device name already exists
-        asyncpg.PostgresError: For other database errors
+        ValueError: If device name already exists
+        IntegrityError: For other database constraint violations
     """
-    pool = await get_db_pool()
-    
-    async with pool.acquire() as conn:
+    session_factory = get_async_session_factory()
+    async with session_factory() as session:
         try:
-            row = await conn.fetchrow("""
-                INSERT INTO devices (name, host, port, unit_id, description)
-                VALUES ($1, $2, $3, $4, $5)
-                RETURNING id, name, host, port, unit_id, description, created_at, updated_at
-            """, device.name, device.host, device.port, device.unit_id, device.description)
-            
-            logger.info(f"Created device: {device.name} (ID: {row['id']})")
-            
-            return DeviceResponse(
-                id=row['id'],
-                name=row['name'],
-                host=row['host'],
-                port=row['port'],
-                unit_id=row['unit_id'],
-                description=row['description'],
-                register_map=None,  # New devices don't have register map initially
-                created_at=row['created_at'],
-                updated_at=row['updated_at']
+            # Create new Device instance
+            new_device = Device(
+                name=device.name,
+                host=device.host,
+                port=device.port,
+                unit_id=device.unit_id,
+                description=device.description
             )
             
-        except asyncpg.UniqueViolationError as e:
-            logger.warning(f"Device name '{device.name}' already exists")
-            raise ValueError(f"Device with name '{device.name}' already exists") from e
-        except asyncpg.PostgresError as e:
+            # Add to session and flush to get the ID
+            session.add(new_device)
+            await session.flush()  # Flush to get the ID without committing
+            
+            logger.info(f"Created device: {device.name} (ID: {new_device.id})")
+            
+            # Commit the transaction
+            await session.commit()
+            
+            # Refresh to ensure we have the latest data (including timestamps)
+            await session.refresh(new_device)
+            
+            return DeviceResponse(
+                id=new_device.id,
+                name=new_device.name,
+                host=new_device.host,
+                port=new_device.port,
+                unit_id=new_device.unit_id,
+                description=new_device.description,
+                register_map=None,  # New devices don't have register map initially
+                created_at=new_device.created_at,
+                updated_at=new_device.updated_at
+            )
+            
+        except IntegrityError as e:
+            await session.rollback()
+            # Check if it's a unique constraint violation
+            if "unique" in str(e).lower() or "duplicate" in str(e).lower():
+                logger.warning(f"Device name '{device.name}' already exists")
+                raise ValueError(f"Device with name '{device.name}' already exists") from e
+            else:
+                logger.error(f"Database integrity error creating device: {e}")
+                raise
+        except Exception as e:
+            await session.rollback()
             logger.error(f"Database error creating device: {e}")
             raise
 
@@ -68,27 +91,27 @@ async def get_all_devices() -> list[DeviceListItem]:
     Returns:
         List of all devices (without register_map for performance), ordered by ID
     """
-    pool = await get_db_pool()
-    
-    async with pool.acquire() as conn:
-        rows = await conn.fetch("""
-            SELECT id, name, host, port, unit_id, description, created_at, updated_at
-            FROM devices
-            ORDER BY id
-        """)
+    session_factory = get_async_session_factory()
+    async with session_factory() as session:
+        # Query all devices ordered by ID
+        result = await session.execute(
+            select(Device).order_by(Device.id)
+        )
+        devices = result.scalars().all()
         
+        # Convert ORM models to Pydantic models
         return [
             DeviceListItem(
-                id=row['id'],
-                name=row['name'],
-                host=row['host'],
-                port=row['port'],
-                unit_id=row['unit_id'],
-                description=row['description'],
-                created_at=row['created_at'],
-                updated_at=row['updated_at']
+                id=device.id,
+                name=device.name,
+                host=device.host,
+                port=device.port,
+                unit_id=device.unit_id,
+                description=device.description,
+                created_at=device.created_at,
+                updated_at=device.updated_at
             )
-            for row in rows
+            for device in devices
         ]
 
 
@@ -102,27 +125,25 @@ async def get_device_by_id(device_id: int) -> Optional[DeviceResponse]:
     Returns:
         Device if found, None otherwise
     """
-    pool = await get_db_pool()
-    
-    async with pool.acquire() as conn:
-        row = await conn.fetchrow("""
-            SELECT id, name, host, port, unit_id, description, created_at, updated_at
-            FROM devices
-            WHERE id = $1
-        """, device_id)
+    session_factory = get_async_session_factory()
+    async with session_factory() as session:
+        result = await session.execute(
+            select(Device).where(Device.id == device_id)
+        )
+        device = result.scalar_one_or_none()
         
-        if row is None:
+        if device is None:
             return None
         
         return DeviceResponse(
-            id=row['id'],
-            name=row['name'],
-            host=row['host'],
-            port=row['port'],
-            unit_id=row['unit_id'],
-            description=row['description'],
-            created_at=row['created_at'],
-            updated_at=row['updated_at']
+            id=device.id,
+            name=device.name,
+            host=device.host,
+            port=device.port,
+            unit_id=device.unit_id,
+            description=device.description,
+            created_at=device.created_at,
+            updated_at=device.updated_at
         )
 
 
@@ -136,19 +157,14 @@ async def get_device_id_by_name(device_name: str) -> Optional[int]:
     Returns:
         Device ID if found, None otherwise
     """
-    pool = await get_db_pool()
-    
-    async with pool.acquire() as conn:
-        row = await conn.fetchrow("""
-            SELECT id
-            FROM devices
-            WHERE name = $1
-        """, device_name)
+    session_factory = get_async_session_factory()
+    async with session_factory() as session:
+        result = await session.execute(
+            select(Device.id).where(Device.name == device_name)
+        )
+        device_id = result.scalar_one_or_none()
         
-        if row is None:
-            return None
-        
-        return row['id']
+        return device_id
 
 
 async def update_device(device_id: int, device_update: DeviceUpdate) -> DeviceResponse:
@@ -164,84 +180,64 @@ async def update_device(device_id: int, device_update: DeviceUpdate) -> DeviceRe
         
     Raises:
         ValueError: If device not found or name already exists
-        asyncpg.PostgresError: For other database errors
+        IntegrityError: For other database constraint violations
     """
-    pool = await get_db_pool()
-    
-    async with pool.acquire() as conn:
-        # Check if device exists
-        existing = await get_device_by_id(device_id)
-        if existing is None:
-            raise ValueError(f"Device with ID {device_id} not found")
-        
-        # Build dynamic UPDATE query based on provided fields
-        update_fields = []
-        values = []
-        param_index = 1
-        
-        if device_update.name is not None:
-            update_fields.append(f"name = ${param_index}")
-            values.append(device_update.name)
-            param_index += 1
-        
-        if device_update.host is not None:
-            update_fields.append(f"host = ${param_index}")
-            values.append(device_update.host)
-            param_index += 1
-        
-        if device_update.port is not None:
-            update_fields.append(f"port = ${param_index}")
-            values.append(device_update.port)
-            param_index += 1
-        
-        if device_update.unit_id is not None:
-            update_fields.append(f"unit_id = ${param_index}")
-            values.append(device_update.unit_id)
-            param_index += 1
-        
-        if device_update.description is not None:
-            update_fields.append(f"description = ${param_index}")
-            values.append(device_update.description)
-            param_index += 1
-        
-        # If no fields to update, return existing device
-        if not update_fields:
-            return existing
-        
-        # Always update updated_at timestamp
-        update_fields.append("updated_at = NOW()")
-        
-        # Add device_id as last parameter for WHERE clause
-        values.append(device_id)
-        where_param = param_index
-        
-        query = f"""
-            UPDATE devices
-            SET {', '.join(update_fields)}
-            WHERE id = ${where_param}
-            RETURNING id, name, host, port, unit_id, description, created_at, updated_at
-        """
-        
+    session_factory = get_async_session_factory()
+    async with session_factory() as session:
         try:
-            row = await conn.fetchrow(query, *values)
+            # Get existing device
+            result = await session.execute(
+                select(Device).where(Device.id == device_id)
+            )
+            device = result.scalar_one_or_none()
+            
+            if device is None:
+                raise ValueError(f"Device with ID {device_id} not found")
+            
+            # Update only provided fields
+            if device_update.name is not None:
+                device.name = device_update.name
+            if device_update.host is not None:
+                device.host = device_update.host
+            if device_update.port is not None:
+                device.port = device_update.port
+            if device_update.unit_id is not None:
+                device.unit_id = device_update.unit_id
+            if device_update.description is not None:
+                device.description = device_update.description
+            
+            # updated_at is automatically updated by the ORM (onupdate=func.now())
+            
+            # Commit the transaction
+            await session.commit()
+            
+            # Refresh to get the latest data (including updated_at)
+            await session.refresh(device)
             
             logger.info(f"Updated device ID {device_id}")
             
             return DeviceResponse(
-                id=row['id'],
-                name=row['name'],
-                host=row['host'],
-                port=row['port'],
-                unit_id=row['unit_id'],
-                description=row['description'],
-                created_at=row['created_at'],
-                updated_at=row['updated_at']
+                id=device.id,
+                name=device.name,
+                host=device.host,
+                port=device.port,
+                unit_id=device.unit_id,
+                description=device.description,
+                created_at=device.created_at,
+                updated_at=device.updated_at
             )
             
-        except asyncpg.UniqueViolationError as e:
-            logger.warning(f"Device name already exists")
-            raise ValueError("Device with this name already exists") from e
-        except asyncpg.PostgresError as e:
+        except IntegrityError as e:
+            await session.rollback()
+            # Check if it's a unique constraint violation
+            if "unique" in str(e).lower() or "duplicate" in str(e).lower():
+                logger.warning(f"Device name already exists")
+                raise ValueError("Device with this name already exists") from e
+            else:
+                logger.error(f"Database integrity error updating device: {e}")
+                raise
+        except Exception as e:
+            await session.rollback()
             logger.error(f"Database error updating device: {e}")
             raise
 
@@ -257,22 +253,30 @@ async def delete_device(device_id: int) -> bool:
         True if device was deleted, False if not found
         
     Raises:
-        asyncpg.PostgresError: For database errors
+        Exception: For database errors
     """
-    pool = await get_db_pool()
-    
-    async with pool.acquire() as conn:
-        result = await conn.execute("""
-            DELETE FROM devices
-            WHERE id = $1
-        """, device_id)
-        
-        deleted = result == "DELETE 1"
-        
-        if deleted:
+    session_factory = get_async_session_factory()
+    async with session_factory() as session:
+        try:
+            # Get the device to delete
+            result = await session.execute(
+                select(Device).where(Device.id == device_id)
+            )
+            device = result.scalar_one_or_none()
+            
+            if device is None:
+                logger.warning(f"Device ID {device_id} not found for deletion")
+                return False
+            
+            # Delete the device
+            session.delete(device)
+            await session.commit()
+            
             logger.info(f"Deleted device ID {device_id}")
-        else:
-            logger.warning(f"Device ID {device_id} not found for deletion")
-        
-        return deleted
+            return True
+            
+        except Exception as e:
+            await session.rollback()
+            logger.error(f"Database error deleting device: {e}")
+            raise
 
