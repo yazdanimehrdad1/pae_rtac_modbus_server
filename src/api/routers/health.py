@@ -5,6 +5,7 @@ from fastapi import APIRouter
 from schemas.api_models import HealthResponse
 from modbus.client import ModbusClient
 from cache.connection import check_redis_health
+from db.connection import check_db_health
 
 router = APIRouter()
 
@@ -52,3 +53,11 @@ async def redis_health():
     Redis health check endpoint.
     """
     return await check_redis_health()
+
+
+@router.get("/db_health")
+async def db_health():
+    """
+    Database health check endpoint.
+    """
+    return await check_db_health()

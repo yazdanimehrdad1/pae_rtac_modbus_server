@@ -11,6 +11,24 @@ from config import settings
 from logger import setup_logging, get_logger
 from scheduler.engine import start_scheduler, stop_scheduler
 
+# Router imports
+from api.routers import health, read, cache, devices, register_readings
+
+# Cache connection imports
+from cache.connection import (
+    get_redis_client,
+    check_redis_health,
+    close_redis_client
+)
+
+# Database connection imports
+from db.connection import (
+    get_db_pool,
+    get_async_engine,
+    check_db_health,
+    close_all_db_connections
+)
+
 # Setup logging
 setup_logging(log_level=settings.log_level)
 logger = get_logger(__name__)
@@ -29,11 +47,12 @@ def create_app() -> FastAPI:
         version="1.0.0"
     )
     
-    # Mount routers
-    from api.routers import health, read, cache
-    app.include_router(health.router, tags=["health"])
-    app.include_router(read.router, tags=["modbus"])
-    app.include_router(cache.router, tags=["cache"])
+    # Mount routers with /api prefix
+    app.include_router(health.router, prefix="/api", tags=["health"])
+    app.include_router(read.router, prefix="/api", tags=["modbus"])
+    app.include_router(cache.router, prefix="/api", tags=["cache"])
+    app.include_router(devices.router, prefix="/api", tags=["devices"])
+    app.include_router(register_readings.router, prefix="/api", tags=["register_readings"])
     
     # TODO: Add other routers when implemented
     # from api.routers import points, metrics
@@ -51,7 +70,6 @@ def create_app() -> FastAPI:
         """Initialize services on application startup."""
         logger.info("Starting PAE RTAC Server")
         # Initialize Redis connection
-        from cache.connection import get_redis_client, check_redis_health
         try:
             await get_redis_client()
             health_ok = await check_redis_health()
@@ -63,6 +81,22 @@ def create_app() -> FastAPI:
             logger.error(f"Failed to initialize Redis: {e}")
             # Continue startup even if Redis fails (graceful degradation)
         
+        # Initialize database connections (both asyncpg legacy and SQLAlchemy new)
+        try:
+            # Initialize legacy asyncpg pool (for backward compatibility)
+            await get_db_pool()
+            # Initialize SQLAlchemy async engine (new)
+            get_async_engine()
+            
+            health_ok = await check_db_health()
+            if health_ok:
+                logger.info("PostgreSQL database initialized successfully (asyncpg + SQLAlchemy)")
+            else:
+                logger.warning("Database health check failed, but continuing startup")
+        except Exception as e:
+            logger.error(f"Failed to initialize database: {e}")
+            # Continue startup even if database fails (graceful degradation)
+        
         # Start scheduler
         await start_scheduler()
     
@@ -73,9 +107,9 @@ def create_app() -> FastAPI:
         # Stop scheduler
         await stop_scheduler()
         # Close Redis connection
-        from cache.connection import close_redis_client
         await close_redis_client()
-        # TODO: Close database connections
+        # Close database connections (both asyncpg and SQLAlchemy)
+        await close_all_db_connections()
     
     logger.info("FastAPI application created")
     return app

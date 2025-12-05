@@ -15,9 +15,9 @@ dependencies = [
     "redis>=5.0.0",  # Redis client for caching
     "hiredis>=2.2.0",  # C extension for faster Redis parsing (optional but recommended)
     "apscheduler>=3.10.0",  # Scheduler for cron jobs
-    # TODO: Add when implementing database
-    # "asyncpg>=0.29.0",  # PostgreSQL async driver
-    # "sqlalchemy[asyncio]>=2.0.0",
+    "asyncpg>=0.29.0",  # PostgreSQL async driver
+    "sqlalchemy[asyncio]>=2.0.0",  # SQLAlchemy 2.0+ with async support
+    # TODO: Add when implementing migrations
     # "alembic>=1.13.0",
     # TODO: Add when implementing metrics
     # "prometheus-client>=0.19.0",

@@ -38,10 +38,19 @@ class Settings(BaseSettings):
     cache_default_ttl: int = Field(default=3600, alias="CACHE_DEFAULT_TTL")  # 1 hour default
     cache_key_prefix: str = Field(default="rtac_modbus", alias="CACHE_KEY_PREFIX")
     
-    # Database Configuration (TODO: Add when implementing TimescaleDB)
-    # database_url: str = Field(..., alias="DATABASE_URL")
-    # database_pool_size: int = Field(default=10, alias="DATABASE_POOL_SIZE")
-    # database_max_overflow: int = Field(default=20, alias="DATABASE_MAX_OVERFLOW")
+    # Database Configuration
+    postgres_host: str = Field(default="localhost", alias="POSTGRES_HOST")
+    postgres_port: int = Field(default=5432, alias="POSTGRES_PORT")
+    postgres_db: str = Field(default="rtac_modbus", alias="POSTGRES_DB")
+    postgres_user: str = Field(default="rtac_user", alias="POSTGRES_USER")
+    postgres_password: str = Field(default="rtac_password", alias="POSTGRES_PASSWORD")
+    database_pool_size: int = Field(default=10, alias="DATABASE_POOL_SIZE")
+    database_max_overflow: int = Field(default=20, alias="DATABASE_MAX_OVERFLOW")
+    
+    @property
+    def database_url(self) -> str:
+        """Build PostgreSQL connection URL."""
+        return f"postgresql://{self.postgres_user}:{self.postgres_password}@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
     
     # Scheduler Configuration
     scheduler_enabled: bool = Field(default=True, alias="SCHEDULER_ENABLED")
@@ -52,8 +61,9 @@ class Settings(BaseSettings):
     
     # Polling Job Configuration
     poll_interval_seconds: int = Field(default=60, alias="POLL_INTERVAL_SECONDS")
-    poll_register_map_path: str = Field(default="config/sel_751_register_map.csv", alias="POLL_REGISTER_MAP_PATH")
+    poll_register_map_path: str = Field(default="config/main_sel_751_register_map.csv", alias="POLL_REGISTER_MAP_PATH")
     poll_cache_ttl: int = Field(default=3600, alias="POLL_CACHE_TTL")  # 1 hour default
+    poll_device_name: str = Field(default="main-sel-751", alias="POLL_DEVICE_NAME")  # Device name for polling and database storage
     
     main_sel_751_poll_address: int = Field(default=1400, alias="MAIN_SEL_751_POLL_ADDRESS")  # Fixed Modbus address to read from
     main_sel_751_poll_count: int = Field(default=100, alias="MAIN_SEL_751_POLL_COUNT")  # Fixed number of registers to read

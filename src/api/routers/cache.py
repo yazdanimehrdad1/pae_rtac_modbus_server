@@ -79,18 +79,28 @@ async def cache_exists(key: str):
 @router.get("/cache/keys")
 async def cache_list_keys(pattern: Optional[str] = None):
     """
-    List all cached keys, optionally filtered by pattern.
+    List all cached keys with TTL, optionally filtered by pattern.
     
     Args:
         pattern: Optional pattern to match (e.g., "poll:*"). 
                 If not provided, returns all keys.
     
     Returns:
-        Dictionary with list of keys and count
+        Dictionary with list of keys (with TTL) and count
     """
     keys = await cache.list_keys(pattern=pattern)
+    
+    # Get TTL for each key
+    keys_with_ttl = []
+    for key in keys:
+        ttl = await cache.get_ttl(key)
+        keys_with_ttl.append({
+            "key": key,
+            "ttl": ttl  # TTL in seconds, None if key doesn't exist or has no TTL
+        })
+    
     return {
-        "keys": keys,
+        "keys": keys_with_ttl,
         "count": len(keys),
         "pattern": pattern if pattern else "*"
     }

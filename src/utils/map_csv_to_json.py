@@ -1,0 +1,266 @@
+"""
+CSV to JSON conversion utilities.
+
+Converts register map CSV files to JSON format.
+"""
+
+from pathlib import Path
+from typing import Dict, List, Any, Optional
+from datetime import datetime
+
+import pandas as pd
+
+from schemas.modbus_models import RegisterMap, RegisterPoint
+from db.device_register_map import get_register_map_by_device_name, create_register_map
+from db.connection import get_db_pool
+from logger import get_logger
+
+logger = get_logger(__name__)
+
+
+
+def get_register_map_csv_path(device_name: str) -> Path:
+    """
+    Map device name to register map CSV file path.
+    
+    Args:
+        device_name: Device identifier (e.g., "sel_751")
+        
+    Returns:
+        Path to the CSV file
+        
+    Raises:
+        ValueError: If device name is not recognized
+    """
+    # Map device names to CSV files
+    device_map = {
+        "main-sel-751": "main_sel_751_register_map.csv",
+        # Add more device mappings here as needed
+        # "sel_750": "sel_750_register_map.csv",
+    }
+    
+    if device_name not in device_map:
+        available = ", ".join(device_map.keys())
+        raise ValueError(f"Device '{device_name}' not found. Available devices: {available}")
+    
+    csv_filename = device_map[device_name]
+    csv_path = Path("config") / csv_filename
+    
+    return csv_path
+
+
+
+
+def map_csv_to_json(
+    csv_path: Path
+) -> Dict[str, Any]:
+    """
+    Convert register map CSV file to JSON format.
+    
+    Reads the CSV file and converts it to a JSON structure with:
+    - metadata: file information
+    - registers: array of register objects
+    
+    Args:
+        csv_path: Path to the CSV file
+        
+    Returns:
+        Dictionary representation of the CSV data
+        
+    Raises:
+        FileNotFoundError: If CSV file doesn't exist
+        ValueError: If CSV file is invalid or empty
+    """
+    if not csv_path.exists():
+        raise FileNotFoundError(f"CSV file not found: {csv_path}")
+    
+    logger.info(f"Reading CSV file: {csv_path}")
+    
+    # Read CSV file
+    try:
+        df = pd.read_csv(csv_path, quotechar='"', escapechar='\\')
+    except Exception as e:
+        raise ValueError(f"Failed to read CSV file: {e}")
+    
+    if df.empty:
+        raise ValueError("CSV file is empty")
+    
+    logger.info(f"Loaded {len(df)} rows from CSV")
+    
+    # Convert DataFrame to list of dictionaries
+    registers = []
+    for _, row in df.iterrows():
+        register = {}
+        
+        # Required fields
+        if "address" in df.columns and pd.notna(row.get("address")):
+            register["address"] = int(row["address"])
+        
+        if "name" in df.columns and pd.notna(row.get("name")):
+            register["name"] = str(row["name"]).strip()
+        
+        if "kind" in df.columns and pd.notna(row.get("kind")):
+            register["kind"] = str(row["kind"]).strip().lower()
+        
+        if "size" in df.columns and pd.notna(row.get("size")):
+            register["size"] = int(row["size"])
+        
+        # Optional fields
+        if "unit_id" in df.columns and pd.notna(row.get("unit_id")):
+            register["unit_id"] = int(row["unit_id"])
+        
+        if "data_type" in df.columns and pd.notna(row.get("data_type")):
+            register["data_type"] = str(row["data_type"]).strip().lower()
+        
+        if "scale_factor" in df.columns and pd.notna(row.get("scale_factor")):
+            register["scale_factor"] = float(row["scale_factor"])
+        
+        if "unit" in df.columns and pd.notna(row.get("unit")):
+            unit_value = str(row["unit"]).strip()
+            register["unit"] = unit_value if unit_value else None
+        
+        if "tags" in df.columns and pd.notna(row.get("tags")):
+            tags_value = str(row["tags"]).strip()
+            register["tags"] = tags_value if tags_value else None
+        
+        registers.append(register)
+    
+    # Build JSON structure
+    json_data = {
+        "metadata": {
+            "source_file": str(csv_path),
+            "total_registers": len(registers),
+            "columns": list(df.columns),
+            "created_at": datetime.now().isoformat(),
+            "updated_at": datetime.now().isoformat()
+        },
+        "registers": registers
+    }
+    
+    return json_data
+
+
+def json_to_register_map(json_data: Dict[str, Any]) -> RegisterMap:
+    """
+    Convert JSON structure (from map_csv_to_json) to RegisterMap object.
+    
+    Args:
+        json_data: Dictionary with 'metadata' and 'registers' keys from map_csv_to_json
+        
+    Returns:
+        RegisterMap object with RegisterPoint objects
+    """
+    registers = json_data.get("registers", [])
+    points = []
+    
+    for reg in registers:
+        point_data = {
+            "name": reg["name"],
+            "address": reg["address"],
+            "kind": reg["kind"],
+            "size": reg["size"],
+        }
+        
+        # Optional fields
+        if "unit_id" in reg and reg["unit_id"] is not None:
+            point_data["unit_id"] = reg["unit_id"]
+        
+        if "data_type" in reg and reg["data_type"] is not None:
+            point_data["data_type"] = reg["data_type"]
+        
+        if "scale_factor" in reg and reg["scale_factor"] is not None:
+            point_data["scale_factor"] = reg["scale_factor"]
+        
+        if "unit" in reg and reg["unit"] is not None:
+            point_data["unit"] = reg["unit"]
+        
+        if "tags" in reg and reg["tags"] is not None:
+            point_data["tags"] = reg["tags"]
+        
+        points.append(RegisterPoint(**point_data))
+    
+    return RegisterMap(points=points)
+
+
+async def get_register_map_for_device(device_name: str) -> Optional[Dict[str, Any]]:
+    """
+    Get register map for a device with lazy loading from DB/CSV.
+    
+    This function implements lazy loading:
+    1. First checks if register map exists in DB
+    2. If found, returns it from DB
+    3. If not found, reads from CSV file, saves to DB, and returns it
+    4. If CSV file doesn't exist or device name is not mapped, logs warning and returns None
+    
+    Args:
+        device_name: Device name/identifier (e.g., "main-sel-751")
+        
+    Returns:
+        Register map dictionary if found/loaded, None otherwise
+    """
+    # Step 1: Check DB first
+    try:
+        register_map = await get_register_map_by_device_name(device_name)
+        if register_map is not None:
+            logger.debug(f"Register map found in DB for device: {device_name}")
+            return register_map
+    except Exception as e:
+        # Log database error but continue to try CSV fallback
+        logger.warning(f"Error querying DB for register map for device '{device_name}': {e}")
+        # Continue to CSV fallback below
+    
+    # Step 2: Not in DB, try to load from CSV
+    logger.info(f"Register map not found in DB for device '{device_name}', attempting to load from CSV")
+    
+    try:
+        # Get CSV file path (may raise ValueError if device name not mapped)
+        csv_path = get_register_map_csv_path(device_name)
+    except ValueError as e:
+        logger.warning(f"Device '{device_name}' is not mapped to a CSV file: {e}")
+        return None
+    
+    # Check if CSV file exists
+    if not csv_path.exists():
+        logger.warning(f"CSV file not found for device '{device_name}': {csv_path}")
+        return None
+    
+    try:
+        # Read and convert CSV to JSON
+        json_data = map_csv_to_json(csv_path)
+        
+        # Get device_id to save register map to DB
+        pool = await get_db_pool()
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow("""
+                SELECT id
+                FROM devices
+                WHERE name = $1
+            """, device_name)
+            
+            if row is None:
+                logger.warning(f"Device '{device_name}' not found in devices table, cannot save register map to DB")
+                return json_data  # Still return the JSON data even if we can't save it
+            
+            device_id = row['id']
+        
+        # Save to DB (may raise ValueError if already exists, but we checked DB first, so this shouldn't happen)
+        try:
+            await create_register_map(device_id, json_data)
+            logger.info(f"Successfully loaded and saved register map to DB for device: {device_name}")
+        except ValueError as e:
+            # This shouldn't happen since we checked DB first, but handle gracefully
+            logger.warning(f"Could not save register map to DB for device '{device_name}': {e}")
+            # Still return the JSON data
+        
+        return json_data
+        
+    except FileNotFoundError as e:
+        logger.warning(f"CSV file not found for device '{device_name}': {e}")
+        return None
+    except ValueError as e:
+        logger.warning(f"Failed to process CSV file for device '{device_name}': {e}")
+        return None
+    except Exception as e:
+        logger.error(f"Unexpected error loading register map for device '{device_name}': {e}", exc_info=True)
+        return None
+

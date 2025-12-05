@@ -15,6 +15,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 COPY pyproject.toml ./
 COPY src/ ./src/
 COPY config/ ./config/
+COPY scripts/ ./scripts/
 
 # Install dependencies
 # TODO: Consider using uv/pdm/poetry for better dependency management
@@ -27,7 +28,7 @@ EXPOSE 8000
 
 # Health check (simple HTTP check - will fail if API is down, but Modbus connection issues won't fail it)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')" || exit 1
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/healthz')" || exit 1
 
 # Run the application
 # TODO: Update to use gunicorn with uvicorn workers for production

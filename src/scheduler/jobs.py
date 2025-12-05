@@ -9,8 +9,10 @@ from modbus.modbus_utills import ModbusUtils
 from cache.cache import CacheService
 from config import settings
 from logger import get_logger
-from utils.dataframe import load_register_map_from_csv
+from utils.map_csv_to_json import map_csv_to_json, json_to_register_map
 from utils.modbus_mapper import map_modbus_data_to_registers
+from db.devices import get_device_id_by_name
+from db.register_readings import insert_register_readings_batch
 
 logger = get_logger(__name__)
 
@@ -40,7 +42,8 @@ async def cron_job_poll_modbus_registers() -> None:
             logger.error(f"Register map file not found: {register_map_path}")
             return
         
-        register_map = load_register_map_from_csv(register_map_path)
+        json_data = map_csv_to_json(register_map_path)
+        register_map = json_to_register_map(json_data)
         logger.info(f"Loaded {len(register_map.points)} register points from {register_map_path}")
         
         if not register_map.points:
@@ -69,8 +72,18 @@ async def cron_job_poll_modbus_registers() -> None:
             logger.warning("No register points mapped from Modbus data, skipping storage")
             return
         
-        # 4. Store data in Redis cache with timestamp
+        # 4. Get device_id for database storage
+        device_name = settings.poll_device_name
+        device_id = await get_device_id_by_name(device_name)
+        
+        if device_id is None:
+            logger.warning(f"Device '{device_name}' not found in database. Database storage will be skipped.")
+        else:
+            logger.debug(f"Found device_id={device_id} for device '{device_name}'")
+        
+        # 5. Store data in Redis cache with timestamp
         timestamp = datetime.now(timezone.utc).isoformat()
+        timestamp_dt = datetime.now(timezone.utc)  # For database storage
         
         logger.info("Storing data in Redis cache")
         logger.info(f"Register map: {len(register_map.points)} points")
@@ -115,10 +128,30 @@ async def cron_job_poll_modbus_registers() -> None:
                 "data": register_data_dict
             }
             
-            # Store in cache with keys: poll:main-sel-751:latest and poll:main-sel-751:{timestamp}
-            cache_key_latest = "poll:main-sel-751:latest"
-            cache_key_timestamped = f"poll:main-sel-751:{timestamp}"
+            # Store in cache with keys: poll:{device_name}:latest and poll:{device_name}:{timestamp}
+            device_name = settings.poll_device_name
+            cache_key_latest = f"poll:{device_name}:latest"
+            cache_key_timestamped = f"poll:{device_name}:{timestamp}"
         
+            # TODO: Optimize caching strategy using Redis Sorted Sets (Option B)
+            # Current approach stores full objects in timestamped keys, which is inefficient for:
+            # - Memory usage (redundant metadata in each entry)
+            # - Querying past hour (requires fetching 60+ keys per device)
+            # 
+            # Proposed optimization:
+            # 1. Keep current structure for latest: poll:{device}:latest (full object)
+            # 2. Use Redis Sorted Set for history: poll:{device}:history (ZSET)
+            #    - Score: timestamp (Unix epoch)
+            #    - Value: JSON string with only {address: value} pairs (no metadata)
+            # 3. Store metadata separately: register_map:{device} (static, no TTL)
+            # 4. Query past hour: ZRANGEBYSCORE poll:{device}:history <1-hour-ago> +inf WITHSCORES
+            # 5. Cleanup old data: ZREMRANGEBYSCORE poll:{device}:history -inf <1-hour-ago>
+            # 
+            # Benefits:
+            # - 90% memory reduction (only values, not metadata)
+            # - Single Redis call per device for past hour queries
+            # - Efficient time-range queries
+            # - Better scalability for 10+ devices
             
             logger.info(f"Cache key latest: {cache_key_latest}")
             logger.info(f"Cache key timestamped: {cache_key_timestamped}")
@@ -148,8 +181,54 @@ async def cron_job_poll_modbus_registers() -> None:
             successful_reads = 0
             failed_reads = len(mapped_registers)
         
+        # 6. Store data in database (if device_id is available)
+        # TODO: Add failover mechanism - create a separate cron job that checks for DB insertion errors
+        # and retries failed inserts. This will handle cases where DB is temporarily unavailable.
+        db_successful = 0
+        db_failed = 0
+        
+        if device_id is not None:
+            logger.info(f"Storing {len(mapped_registers)} register readings in database...")
+            
+            try:
+                # Prepare batch insert data from mapped_registers
+                batch_readings = []
+                for register_data in mapped_registers:
+                    batch_readings.append({
+                        'device_id': device_id,
+                        'register_address': register_data.address,
+                        'value': register_data.value,  # Will be converted to float in batch function
+                        'timestamp': timestamp_dt,
+                        'quality': 'good',  # Default to good, can be enhanced later
+                        'register_name': register_data.name,
+                        'unit': register_data.unit or None
+                    })
+                
+                # Execute batch insert
+                inserted_count = await insert_register_readings_batch(batch_readings)
+                db_successful = inserted_count
+                
+                logger.info(f"Successfully stored {db_successful} register readings in database")
+                
+            except Exception as e:
+                # Log error but don't fail the job
+                db_failed = len(mapped_registers)
+                logger.error(
+                    f"Failed to store register readings in database: {e}",
+                    exc_info=True
+                )
+                logger.warning(
+                    "Database storage failed, but job completed successfully. "
+                    "Redis cache storage was successful. "
+                    "TODO: Implement failover cron job to retry failed DB inserts."
+                )
+        else:
+            logger.debug("Skipping database storage (device not found in database)")
+        
         logger.info(
-            f"Modbus polling job completed: {successful_reads} successful, {failed_reads} failed "
+            f"Modbus polling job completed: "
+            f"Cache: {successful_reads} successful, {failed_reads} failed | "
+            f"Database: {db_successful} successful, {db_failed} failed "
             f"(total: {len(mapped_registers)} mapped registers)"
         )
         

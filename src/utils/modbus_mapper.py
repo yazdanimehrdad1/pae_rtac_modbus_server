@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import List, Dict, Any, Union
 import pandas as pd
 
-from utils.dataframe import load_register_map_from_csv
 from schemas.modbus_models import RegisterMap, RegisterPoint
 from logger import get_logger
 
@@ -93,8 +92,8 @@ def map_modbus_data_to_registers(
         List of MappedRegisterData objects, one for each register point that was found in the read data
         
     Example:
-        >>> from utils.dataframe import load_register_map_from_csv
-        >>> register_map = load_register_map_from_csv(Path("config/sel_751_register_map.csv"))
+        >>> from utils.map_csv_to_json import map_csv_to_json, json_to_register_map
+        >>> register_map = json_to_register_map(map_csv_to_json(Path("config/main_sel_751_register_map.csv")))
         >>> # Modbus read: modbus_client.read_registers(kind="holding", address=1400, count=100, unit_id=1)
         >>> modbus_data = [5000, 1, 100, 200, 300, 400, 500, 600, 0, 0, 10000, 20000, ...]
         >>> mapped = map_modbus_data_to_registers(register_map, modbus_data, poll_start_address=1400)
@@ -187,28 +186,6 @@ def map_modbus_data_to_registers(
     
     return mapped_registers
 
-# TODO: This function is not used anywhere. So it can be removed.
-def map_modbus_data_to_registers_from_csv(
-    register_map_path: Path,
-    modbus_read_data: List[Union[int, bool]],
-    poll_start_address: int
-) -> List[MappedRegisterData]:
-    """
-    Convenience function that loads CSV and maps Modbus data.
-    
-    This is a wrapper that loads the register map from CSV first, then calls
-    map_modbus_data_to_registers(). Use this if you want to pass a file path.
-    
-    Args:
-        register_map_path: Path to the CSV register map file
-        modbus_read_data: Raw array of values from Modbus read
-        poll_start_address: The starting address of the Modbus read
-        
-    Returns:
-        List of MappedRegisterData objects
-    """
-    register_map = load_register_map_from_csv(register_map_path)
-    return map_modbus_data_to_registers(register_map, modbus_read_data, poll_start_address)
 
 
 def mapped_registers_to_dataframe(mapped_registers: List[MappedRegisterData]) -> pd.DataFrame:
