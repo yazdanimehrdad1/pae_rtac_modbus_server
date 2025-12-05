@@ -4,7 +4,8 @@ SQLAlchemy async session management utilities.
 Provides helper functions for working with async database sessions.
 """
 
-from typing import AsyncGenerator
+from contextlib import asynccontextmanager
+from typing import AsyncGenerator, AsyncContextManager
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, delete
 from sqlalchemy.orm import selectinload
@@ -15,7 +16,8 @@ from logger import get_logger
 logger = get_logger(__name__)
 
 
-async def get_session() -> AsyncGenerator[AsyncSession, None]:
+@asynccontextmanager
+async def get_session() -> AsyncContextManager[AsyncSession]:
     """
     Get async database session (alternative to get_async_session from connection).
     

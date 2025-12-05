@@ -5,10 +5,11 @@ Handles CRUD operations for device_register_map table.
 """
 
 from typing import Optional, Dict, Any
-import asyncpg
-import json
+from sqlalchemy import select, update, delete
+from sqlalchemy.exc import IntegrityError
 
-from db.connection import get_db_pool
+from db.session import get_session
+from schemas.db_models.orm_models import DeviceRegisterMap, Device
 from logger import get_logger
 
 logger = get_logger(__name__)
@@ -24,30 +25,19 @@ async def get_register_map_by_device_id(device_id: int) -> Optional[Dict[str, An
     Returns:
         Register map dictionary if found, None otherwise
     """
-    pool = await get_db_pool()
-    
-    async with pool.acquire() as conn:
-        row = await conn.fetchrow("""
-            SELECT register_map
-            FROM device_register_map
-            WHERE device_id = $1
-        """, device_id)
+    async with get_session() as session:
+        statement = select(DeviceRegisterMap).where(
+            DeviceRegisterMap.device_id == device_id
+        )
         
-        if row is None or row['register_map'] is None:
+        result = await session.execute(statement)
+        device_register_map = result.scalar_one_or_none()
+        
+        if device_register_map is None or device_register_map.register_map is None:
             return None
         
-        # asyncpg returns JSONB as dict automatically, but sometimes as string
-        register_map = row['register_map']
-        
-        # If it's a string, parse it as JSON
-        if isinstance(register_map, str):
-            try:
-                register_map = json.loads(register_map)
-            except json.JSONDecodeError as e:
-                logger.error(f"Failed to parse register_map JSON for device ID {device_id}: {e}")
-                return None
-        
-        return register_map
+        # SQLAlchemy JSON type automatically handles dict conversion
+        return device_register_map.register_map
 
 
 async def get_register_map_by_device_name(device_name: str) -> Optional[Dict[str, Any]]:
@@ -60,31 +50,19 @@ async def get_register_map_by_device_name(device_name: str) -> Optional[Dict[str
     Returns:
         Register map dictionary if found, None otherwise
     """
-    pool = await get_db_pool()
-    
-    async with pool.acquire() as conn:
-        row = await conn.fetchrow("""
-            SELECT drm.register_map
-            FROM device_register_map drm
-            JOIN devices d ON drm.device_id = d.id
-            WHERE d.name = $1
-        """, device_name)
+    async with get_session() as session:
+        statement = select(DeviceRegisterMap).join(
+            Device, DeviceRegisterMap.device_id == Device.id
+        ).where(Device.name == device_name)
         
-        if row is None or row['register_map'] is None:
+        result = await session.execute(statement)
+        device_register_map = result.scalar_one_or_none()
+        
+        if device_register_map is None or device_register_map.register_map is None:
             return None
         
-        # asyncpg returns JSONB as dict automatically, but sometimes as string
-        register_map = row['register_map']
-        
-        # If it's a string, parse it as JSON
-        if isinstance(register_map, str):
-            try:
-                register_map = json.loads(register_map)
-            except json.JSONDecodeError as e:
-                logger.error(f"Failed to parse register_map JSON for device '{device_name}': {e}")
-                return None
-        
-        return register_map
+        # SQLAlchemy JSON type automatically handles dict conversion
+        return device_register_map.register_map
 
 # TODO: adjust this function to add json b based on the excel file
 async def create_register_map(device_id: int, register_map: Dict[str, Any]) -> bool:
@@ -99,32 +77,38 @@ async def create_register_map(device_id: int, register_map: Dict[str, Any]) -> b
         True if created successfully, False otherwise
         
     Raises:
-        asyncpg.UniqueViolationError: If register map already exists for this device
-        asyncpg.ForeignKeyViolationError: If device_id doesn't exist
+        ValueError: If register map already exists for this device or device_id doesn't exist
     """
-    pool = await get_db_pool()
-    
-    async with pool.acquire() as conn:
+    async with get_session() as session:
         try:
-            # Convert register_map dict to JSON string for PostgreSQL JSONB
-            register_map_json = json.dumps(register_map)
+            # Create new DeviceRegisterMap instance
+            device_register_map = DeviceRegisterMap(
+                device_id=device_id,
+                register_map=register_map
+            )
             
-            await conn.execute("""
-                INSERT INTO device_register_map (device_id, register_map)
-                VALUES ($1, $2::jsonb)
-            """, device_id, register_map_json)
+            session.add(device_register_map)
+            await session.commit()
             
             logger.info(f"Created register map for device ID {device_id}")
             return True
             
-        except asyncpg.UniqueViolationError as e:
-            logger.warning(f"Register map already exists for device ID {device_id}")
-            raise ValueError(f"Register map already exists for device ID {device_id}") from e
-        except asyncpg.ForeignKeyViolationError as e:
-            logger.warning(f"Device ID {device_id} does not exist")
-            raise ValueError(f"Device ID {device_id} does not exist") from e
-        except asyncpg.PostgresError as e:
-            logger.error(f"Database error creating register map: {e}")
+        except IntegrityError as e:
+            await session.rollback()
+            error_msg = str(e.orig)
+            
+            if "unique" in error_msg.lower() or "duplicate" in error_msg.lower():
+                logger.warning(f"Register map already exists for device ID {device_id}")
+                raise ValueError(f"Register map already exists for device ID {device_id}") from e
+            elif "foreign key" in error_msg.lower() or "violates foreign key" in error_msg.lower():
+                logger.warning(f"Device ID {device_id} does not exist")
+                raise ValueError(f"Device ID {device_id} does not exist") from e
+            else:
+                logger.error(f"Database error creating register map: {e}")
+                raise
+        except Exception as e:
+            await session.rollback()
+            logger.error(f"Unexpected error creating register map: {e}", exc_info=True)
             raise
 
 # TODO: adjust this function to update json b based on the excel file
@@ -139,19 +123,15 @@ async def update_register_map(device_id: int, register_map: Dict[str, Any]) -> b
     Returns:
         True if updated successfully, False if device_id not found
     """
-    pool = await get_db_pool()
-    
-    async with pool.acquire() as conn:
-        # Convert register_map dict to JSON string for PostgreSQL JSONB
-        register_map_json = json.dumps(register_map)
+    async with get_session() as session:
+        statement = update(DeviceRegisterMap).where(
+            DeviceRegisterMap.device_id == device_id
+        ).values(register_map=register_map)
         
-        result = await conn.execute("""
-            UPDATE device_register_map
-            SET register_map = $1::jsonb, updated_at = NOW()
-            WHERE device_id = $2
-        """, register_map_json, device_id)
+        result = await session.execute(statement)
+        await session.commit()
         
-        updated = result == "UPDATE 1"
+        updated = result.rowcount > 0
         
         if updated:
             logger.info(f"Updated register map for device ID {device_id}")
@@ -171,15 +151,15 @@ async def delete_register_map(device_id: int) -> bool:
     Returns:
         True if register map was deleted, False if not found
     """
-    pool = await get_db_pool()
-    
-    async with pool.acquire() as conn:
-        result = await conn.execute("""
-            DELETE FROM device_register_map
-            WHERE device_id = $1
-        """, device_id)
+    async with get_session() as session:
+        statement = delete(DeviceRegisterMap).where(
+            DeviceRegisterMap.device_id == device_id
+        )
         
-        deleted = result == "DELETE 1"
+        result = await session.execute(statement)
+        await session.commit()
+        
+        deleted = result.rowcount > 0
         
         if deleted:
             logger.info(f"Deleted register map for device ID {device_id}")

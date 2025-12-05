@@ -164,7 +164,7 @@ async def update_existing_device(device_id: int, device_update: DeviceUpdate):
         
     Note:
         register_map cannot be updated through this endpoint.
-        Register maps are managed separately through the /api/register_map endpoints.
+        Register maps can be retrieved through the /api/device/{device_name}/register_map endpoint.
     """
     try:
         # DeviceUpdate schema doesn't include register_map, so Pydantic will automatically

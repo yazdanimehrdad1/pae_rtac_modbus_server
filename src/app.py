@@ -12,7 +12,7 @@ from logger import setup_logging, get_logger
 from scheduler.engine import start_scheduler, stop_scheduler
 
 # Router imports
-from api.routers import health, read, cache, devices, register_map, register_readings
+from api.routers import health, read, cache, devices, register_readings
 
 # Cache connection imports
 from cache.connection import (
@@ -52,7 +52,6 @@ def create_app() -> FastAPI:
     app.include_router(read.router, prefix="/api", tags=["modbus"])
     app.include_router(cache.router, prefix="/api", tags=["cache"])
     app.include_router(devices.router, prefix="/api", tags=["devices"])
-    app.include_router(register_map.router, prefix="/api", tags=["register_map"])
     app.include_router(register_readings.router, prefix="/api", tags=["register_readings"])
     
     # TODO: Add other routers when implemented

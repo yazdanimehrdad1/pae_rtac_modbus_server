@@ -7,6 +7,7 @@ Supports both asyncpg (legacy) and SQLAlchemy 2.0+ async (new) connections.
 
 from typing import Optional, AsyncGenerator
 import asyncpg
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -116,7 +117,7 @@ async def check_db_health() -> bool:
         # Try SQLAlchemy engine first (new approach)
         if _async_engine is not None:
             async with _async_engine.connect() as conn:
-                await conn.execute("SELECT 1")
+                await conn.execute(text("SELECT 1"))
             return True
         # Fallback to asyncpg pool (legacy)
         else:

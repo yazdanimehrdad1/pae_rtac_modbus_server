@@ -6,9 +6,12 @@ Handles CRUD operations for register_readings time-series table.
 
 from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
-import asyncpg
+from sqlalchemy import select, and_, func
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.dialects.postgresql import insert
 
-from db.connection import get_db_pool
+from db.session import get_session
+from schemas.db_models.orm_models import RegisterReading
 from logger import get_logger
 
 logger = get_logger(__name__)
@@ -39,37 +42,42 @@ async def insert_register_reading(
         True if inserted successfully, False otherwise
         
     Raises:
-        asyncpg.PostgresError: For database errors
+        Exception: For database errors
     """
     if timestamp is None:
         timestamp = datetime.now(timezone.utc)
     
-    pool = await get_db_pool()
-    
     try:
-        async with pool.acquire() as conn:
-            await conn.execute("""
-                INSERT INTO register_readings (
-                    timestamp, device_id, register_address, value,
-                    quality, register_name, unit
+        async with get_session() as session:
+            # Use PostgreSQL-specific INSERT ... ON CONFLICT via insert().on_conflict_do_update()
+            statement = insert(RegisterReading).values(
+                timestamp=timestamp,
+                device_id=device_id,
+                register_address=register_address,
+                value=value,
+                quality=quality,
+                register_name=register_name,
+                unit=unit
+            )
+            
+            statement = statement.on_conflict_do_update(
+                index_elements=['timestamp', 'device_id', 'register_address'],
+                set_=dict(
+                    value=statement.excluded.value,
+                    quality=statement.excluded.quality,
+                    register_name=statement.excluded.register_name,
+                    unit=statement.excluded.unit
                 )
-                VALUES ($1, $2, $3, $4, $5, $6, $7)
-                ON CONFLICT (timestamp, device_id, register_address) 
-                DO UPDATE SET
-                    value = EXCLUDED.value,
-                    quality = EXCLUDED.quality,
-                    register_name = EXCLUDED.register_name,
-                    unit = EXCLUDED.unit
-            """, timestamp, device_id, register_address, value, quality, register_name, unit)
+            )
+            
+            await session.execute(statement)
+            await session.commit()
             
             logger.debug(f"Inserted reading: device_id={device_id}, register_address={register_address}, value={value}")
             return True
             
-    except asyncpg.PostgresError as e:
-        logger.error(f"Database error inserting register reading: {e}")
-        raise
     except Exception as e:
-        logger.error(f"Unexpected error inserting register reading: {e}", exc_info=True)
+        logger.error(f"Error inserting register reading: {e}", exc_info=True)
         return False
 
 
@@ -93,16 +101,14 @@ async def insert_register_readings_batch(
         Number of successfully inserted readings
         
     Raises:
-        asyncpg.PostgresError: For database errors
+        Exception: For database errors
     """
     if not readings:
         logger.debug("No readings to insert in batch")
         return 0
     
-    pool = await get_db_pool()
-    
     try:
-        async with pool.acquire() as conn:
+        async with get_session() as session:
             # Prepare values for batch insert
             values = []
             for reading in readings:
@@ -110,46 +116,39 @@ async def insert_register_readings_batch(
                 if timestamp is None:
                     timestamp = datetime.now(timezone.utc)
                 
-                values.append((
-                    timestamp,
-                    reading['device_id'],
-                    reading['register_address'],
-                    float(reading['value']),  # Ensure it's a float
-                    reading.get('quality', 'good'),
-                    reading.get('register_name'),
-                    reading.get('unit')
-                ))
+                values.append({
+                    'timestamp': timestamp,
+                    'device_id': reading['device_id'],
+                    'register_address': reading['register_address'],
+                    'value': float(reading['value']),  # Ensure it's a float
+                    'quality': reading.get('quality', 'good'),
+                    'register_name': reading.get('register_name'),
+                    'unit': reading.get('unit')
+                })
             
-            # Build batch INSERT query
-            # Using INSERT ... VALUES with ON CONFLICT for idempotency
-            query = """
-                INSERT INTO register_readings (
-                    timestamp, device_id, register_address, value,
-                    quality, register_name, unit
+            # Build batch INSERT query with ON CONFLICT
+            statement = insert(RegisterReading).values(values)
+            
+            statement = statement.on_conflict_do_update(
+                index_elements=['timestamp', 'device_id', 'register_address'],
+                set_=dict(
+                    value=statement.excluded.value,
+                    quality=statement.excluded.quality,
+                    register_name=statement.excluded.register_name,
+                    unit=statement.excluded.unit
                 )
-                VALUES ($1, $2, $3, $4, $5, $6, $7)
-                ON CONFLICT (timestamp, device_id, register_address) 
-                DO UPDATE SET
-                    value = EXCLUDED.value,
-                    quality = EXCLUDED.quality,
-                    register_name = EXCLUDED.register_name,
-                    unit = EXCLUDED.unit
-            """
+            )
             
-            # Execute batch insert
-            result = await conn.executemany(query, values)
+            result = await session.execute(statement)
+            await session.commit()
             
-            # result is a string like "INSERT 0 5" - extract the number
             inserted_count = len(values)
             logger.debug(f"Batch inserted {inserted_count} register readings")
             
             return inserted_count
             
-    except asyncpg.PostgresError as e:
-        logger.error(f"Database error in batch insert: {e}")
-        raise
     except Exception as e:
-        logger.error(f"Unexpected error in batch insert: {e}", exc_info=True)
+        logger.error(f"Error in batch insert: {e}", exc_info=True)
         # Return 0 on unexpected errors
         return 0
 
@@ -175,72 +174,46 @@ async def get_all_readings(
     Returns:
         List of reading dictionaries, ordered by timestamp descending (newest first)
     """
-    pool = await get_db_pool()
-    
-    async with pool.acquire() as conn:
-        # Build query dynamically based on filters
+    async with get_session() as session:
+        # Build query with filters
+        statement = select(RegisterReading)
+        
         conditions = []
-        params = []
-        param_index = 1
-        
         if device_id is not None:
-            conditions.append(f"device_id = ${param_index}")
-            params.append(device_id)
-            param_index += 1
-        
+            conditions.append(RegisterReading.device_id == device_id)
         if register_address is not None:
-            conditions.append(f"register_address = ${param_index}")
-            params.append(register_address)
-            param_index += 1
-        
+            conditions.append(RegisterReading.register_address == register_address)
         if start_time is not None:
-            conditions.append(f"timestamp >= ${param_index}")
-            params.append(start_time)
-            param_index += 1
-        
+            conditions.append(RegisterReading.timestamp >= start_time)
         if end_time is not None:
-            conditions.append(f"timestamp <= ${param_index}")
-            params.append(end_time)
-            param_index += 1
+            conditions.append(RegisterReading.timestamp <= end_time)
         
-        # Build WHERE clause
-        where_clause = ""
         if conditions:
-            where_clause = "WHERE " + " AND ".join(conditions)
+            statement = statement.where(and_(*conditions))
         
-        # Build query
-        query = f"""
-            SELECT 
-                timestamp, device_id, register_address, value,
-                quality, register_name, unit
-            FROM register_readings
-            {where_clause}
-            ORDER BY timestamp DESC
-        """
+        # Order by timestamp descending (newest first)
+        statement = statement.order_by(RegisterReading.timestamp.desc())
         
         # Add LIMIT and OFFSET if provided
         if limit is not None:
-            query += f" LIMIT ${param_index}"
-            params.append(limit)
-            param_index += 1
-        
+            statement = statement.limit(limit)
         if offset is not None:
-            query += f" OFFSET ${param_index}"
-            params.append(offset)
+            statement = statement.offset(offset)
         
-        rows = await conn.fetch(query, *params)
+        result = await session.execute(statement)
+        readings = result.scalars().all()
         
         return [
             {
-                'timestamp': row['timestamp'],
-                'device_id': row['device_id'],
-                'register_address': row['register_address'],
-                'value': row['value'],
-                'quality': row['quality'],
-                'register_name': row['register_name'],
-                'unit': row['unit']
+                'timestamp': reading.timestamp,
+                'device_id': reading.device_id,
+                'register_address': reading.register_address,
+                'value': reading.value,
+                'quality': reading.quality,
+                'register_name': reading.register_name,
+                'unit': reading.unit
             }
-            for row in rows
+            for reading in readings
         ]
 
 
@@ -258,30 +231,28 @@ async def get_latest_reading(
     Returns:
         Dictionary with reading data if found, None otherwise
     """
-    pool = await get_db_pool()
-    
-    async with pool.acquire() as conn:
-        row = await conn.fetchrow("""
-            SELECT 
-                timestamp, device_id, register_address, value,
-                quality, register_name, unit
-            FROM register_readings
-            WHERE device_id = $1 AND register_address = $2
-            ORDER BY timestamp DESC
-            LIMIT 1
-        """, device_id, register_address)
+    async with get_session() as session:
+        statement = select(RegisterReading).where(
+            and_(
+                RegisterReading.device_id == device_id,
+                RegisterReading.register_address == register_address
+            )
+        ).order_by(RegisterReading.timestamp.desc()).limit(1)
         
-        if row is None:
+        result = await session.execute(statement)
+        reading = result.scalar_one_or_none()
+        
+        if reading is None:
             return None
         
         return {
-            'timestamp': row['timestamp'],
-            'device_id': row['device_id'],
-            'register_address': row['register_address'],
-            'value': row['value'],
-            'quality': row['quality'],
-            'register_name': row['register_name'],
-            'unit': row['unit']
+            'timestamp': reading.timestamp,
+            'device_id': reading.device_id,
+            'register_address': reading.register_address,
+            'value': reading.value,
+            'quality': reading.quality,
+            'register_name': reading.register_name,
+            'unit': reading.unit
         }
 
 
@@ -300,42 +271,63 @@ async def get_latest_readings_for_device(
     Returns:
         List of latest reading dictionaries, one per register
     """
-    pool = await get_db_pool()
-    
-    async with pool.acquire() as conn:
+    async with get_session() as session:
+        # Use window function to get latest reading per register_address
+        # This is equivalent to DISTINCT ON (register_address) ... ORDER BY register_address, timestamp DESC
+        from sqlalchemy import func as sql_func
+        
+        # Use window function to rank readings by timestamp per register_address
+        rank_subquery = (
+            select(
+                RegisterReading.timestamp,
+                RegisterReading.device_id,
+                RegisterReading.register_address,
+                RegisterReading.value,
+                RegisterReading.quality,
+                RegisterReading.register_name,
+                RegisterReading.unit,
+                sql_func.row_number().over(
+                    partition_by=RegisterReading.register_address,
+                    order_by=RegisterReading.timestamp.desc()
+                ).label('rn')
+            )
+            .where(RegisterReading.device_id == device_id)
+        )
+        
         if register_addresses:
-            # Get latest for specific registers
-            query = """
-                SELECT DISTINCT ON (register_address)
-                    timestamp, device_id, register_address, value,
-                    quality, register_name, unit
-                FROM register_readings
-                WHERE device_id = $1
-                AND register_address = ANY($2::int[])
-                ORDER BY register_address, timestamp DESC
-            """
-            rows = await conn.fetch(query, device_id, register_addresses)
-        else:
-            # Get latest for all registers of the device
-            query = """
-                SELECT DISTINCT ON (register_address)
-                    timestamp, device_id, register_address, value,
-                    quality, register_name, unit
-                FROM register_readings
-                WHERE device_id = $1
-                ORDER BY register_address, timestamp DESC
-            """
-            rows = await conn.fetch(query, device_id)
+            rank_subquery = rank_subquery.where(
+                RegisterReading.register_address.in_(register_addresses)
+            )
+        
+        # Create subquery alias
+        ranked = rank_subquery.subquery()
+        
+        # Select only rows where rn = 1 (latest per register_address)
+        statement = (
+            select(
+                ranked.c.timestamp,
+                ranked.c.device_id,
+                ranked.c.register_address,
+                ranked.c.value,
+                ranked.c.quality,
+                ranked.c.register_name,
+                ranked.c.unit
+            )
+            .where(ranked.c.rn == 1)
+        )
+        
+        result = await session.execute(statement)
+        rows = result.all()
         
         return [
             {
-                'timestamp': row['timestamp'],
-                'device_id': row['device_id'],
-                'register_address': row['register_address'],
-                'value': row['value'],
-                'quality': row['quality'],
-                'register_name': row['register_name'],
-                'unit': row['unit']
+                'timestamp': row.timestamp,
+                'device_id': row.device_id,
+                'register_address': row.register_address,
+                'value': row.value,
+                'quality': row.quality,
+                'register_name': row.register_name,
+                'unit': row.unit
             }
             for row in rows
         ]
