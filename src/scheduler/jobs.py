@@ -1,7 +1,6 @@
 """Polling jobs for Modbus data collection."""
 
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Dict, Any
 
 from modbus.client import ModbusClient, translate_modbus_error
@@ -9,7 +8,7 @@ from modbus.modbus_utills import ModbusUtils
 from cache.cache import CacheService
 from config import settings
 from logger import get_logger
-from utils.map_csv_to_json import map_csv_to_json, json_to_register_map
+from utils.map_csv_to_json import json_to_register_map, get_register_map_for_device
 from utils.modbus_mapper import map_modbus_data_to_registers
 from db.devices import get_device_id_by_name
 from db.register_readings import insert_register_readings_batch
@@ -27,7 +26,7 @@ async def cron_job_poll_modbus_registers() -> None:
     Scheduled job to poll Modbus registers and store data in Redis cache.
     
     This job:
-    1. Loads register map from CSV configuration
+    1. Loads register map from database (with CSV fallback via get_register_map_for_device)
     2. Makes a single modbus client call to poll points from a fixed index, and fixed range
     3. Uses map_modbus_data_to_registers() to map register points to their values
     4. Stores data in Redis cache with timestamp
@@ -36,15 +35,16 @@ async def cron_job_poll_modbus_registers() -> None:
     logger.info("Starting Modbus polling job")
     
     try:
-        # 1. Load register map from CSV configuration
-        register_map_path = Path(settings.poll_register_map_path)
-        if not register_map_path.exists():
-            logger.error(f"Register map file not found: {register_map_path}")
+        # 1. Load register map from database (with CSV fallback)
+        device_name = settings.poll_device_name
+        json_data = await get_register_map_for_device(device_name)
+        
+        if json_data is None:
+            logger.error(f"Register map not found for device '{device_name}' in database or CSV")
             return
         
-        json_data = map_csv_to_json(register_map_path)
         register_map = json_to_register_map(json_data)
-        logger.info(f"Loaded {len(register_map.points)} register points from {register_map_path}")
+        logger.info(f"Loaded {len(register_map.points)} register points for device '{device_name}'")
         
         if not register_map.points:
             logger.warning("No register points to poll")
@@ -54,7 +54,7 @@ async def cron_job_poll_modbus_registers() -> None:
         logger.debug(
             f"Reading Modbus registers: kind={settings.main_sel_751_poll_kind}, "
             f"address={settings.main_sel_751_poll_address}, count={settings.main_sel_751_poll_count}, "
-            f"unit_id={settings.main_sel_751_poll_unit_id}"
+            f"device_id={settings.main_sel_751_poll_device_id}"
         )
         
         modbus_data = modbus_utils.read_device_registers_main_sel_751()
@@ -101,7 +101,7 @@ async def cron_job_poll_modbus_registers() -> None:
                     "address": register_data.address,
                     "kind": register_data.kind,
                     "size": register_data.size,
-                    "unit_id": register_data.unit_id,
+                    "device_id": register_data.device_id,
                 }
                 
                 # Add optional metadata
@@ -124,7 +124,7 @@ async def cron_job_poll_modbus_registers() -> None:
                 "kind": settings.main_sel_751_poll_kind,
                 "address": settings.main_sel_751_poll_address,
                 "count": settings.main_sel_751_poll_count,
-                "unit_id": settings.main_sel_751_poll_unit_id,
+                "device_id": settings.main_sel_751_poll_device_id,
                 "data": register_data_dict
             }
             

@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     # Modbus Configuration
     modbus_host: str = Field(default="localhost", alias="MODBUS_HOST")
     modbus_port: int = Field(default=502, alias="MODBUS_PORT")
-    modbus_unit_id: int = Field(default=1, alias="MODBUS_UNIT_ID")
+    modbus_device_id: int = Field(default=1, alias="MODBUS_DEVICE_ID")
     modbus_timeout_s: float = Field(default=5.0, alias="MODBUS_TIMEOUT_S")
     modbus_retries: int = Field(default=3, alias="MODBUS_RETRIES")
     
@@ -68,7 +68,7 @@ class Settings(BaseSettings):
     main_sel_751_poll_address: int = Field(default=1400, alias="MAIN_SEL_751_POLL_ADDRESS")  # Fixed Modbus address to read from
     main_sel_751_poll_count: int = Field(default=100, alias="MAIN_SEL_751_POLL_COUNT")  # Fixed number of registers to read
     main_sel_751_poll_kind: str = Field(default="holding", alias="MAIN_SEL_751_POLL_KIND")  # Register type: holding, input, coils, discretes
-    main_sel_751_poll_unit_id: int = Field(default=1, alias="MAIN_SEL_751_POLL_UNIT_ID")  # Modbus unit ID
+    main_sel_751_poll_device_id: int = Field(default=1, alias="MAIN_SEL_751_POLL_DEVICE_ID")  # Modbus device ID
     
     # Pod identification (for Kubernetes)
     pod_name: str = Field(default="", alias="POD_NAME")  # Falls back to HOSTNAME if not set

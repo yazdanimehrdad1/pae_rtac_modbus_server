@@ -28,7 +28,7 @@ class DeviceLoadResult(TypedDict, total=False):
     error: Optional[str]
 
 
-async def load_register_map_from_csv(csv_path: Path, device_name: Optional[str] = None, unit_id: Optional[int] = None) -> DeviceLoadResult:
+async def load_register_map_from_csv(csv_path: Path, device_name: Optional[str] = None, device_id: Optional[int] = None) -> DeviceLoadResult:
     """
     Load a single register map CSV file into the database.
     
@@ -40,7 +40,7 @@ async def load_register_map_from_csv(csv_path: Path, device_name: Optional[str] 
     Args:
         csv_path: Path to the CSV file
         device_name: Device name (required, should be provided from JSON config)
-        unit_id: Unit ID (optional, should be provided from JSON config, falls back to settings default)
+        device_id: Modbus unit/slave ID (optional, should be provided from JSON config)
         
     Returns:
         DeviceLoadResult with metadata about the loaded device (success field indicates if loading succeeded)
@@ -61,30 +61,30 @@ async def load_register_map_from_csv(csv_path: Path, device_name: Optional[str] 
         logger.info(f"Processing register map CSV for device: {device_name}")
         
         # Step 2: Check if device exists, create if not
-        device_id = await get_device_id_by_name(device_name)
+        db_device_id = await get_device_id_by_name(device_name)
         device_created = False
         
-        if device_id is None:
+        if db_device_id is None:
             # Device doesn't exist, create it
             # Use default host/port from config
             device_create = DeviceCreate(
                 name=device_name,
                 host=settings.modbus_host,  # Default from config
                 port=settings.modbus_port,  # Default from config
-                unit_id=unit_id,
+                device_id=device_id,
                 description=f"Device created from register map CSV: {csv_path.name}"
             )
             
             try:
                 device_response = await create_device(device_create)
-                device_id = device_response.id
+                db_device_id = device_response.id
                 device_created = True
-                logger.info(f"Created device '{device_name}' (ID: {device_id}) from CSV file")
+                logger.info(f"Created device '{device_name}' (ID: {db_device_id}) from CSV file")
             except ValueError as e:
                 # Device might have been created by another process
                 logger.warning(f"Device creation failed (may already exist): {e}")
-                device_id = await get_device_id_by_name(device_name)
-                if device_id is None:
+                db_device_id = await get_device_id_by_name(device_name)
+                if db_device_id is None:
                     error_msg = f"Could not create or find device '{device_name}'"
                     logger.error(error_msg)
                     return DeviceLoadResult(
@@ -96,7 +96,7 @@ async def load_register_map_from_csv(csv_path: Path, device_name: Optional[str] 
                         error=error_msg
                     )
         else:
-            logger.debug(f"Device '{device_name}' already exists (ID: {device_id})")
+            logger.debug(f"Device '{device_name}' already exists (ID: {db_device_id})")
         
         # Step 3: Convert CSV to JSON
         try:
@@ -106,7 +106,7 @@ async def load_register_map_from_csv(csv_path: Path, device_name: Optional[str] 
             logger.error(error_msg)
             return DeviceLoadResult(
                 device_name=device_name,
-                device_id=device_id,
+                device_id=db_device_id,
                 success=False,
                 device_created=device_created,
                 register_map_created=False,
@@ -114,40 +114,40 @@ async def load_register_map_from_csv(csv_path: Path, device_name: Optional[str] 
             )
         
         # Step 4: Create register map only if it doesn't already exist
-        existing_map = await get_register_map_by_device_id(device_id)
+        existing_map = await get_register_map_by_device_id(db_device_id)
         register_map_created = False
         
         if existing_map is None:
             # Create new register map
             try:
-                await create_register_map(device_id, register_map_json)
+                await create_register_map(db_device_id, register_map_json)
                 register_map_created = True
-                logger.info(f"Created register map for device '{device_name}' (ID: {device_id})")
+                logger.info(f"Created register map for device '{device_name}' (ID: {db_device_id})")
             except ValueError as e:
                 # Map might have been created by another process
                 logger.warning(f"Register map creation failed (may already exist): {e}")
                 # Verify it now exists
-                existing_map = await get_register_map_by_device_id(device_id)
+                existing_map = await get_register_map_by_device_id(db_device_id)
                 if existing_map is None:
                     error_msg = f"Could not create register map for device '{device_name}'"
                     logger.error(error_msg)
                     return DeviceLoadResult(
                         device_name=device_name,
-                        device_id=device_id,
+                        device_id=db_device_id,
                         success=False,
                         device_created=device_created,
                         register_map_created=False,
                         error=error_msg
                     )
                 else:
-                    logger.info(f"Register map already exists for device '{device_name}' (ID: {device_id}), skipping")
+                    logger.info(f"Register map already exists for device '{device_name}' (ID: {db_device_id}), skipping")
         else:
             # Register map already exists, skip
-            logger.info(f"Register map already exists for device '{device_name}' (ID: {device_id}), skipping")
+            logger.info(f"Register map already exists for device '{device_name}' (ID: {db_device_id}), skipping")
         
         return DeviceLoadResult(
             device_name=device_name,
-            device_id=device_id,
+            device_id=db_device_id,
             success=True,
             device_created=device_created,
             register_map_created=register_map_created,
@@ -172,13 +172,13 @@ def load_device_register_map_config(config_dir: Path) -> Dict[str, Dict[str, Any
     Load device to CSV file mapping from JSON config file.
     
     Reads the device_register_maps.json file from the config directory
-    which maps device names to their associated CSV file paths and unit_id.
+    which maps device names to their associated CSV file paths and device_id.
     
     Expected JSON format:
     {
       "device-name": {
         "csv_file": "file.csv",
-        "unit_id": 1
+        "device_id": 1
       }
     }
     
@@ -186,7 +186,7 @@ def load_device_register_map_config(config_dir: Path) -> Dict[str, Dict[str, Any
         config_dir: Path to the config directory
         
     Returns:
-        Dictionary mapping device names to config objects with 'csv_file' and 'unit_id' keys
+        Dictionary mapping device names to config objects with 'csv_file' and 'device_id' keys
     """
     config_file = config_dir / "device_register_maps.json"
     
@@ -209,13 +209,14 @@ def load_device_register_map_config(config_dir: Path) -> Dict[str, Dict[str, Any
                 # Legacy format: just a string (CSV filename)
                 normalized_mapping[device_name] = {
                     "csv_file": config_value,
-                    "unit_id": None
+                    "device_id": None
                 }
             elif isinstance(config_value, dict):
-                # New format: object with csv_file and unit_id
+                # New format: object with csv_file and device_id
+                device_id_value = config_value.get("device_id")
                 normalized_mapping[device_name] = {
                     "csv_file": config_value.get("csv_file"),
-                    "unit_id": config_value.get("unit_id")
+                    "device_id": device_id_value
                 }
             else:
                 logger.warning(f"Invalid config format for device '{device_name}', skipping")
@@ -256,7 +257,7 @@ async def load_all_register_maps_from_config() -> Dict[str, DeviceLoadResult]:
     
     for device_name, device_config in device_mapping.items():
         csv_filename = device_config.get("csv_file")
-        unit_id = device_config.get("unit_id")
+        device_id_value = device_config.get("device_id")
         
         if not csv_filename:
             error_msg = f"CSV file not specified for device '{device_name}'"
@@ -287,8 +288,9 @@ async def load_all_register_maps_from_config() -> Dict[str, DeviceLoadResult]:
             )
             continue
         
-        # Load the register map using the device name and unit_id from the mapping
-        result = await load_register_map_from_csv(csv_path, device_name, unit_id)
+        # Load the register map using the device name and device_id from the mapping
+        device_id_value = device_config.get("device_id")
+        result = await load_register_map_from_csv(csv_path, device_name, device_id_value)
         results[device_name] = result
     
     # Log summary

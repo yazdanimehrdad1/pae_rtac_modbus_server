@@ -20,7 +20,7 @@ load_dotenv()
 # Configuration from environment variables
 MODBUS_HOST = os.getenv("MODBUS_HOST", "localhost")
 MODBUS_PORT = int(os.getenv("MODBUS_PORT", "502"))
-MODBUS_UNIT_ID = int(os.getenv("MODBUS_UNIT_ID", "1"))
+MODBUS_DEVICE_ID = int(os.getenv("MODBUS_DEVICE_ID", "1")) 
 MODBUS_TIMEOUT_S = float(os.getenv("MODBUS_TIMEOUT_S", "5.0"))
 MODBUS_RETRIES = int(os.getenv("MODBUS_RETRIES", "3"))
 
@@ -99,7 +99,7 @@ class ModbusClient:
     def __init__(self):
         self.host = MODBUS_HOST
         self.port = MODBUS_PORT
-        self.default_unit_id = MODBUS_UNIT_ID
+        self.default_device_id = MODBUS_DEVICE_ID
         self.timeout = MODBUS_TIMEOUT_S
     
     def read_registers(
@@ -107,7 +107,7 @@ class ModbusClient:
         kind: Literal["holding", "input", "coils", "discretes"],
         address: int,
         count: int,
-        unit_id: Optional[int] = None
+        device_id: Optional[int] = None
     ) -> List[Union[int, bool]]:
         """
         Read Modbus registers or coils/discrete inputs.
@@ -116,7 +116,7 @@ class ModbusClient:
             kind: Type of register to read (holding, input, coils, discretes)
             address: Starting address
             count: Number of registers/bits to read
-            unit_id: Modbus unit ID (uses default if None)
+            device_id: Modbus unit/slave ID (uses default if None)
             
         Returns:
             List of register values or bits
@@ -124,7 +124,7 @@ class ModbusClient:
         Raises:
             Exception: Various Modbus exceptions that should be translated
         """
-        unit_id = unit_id or self.default_unit_id
+        device_id = device_id or self.default_device_id
         
         with modbus_client() as client:
             if not client.connect():
@@ -134,7 +134,7 @@ class ModbusClient:
                 result = client.read_holding_registers(
                     address=address,
                     count=count,
-                    device_id=unit_id
+                    device_id=device_id
                 )
                 if result.isError():
                     raise result
@@ -144,7 +144,7 @@ class ModbusClient:
                 result = client.read_input_registers(
                     address=address,
                     count=count,
-                    device_id=unit_id
+                    device_id=device_id
                 )
                 if result.isError():
                     raise result
@@ -154,7 +154,7 @@ class ModbusClient:
                 result = client.read_coils(
                     address=address,
                     count=count,
-                    device_id=unit_id
+                    device_id=device_id
                 )
                 if result.isError():
                     raise result
@@ -164,7 +164,7 @@ class ModbusClient:
                 result = client.read_discrete_inputs(
                     address=address,
                     count=count,
-                    device_id=unit_id
+                    device_id=device_id
                 )
                 if result.isError():
                     raise result
@@ -192,7 +192,7 @@ class ModbusClient:
                 result = client.read_holding_registers(
                     address=0,
                     count=1,
-                    device_id=self.default_unit_id
+                    device_id=self.default_device_id
                 )
                 
                 if result.isError():

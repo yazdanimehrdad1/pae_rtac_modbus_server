@@ -32,7 +32,7 @@ Create or edit `.env` file in the project root with your Modbus server settings:
 ```env
 MODBUS_HOST=192.168.1.100
 MODBUS_PORT=502
-MODBUS_UNIT_ID=1
+MODBUS_DEVICE_ID=1
 MODBUS_TIMEOUT_S=5.0
 MODBUS_RETRIES=3
 ```
@@ -47,7 +47,7 @@ Set the following environment variables:
 ```bash
 export MODBUS_HOST="192.168.1.100"      # Default: localhost
 export MODBUS_PORT="502"                 # Default: 502
-export MODBUS_UNIT_ID="1"                # Default: 1
+export MODBUS_DEVICE_ID="1"              # Default: 1
 export MODBUS_TIMEOUT_S="5.0"            # Default: 5.0
 export MODBUS_RETRIES="3"                # Default: 3
 ```
@@ -56,7 +56,7 @@ export MODBUS_RETRIES="3"                # Default: 3
 ```powershell
 $env:MODBUS_HOST="192.168.1.100"
 $env:MODBUS_PORT="502"
-$env:MODBUS_UNIT_ID="1"
+$env:MODBUS_DEVICE_ID="1"
 $env:MODBUS_TIMEOUT_S="5.0"
 $env:MODBUS_RETRIES="3"
 ```
@@ -112,7 +112,7 @@ The API will be available at `http://localhost:8000`
 ```bash
 MODBUS_HOST=192.168.1.100  # Your external Modbus server IP
 MODBUS_PORT=502
-MODBUS_UNIT_ID=1
+MODBUS_DEVICE_ID=1
 ```
 
 **Then start the service:**
@@ -198,7 +198,7 @@ Expected response:
   "ok": true,
   "host": "192.168.1.100",
   "port": 502,
-  "unit_id": 1,
+  "device_id": 1,
   "detail": "Connection and read test successful"
 }
 ```
@@ -212,7 +212,7 @@ curl -X POST "http://localhost:8000/read" \
     "kind": "holding",
     "address": 0,
     "count": 10,
-    "unit_id": 1
+    "device_id": 1
   }' | jq
 ```
 
@@ -223,7 +223,7 @@ Expected response:
   "kind": "holding",
   "address": 0,
   "count": 10,
-  "unit_id": 1,
+  "device_id": 1,
   "data": [1234, 5678, 9012, 3456, 7890, 1234, 5678, 9012, 3456, 7890]
 }
 ```

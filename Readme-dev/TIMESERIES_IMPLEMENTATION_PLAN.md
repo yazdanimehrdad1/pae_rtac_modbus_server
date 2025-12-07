@@ -138,7 +138,7 @@ This document outlines the step-by-step plan to create a TimescaleDB hypertable 
 - **Changes:**
   1. Query devices table for all active devices
   2. For each device:
-     - Get device connection info (host, port, unit_id)
+     - Get device connection info (host, port, device_id)
      - Get register map for device
      - Poll registers
      - Store readings in database

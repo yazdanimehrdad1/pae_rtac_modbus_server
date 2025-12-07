@@ -28,7 +28,7 @@ class MappedRegisterData:
         address: int,
         kind: str,
         size: int,
-        unit_id: int,
+        device_id: int,
         value: Union[int, float],
         data_type: str = "uint16",
         scale_factor: float = 1.0,
@@ -39,7 +39,7 @@ class MappedRegisterData:
         self.address = address
         self.kind = kind
         self.size = size
-        self.unit_id = unit_id
+        self.device_id = device_id
         self.value = value  # Raw values from Modbus read
         self.data_type = data_type
         self.scale_factor = scale_factor
@@ -53,7 +53,7 @@ class MappedRegisterData:
             "address": self.address,
             "kind": self.kind,
             "size": self.size,
-            "unit_id": self.unit_id,
+            "device_id": self.device_id,
             "value": self.value,
             "data_type": self.data_type,
             "scale_factor": self.scale_factor,
@@ -94,7 +94,7 @@ def map_modbus_data_to_registers(
     Example:
         >>> from utils.map_csv_to_json import map_csv_to_json, json_to_register_map
         >>> register_map = json_to_register_map(map_csv_to_json(Path("config/main_sel_751_register_map.csv")))
-        >>> # Modbus read: modbus_client.read_registers(kind="holding", address=1400, count=100, unit_id=1)
+        >>> # Modbus read: modbus_client.read_registers(kind="holding", address=1400, count=100, device_id=1)
         >>> modbus_data = [5000, 1, 100, 200, 300, 400, 500, 600, 0, 0, 10000, 20000, ...]
         >>> mapped = map_modbus_data_to_registers(register_map, modbus_data, poll_start_address=1400)
         >>> # If address 1400 has value 5000, address 1401 has value 1, etc.
@@ -165,7 +165,7 @@ def map_modbus_data_to_registers(
             address=point.address,
             kind=point.kind,
             size=point.size,
-            unit_id=point.unit_id or 1,  # Default to 1 if not specified
+            device_id=point.device_id or 1,  # Default to 1 if not specified
             value=point_value,
             data_type=point.data_type or "uint16",
             scale_factor=point.scale_factor or 1.0,
@@ -196,7 +196,7 @@ def mapped_registers_to_dataframe(mapped_registers: List[MappedRegisterData]) ->
         mapped_registers: List of MappedRegisterData objects
         
     Returns:
-        DataFrame with columns: name, address, kind, size, unit_id, value, data_type, scale_factor, unit, tags
+        DataFrame with columns: name, address, kind, size, device_id, value, data_type, scale_factor, unit, tags
     """
     data = [reg.to_dict() for reg in mapped_registers]
     return pd.DataFrame(data)

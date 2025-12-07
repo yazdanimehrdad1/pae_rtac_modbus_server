@@ -1,4 +1,4 @@
-﻿"address","name","kind","size","unit_id","data_type","scale_factor","unit","tags"
+﻿"address","name","kind","size","device_id","data_type","scale_factor","unit","tags"
 "1400","HREG_01400_SEL_751_M_FREQ","holding","1","1","uint16","0.01","Hz","main-sel-751"
 "1401","HREG_01401_SEL_751_M_FREQS","holding","1","1","uint16","1.0","","main-sel-751"
 "1402","HREG_01402_SEL_751_M_IA","holding","1","1","int16","0.01","A","main-sel-751"

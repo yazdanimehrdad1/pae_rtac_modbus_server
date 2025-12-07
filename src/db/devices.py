@@ -41,7 +41,7 @@ async def create_device(device: DeviceCreate) -> DeviceResponse:
                 name=device.name,
                 host=device.host,
                 port=device.port,
-                unit_id=device.unit_id,
+                device_id=device.device_id,
                 description=device.description
             )
             
@@ -62,7 +62,7 @@ async def create_device(device: DeviceCreate) -> DeviceResponse:
                 name=new_device.name,
                 host=new_device.host,
                 port=new_device.port,
-                unit_id=new_device.unit_id,
+                device_id=new_device.device_id,
                 description=new_device.description,
                 register_map=None,  # New devices don't have register map initially
                 created_at=new_device.created_at,
@@ -106,7 +106,7 @@ async def get_all_devices() -> list[DeviceListItem]:
                 name=device.name,
                 host=device.host,
                 port=device.port,
-                unit_id=device.unit_id,
+                device_id=device.device_id,
                 description=device.description,
                 created_at=device.created_at,
                 updated_at=device.updated_at
@@ -140,7 +140,42 @@ async def get_device_by_id(device_id: int) -> Optional[DeviceResponse]:
             name=device.name,
             host=device.host,
             port=device.port,
-            unit_id=device.unit_id,
+            device_id=device.device_id,
+            description=device.description,
+            created_at=device.created_at,
+            updated_at=device.updated_at
+        )
+
+
+async def get_device_by_device_id(device_id: int) -> Optional[DeviceResponse]:
+    """
+    Get a device by device_id (Modbus unit/slave ID).
+    
+    Queries directly by device_id since it's unique and indexed for optimal performance.
+    
+    Args:
+        device_id: Modbus unit/slave ID (not the primary key)
+        
+    Returns:
+        Device if found, None otherwise
+    """
+    session_factory = get_async_session_factory()
+    async with session_factory() as session:
+        # Query directly by device_id (unique and indexed)
+        result = await session.execute(
+            select(Device).where(Device.device_id == device_id)
+        )
+        device = result.scalar_one_or_none()
+        
+        if device is None:
+            return None
+        
+        return DeviceResponse(
+            id=device.id,
+            name=device.name,
+            host=device.host,
+            port=device.port,
+            device_id=device.device_id,
             description=device.description,
             created_at=device.created_at,
             updated_at=device.updated_at
@@ -172,7 +207,7 @@ async def update_device(device_id: int, device_update: DeviceUpdate) -> DeviceRe
     Update a device in the database.
     
     Args:
-        device_id: Device ID to update
+        device_id: Modbus unit/slave ID (not the primary key)
         device_update: Device update data (only provided fields will be updated)
         
     Returns:
@@ -185,14 +220,14 @@ async def update_device(device_id: int, device_update: DeviceUpdate) -> DeviceRe
     session_factory = get_async_session_factory()
     async with session_factory() as session:
         try:
-            # Get existing device
+            # Get existing device by device_id (Modbus unit/slave ID)
             result = await session.execute(
-                select(Device).where(Device.id == device_id)
+                select(Device).where(Device.device_id == device_id)
             )
             device = result.scalar_one_or_none()
             
             if device is None:
-                raise ValueError(f"Device with ID {device_id} not found")
+                raise ValueError(f"Device with device_id {device_id} not found")
             
             # Update only provided fields
             if device_update.name is not None:
@@ -201,8 +236,8 @@ async def update_device(device_id: int, device_update: DeviceUpdate) -> DeviceRe
                 device.host = device_update.host
             if device_update.port is not None:
                 device.port = device_update.port
-            if device_update.unit_id is not None:
-                device.unit_id = device_update.unit_id
+            if device_update.device_id is not None:
+                device.device_id = device_update.device_id
             if device_update.description is not None:
                 device.description = device_update.description
             
@@ -214,14 +249,14 @@ async def update_device(device_id: int, device_update: DeviceUpdate) -> DeviceRe
             # Refresh to get the latest data (including updated_at)
             await session.refresh(device)
             
-            logger.info(f"Updated device ID {device_id}")
+            logger.info(f"Updated device with device_id {device_id} (primary key: {device.id})")
             
             return DeviceResponse(
                 id=device.id,
                 name=device.name,
                 host=device.host,
                 port=device.port,
-                unit_id=device.unit_id,
+                device_id=device.device_id,
                 description=device.description,
                 created_at=device.created_at,
                 updated_at=device.updated_at
@@ -242,15 +277,15 @@ async def update_device(device_id: int, device_update: DeviceUpdate) -> DeviceRe
             raise
 
 
-async def delete_device(device_id: int) -> bool:
+async def delete_device(device_id: int) -> Optional[DeviceResponse]:
     """
     Delete a device from the database.
     
     Args:
-        device_id: Device ID to delete
+        device_id: Modbus unit/slave ID (not the primary key)
         
     Returns:
-        True if device was deleted, False if not found
+        DeviceResponse with metadata of the deleted device if found, None if not found
         
     Raises:
         Exception: For database errors
@@ -258,22 +293,34 @@ async def delete_device(device_id: int) -> bool:
     session_factory = get_async_session_factory()
     async with session_factory() as session:
         try:
-            # Get the device to delete
+            # Get the device to delete by device_id (Modbus unit/slave ID)
             result = await session.execute(
-                select(Device).where(Device.id == device_id)
+                select(Device).where(Device.device_id == device_id)
             )
             device = result.scalar_one_or_none()
             
             if device is None:
-                logger.warning(f"Device ID {device_id} not found for deletion")
-                return False
+                logger.warning(f"Device with device_id {device_id} not found for deletion")
+                return None
+            
+            # Store device data before deletion
+            device_response = DeviceResponse(
+                id=device.id,
+                name=device.name,
+                host=device.host,
+                port=device.port,
+                device_id=device.device_id,
+                description=device.description,
+                created_at=device.created_at,
+                updated_at=device.updated_at
+            )
             
             # Delete the device
             session.delete(device)
             await session.commit()
             
-            logger.info(f"Deleted device ID {device_id}")
-            return True
+            logger.info(f"Deleted device with device_id {device_id} (primary key: {device.id})")
+            return device_response
             
         except Exception as e:
             await session.rollback()

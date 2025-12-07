@@ -49,8 +49,6 @@ def get_register_map_csv_path(device_name: str) -> Path:
     return csv_path
 
 
-
-
 def map_csv_to_json(
     csv_path: Path
 ) -> Dict[str, Any]:
@@ -106,8 +104,8 @@ def map_csv_to_json(
             register["size"] = int(row["size"])
         
         # Optional fields
-        if "unit_id" in df.columns and pd.notna(row.get("unit_id")):
-            register["unit_id"] = int(row["unit_id"])
+        if "device_id" in df.columns and pd.notna(row.get("device_id")):
+            register["device_id"] = int(row["device_id"])
         
         if "data_type" in df.columns and pd.notna(row.get("data_type")):
             register["data_type"] = str(row["data_type"]).strip().lower()
@@ -162,8 +160,8 @@ def json_to_register_map(json_data: Dict[str, Any]) -> RegisterMap:
         }
         
         # Optional fields
-        if "unit_id" in reg and reg["unit_id"] is not None:
-            point_data["unit_id"] = reg["unit_id"]
+        if "device_id" in reg and reg["device_id"] is not None:
+            point_data["device_id"] = reg["device_id"]
         
         if "data_type" in reg and reg["data_type"] is not None:
             point_data["data_type"] = reg["data_type"]
@@ -202,7 +200,7 @@ async def get_register_map_for_device(device_name: str) -> Optional[Dict[str, An
     try:
         register_map = await get_register_map_by_device_name(device_name)
         if register_map is not None:
-            logger.debug(f"Register map found in DB for device: {device_name}")
+            logger.info(f"Register map found in DB for device: {device_name}")
             return register_map
     except Exception as e:
         # Log database error but continue to try CSV fallback

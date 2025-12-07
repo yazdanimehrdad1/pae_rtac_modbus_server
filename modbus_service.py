@@ -31,7 +31,7 @@ class ReadRequest(BaseModel):
     )
     address: int = Field(..., ge=0, le=65535, description="Starting address")
     count: int = Field(..., ge=1, le=2000, description="Number of registers/bits to read")
-    unit_id: Optional[int] = Field(None, ge=1, le=255, description="Modbus unit ID (optional)")
+    device_id: Optional[int] = Field(None, ge=1, le=255, description="Modbus unit/slave ID (optional)")
 
 
 class ReadResponse(BaseModel):
@@ -40,7 +40,7 @@ class ReadResponse(BaseModel):
     kind: str
     address: int
     count: int
-    unit_id: int
+    device_id: int
     data: list
 
 
@@ -49,7 +49,7 @@ class HealthResponse(BaseModel):
     ok: bool
     host: str
     port: int
-    unit_id: int
+    device_id: int
     detail: Optional[str] = None
 
 
@@ -67,7 +67,7 @@ async def health_check():
         ok=ok,
         host=modbus.host,
         port=modbus.port,
-        unit_id=modbus.default_unit_id,
+        device_id=modbus.default_device_id,
         detail=detail
     )
 
@@ -92,7 +92,7 @@ async def read_registers(request: ReadRequest):
             kind=request.kind,
             address=request.address,
             count=request.count,
-            unit_id=request.unit_id
+            device_id=request.device_id
         )
         
         # TODO: Add Prometheus metrics here
@@ -104,7 +104,7 @@ async def read_registers(request: ReadRequest):
             kind=request.kind,
             address=request.address,
             count=request.count,
-            unit_id=request.unit_id or modbus.default_unit_id,
+            device_id=request.device_id or modbus.default_device_id,
             data=data
         )
         

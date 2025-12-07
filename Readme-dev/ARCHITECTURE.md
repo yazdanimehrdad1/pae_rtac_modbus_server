@@ -20,7 +20,7 @@ The project has been organized following modern Python microservice best practic
 #### 2. Scheduler (`scheduler/`)
 - **APScheduler (AsyncIOScheduler)** is recommended for async jobs
 - Implement **jitter** to prevent thundering herd
-- Consider **partitioning** jobs by device/unit_id for parallelism
+- Consider **partitioning** jobs by device/device_id for parallelism
 - Add **backoff** strategies for transient failures
 
 #### 3. Modbus Client (`modbus/`)

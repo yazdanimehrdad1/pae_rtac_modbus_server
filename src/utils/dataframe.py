@@ -25,7 +25,7 @@ def register_map_to_dataframe(register_map: RegisterMap) -> pd.DataFrame:
             "address": point.address,
             "kind": point.kind,
             "size": point.size,
-            "unit_id": point.unit_id,
+            "device_id": point.device_id,
             "data_type": point.data_type,
             "scale_factor": point.scale_factor,
             "unit": point.unit,

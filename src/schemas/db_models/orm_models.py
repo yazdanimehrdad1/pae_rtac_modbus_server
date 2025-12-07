@@ -51,11 +51,13 @@ class Device(Base):
         comment="Modbus TCP port (default: 502)"
     )
     
-    unit_id: Mapped[int] = mapped_column(
+    device_id: Mapped[int] = mapped_column(
         Integer,
         nullable=False,
+        unique=True,
+        index=True,
         default=1,
-        comment="Modbus unit/slave ID"
+        comment="Modbus unit/slave ID (unique)"
     )
     
     description: Mapped[Optional[str]] = mapped_column(

@@ -11,7 +11,7 @@ class ReadRequest(BaseModel):
     )
     address: int = Field(..., ge=0, le=65535, description="Starting address")
     count: int = Field(..., ge=1, le=2000, description="Number of registers/bits to read")
-    unit_id: Optional[int] = Field(None, ge=1, le=255, description="Modbus unit ID (optional)")
+    device_id: Optional[int] = Field(None, ge=1, le=255, description="Modbus unit/slave ID (optional)")
 
 
 class RegisterData(BaseModel):
@@ -43,7 +43,7 @@ class ReadResponse(BaseModel):
     kind: str
     address: int
     count: int
-    unit_id: int
+    device_id: int = Field(..., description="Modbus unit/slave ID")
     data: dict[int, RegisterData] = Field(
         ..., description="Dictionary mapping register addresses to their data (name, value, type)"
     )
@@ -56,7 +56,7 @@ class SimpleReadResponse(BaseModel):
     kind: str
     address: int
     count: int
-    unit_id: int
+    device_id: int = Field(..., description="Modbus unit/slave ID")
     data: List[RegisterValue] = Field(
         default_factory=list, description="Array of register number and value pairs"
     )
@@ -67,5 +67,5 @@ class HealthResponse(BaseModel):
     ok: bool
     host: str
     port: int
-    unit_id: int
+    device_id: int = Field(..., description="Modbus unit/slave ID")
     detail: Optional[str] = None
