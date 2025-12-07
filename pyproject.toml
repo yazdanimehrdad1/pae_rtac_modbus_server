@@ -39,7 +39,7 @@ requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["api", "cache", "modbus", "schemas", "utils", "db", "helpers", "scheduler", "telemetry"]
+packages = ["api", "cache", "modbus", "schemas", "utils", "db", "scheduler", "telemetry"]
 
 [tool.setuptools.package-dir]
 "" = "src"

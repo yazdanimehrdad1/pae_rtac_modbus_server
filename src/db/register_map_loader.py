@@ -1,0 +1,304 @@
+"""
+Register map CSV loader for startup initialization.
+
+Loads register map CSV files from the config folder and syncs them to the database.
+"""
+
+from pathlib import Path
+from typing import Optional, Dict, Any, List, TypedDict
+import json
+
+from db.devices import get_device_id_by_name, create_device
+from db.device_register_map import create_register_map, update_register_map, get_register_map_by_device_id
+from schemas.db_models.models import DeviceCreate
+from utils.map_csv_to_json import map_csv_to_json
+from config import settings
+from logger import get_logger
+
+logger = get_logger(__name__)
+
+
+class DeviceLoadResult(TypedDict, total=False):
+    """Result metadata from loading a device register map."""
+    device_name: str
+    device_id: int
+    success: bool
+    device_created: bool
+    register_map_created: bool
+    error: Optional[str]
+
+
+async def load_register_map_from_csv(csv_path: Path, device_name: Optional[str] = None, unit_id: Optional[int] = None) -> DeviceLoadResult:
+    """
+    Load a single register map CSV file into the database.
+    
+    This function:
+    1. Checks if device exists, creates it if not (with default host/port)
+    2. Converts CSV to JSON format
+    3. Creates register map in database only if it doesn't already exist
+    
+    Args:
+        csv_path: Path to the CSV file
+        device_name: Device name (required, should be provided from JSON config)
+        unit_id: Unit ID (optional, should be provided from JSON config, falls back to settings default)
+        
+    Returns:
+        DeviceLoadResult with metadata about the loaded device (success field indicates if loading succeeded)
+    """
+    try:
+        if device_name is None:
+            error_msg = f"Device name is required for CSV file: {csv_path}"
+            logger.error(error_msg)
+            return DeviceLoadResult(
+                device_name="",
+                device_id=0,
+                success=False,
+                device_created=False,
+                register_map_created=False,
+                error=error_msg
+            )
+        
+        logger.info(f"Processing register map CSV for device: {device_name}")
+        
+        # Step 2: Check if device exists, create if not
+        device_id = await get_device_id_by_name(device_name)
+        device_created = False
+        
+        if device_id is None:
+            # Device doesn't exist, create it
+            # Use default host/port from config
+            device_create = DeviceCreate(
+                name=device_name,
+                host=settings.modbus_host,  # Default from config
+                port=settings.modbus_port,  # Default from config
+                unit_id=unit_id,
+                description=f"Device created from register map CSV: {csv_path.name}"
+            )
+            
+            try:
+                device_response = await create_device(device_create)
+                device_id = device_response.id
+                device_created = True
+                logger.info(f"Created device '{device_name}' (ID: {device_id}) from CSV file")
+            except ValueError as e:
+                # Device might have been created by another process
+                logger.warning(f"Device creation failed (may already exist): {e}")
+                device_id = await get_device_id_by_name(device_name)
+                if device_id is None:
+                    error_msg = f"Could not create or find device '{device_name}'"
+                    logger.error(error_msg)
+                    return DeviceLoadResult(
+                        device_name=device_name,
+                        device_id=0,
+                        success=False,
+                        device_created=False,
+                        register_map_created=False,
+                        error=error_msg
+                    )
+        else:
+            logger.debug(f"Device '{device_name}' already exists (ID: {device_id})")
+        
+        # Step 3: Convert CSV to JSON
+        try:
+            register_map_json = map_csv_to_json(csv_path)
+        except Exception as e:
+            error_msg = f"Failed to convert CSV to JSON for device '{device_name}': {e}"
+            logger.error(error_msg)
+            return DeviceLoadResult(
+                device_name=device_name,
+                device_id=device_id,
+                success=False,
+                device_created=device_created,
+                register_map_created=False,
+                error=error_msg
+            )
+        
+        # Step 4: Create register map only if it doesn't already exist
+        existing_map = await get_register_map_by_device_id(device_id)
+        register_map_created = False
+        
+        if existing_map is None:
+            # Create new register map
+            try:
+                await create_register_map(device_id, register_map_json)
+                register_map_created = True
+                logger.info(f"Created register map for device '{device_name}' (ID: {device_id})")
+            except ValueError as e:
+                # Map might have been created by another process
+                logger.warning(f"Register map creation failed (may already exist): {e}")
+                # Verify it now exists
+                existing_map = await get_register_map_by_device_id(device_id)
+                if existing_map is None:
+                    error_msg = f"Could not create register map for device '{device_name}'"
+                    logger.error(error_msg)
+                    return DeviceLoadResult(
+                        device_name=device_name,
+                        device_id=device_id,
+                        success=False,
+                        device_created=device_created,
+                        register_map_created=False,
+                        error=error_msg
+                    )
+                else:
+                    logger.info(f"Register map already exists for device '{device_name}' (ID: {device_id}), skipping")
+        else:
+            # Register map already exists, skip
+            logger.info(f"Register map already exists for device '{device_name}' (ID: {device_id}), skipping")
+        
+        return DeviceLoadResult(
+            device_name=device_name,
+            device_id=device_id,
+            success=True,
+            device_created=device_created,
+            register_map_created=register_map_created,
+            error=None
+        )
+        
+    except Exception as e:
+        error_msg = f"Unexpected error loading register map from CSV '{csv_path}': {e}"
+        logger.error(error_msg, exc_info=True)
+        return DeviceLoadResult(
+            device_name=device_name or "",
+            device_id=0,
+            success=False,
+            device_created=False,
+            register_map_created=False,
+            error=error_msg
+        )
+
+
+def load_device_register_map_config(config_dir: Path) -> Dict[str, Dict[str, Any]]:
+    """
+    Load device to CSV file mapping from JSON config file.
+    
+    Reads the device_register_maps.json file from the config directory
+    which maps device names to their associated CSV file paths and unit_id.
+    
+    Expected JSON format:
+    {
+      "device-name": {
+        "csv_file": "file.csv",
+        "unit_id": 1
+      }
+    }
+    
+    Args:
+        config_dir: Path to the config directory
+        
+    Returns:
+        Dictionary mapping device names to config objects with 'csv_file' and 'unit_id' keys
+    """
+    config_file = config_dir / "device_register_maps.json"
+    
+    if not config_file.exists():
+        logger.warning(f"Device register map config file not found: {config_file}")
+        return {}
+    
+    try:
+        with open(config_file, 'r', encoding='utf-8') as f:
+            device_mapping = json.load(f)
+        
+        if not isinstance(device_mapping, dict):
+            logger.error(f"Invalid format in {config_file}: expected JSON object")
+            return {}
+        
+        # Validate and normalize the config format
+        normalized_mapping = {}
+        for device_name, config_value in device_mapping.items():
+            if isinstance(config_value, str):
+                # Legacy format: just a string (CSV filename)
+                normalized_mapping[device_name] = {
+                    "csv_file": config_value,
+                    "unit_id": None
+                }
+            elif isinstance(config_value, dict):
+                # New format: object with csv_file and unit_id
+                normalized_mapping[device_name] = {
+                    "csv_file": config_value.get("csv_file"),
+                    "unit_id": config_value.get("unit_id")
+                }
+            else:
+                logger.warning(f"Invalid config format for device '{device_name}', skipping")
+                continue
+        
+        logger.info(f"Loaded device register map config with {len(normalized_mapping)} device(s)")
+        return normalized_mapping
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse JSON config file {config_file}: {e}")
+        return {}
+    except Exception as e:
+        logger.error(f"Failed to load device register map config from {config_file}: {e}")
+        return {}
+
+
+async def load_all_register_maps_from_config() -> Dict[str, DeviceLoadResult]:
+    """
+    Load all register map CSV files from the config folder using JSON mapping.
+    
+    Reads the device_register_maps.json file from the config directory which
+    maps device names to their associated CSV file paths, then loads each
+    CSV file into the database.
+    
+    Returns:
+        Dictionary mapping device names to DeviceLoadResult metadata
+    """
+    config_dir = Path("config")
+    results = {}
+    
+    # Load device to CSV file mapping from JSON config
+    device_mapping = load_device_register_map_config(config_dir)
+    
+    if not device_mapping:
+        logger.info("No device register map mappings found in config file")
+        return results
+    
+    logger.info(f"Loading {len(device_mapping)} register map CSV file(s) into database...")
+    
+    for device_name, device_config in device_mapping.items():
+        csv_filename = device_config.get("csv_file")
+        unit_id = device_config.get("unit_id")
+        
+        if not csv_filename:
+            error_msg = f"CSV file not specified for device '{device_name}'"
+            logger.error(error_msg)
+            results[device_name] = DeviceLoadResult(
+                device_name=device_name,
+                device_id=0,
+                success=False,
+                device_created=False,
+                register_map_created=False,
+                error=error_msg
+            )
+            continue
+        
+        # Construct full path to CSV file (relative to config directory)
+        csv_path = config_dir / csv_filename
+        
+        if not csv_path.exists():
+            error_msg = f"CSV file not found for device '{device_name}': {csv_path}"
+            logger.error(error_msg)
+            results[device_name] = DeviceLoadResult(
+                device_name=device_name,
+                device_id=0,
+                success=False,
+                device_created=False,
+                register_map_created=False,
+                error=error_msg
+            )
+            continue
+        
+        # Load the register map using the device name and unit_id from the mapping
+        result = await load_register_map_from_csv(csv_path, device_name, unit_id)
+        results[device_name] = result
+    
+    # Log summary
+    successful = sum(1 for result in results.values() if result.get("success", False))
+    failed = len(results) - successful
+    
+    if successful > 0:
+        logger.info(f"Successfully loaded {successful} register map(s) into database")
+    if failed > 0:
+        logger.warning(f"Failed to load {failed} register map(s)")
+    
+    return results
+
