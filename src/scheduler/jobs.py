@@ -1,7 +1,8 @@
 """Polling jobs for Modbus data collection."""
 
+import asyncio
 from datetime import datetime, timezone
-from typing import Dict, Any
+from typing import Dict, Any, List, Optional, TypedDict
 
 from modbus.client import ModbusClient, translate_modbus_error
 from modbus.modbus_utills import ModbusUtils
@@ -9,9 +10,10 @@ from cache.cache import CacheService
 from config import settings
 from logger import get_logger
 from utils.map_csv_to_json import json_to_register_map, get_register_map_for_device
-from utils.modbus_mapper import map_modbus_data_to_registers
-from db.devices import get_device_id_by_name
+from utils.modbus_mapper import map_modbus_data_to_registers, MappedRegisterData
+from db.devices import get_all_devices
 from db.register_readings import insert_register_readings_batch
+from schemas.db_models.models import DeviceListItem
 
 logger = get_logger(__name__)
 
@@ -21,221 +23,397 @@ cache_service = CacheService()
 modbus_utils = ModbusUtils(modbus_client)
 
 
-async def cron_job_poll_modbus_registers() -> None:
+class PollResult(TypedDict, total=False):
+    """Result of polling a single device."""
+    device_name: str
+    success: bool
+    cache_successful: int
+    cache_failed: int
+    db_successful: int
+    db_failed: int
+    error: Optional[str]
+
+
+async def get_devices_to_poll() -> List[DeviceListItem]:
     """
-    Scheduled job to poll Modbus registers and store data in Redis cache.
+    Get list of devices to poll from database, filtered by poll_enabled.
     
-    This job:
-    1. Loads register map from database (with CSV fallback via get_register_map_for_device)
-    2. Makes a single modbus client call to poll points from a fixed index, and fixed range
-    3. Uses map_modbus_data_to_registers() to map register points to their values
-    4. Stores data in Redis cache with timestamp
-    5. Handles errors gracefully
+    Returns:
+        List of devices that have polling enabled
     """
-    logger.info("Starting Modbus polling job")
+    all_devices = await get_all_devices()
+    
+    logger.info(f"Retrieved {len(all_devices)} device(s) from database")
+    
+    # Filter devices by poll_enabled from database
+    devices_to_poll = []
+    for device in all_devices:
+        # Check poll_enabled directly from device
+        if device.poll_enabled:
+            devices_to_poll.append(device)
+            logger.debug(f"Device '{device.name}' (ID: {device.id}) has polling enabled")
+        else:
+            # Polling disabled
+            logger.debug(f"Device '{device.name}' (ID: {device.id}) has polling disabled (poll_enabled={device.poll_enabled}), skipping")
+    
+    logger.info(f"Found {len(devices_to_poll)} device(s) to poll out of {len(all_devices)} total device(s)")
+    return devices_to_poll
+
+
+async def read_device_registers(
+    device: DeviceListItem,
+    polling_config: Dict[str, Any]
+) -> List[Any]:
+    """
+    Read Modbus registers for a device using polling configuration.
+    
+    Args:
+        device: Device to read from
+        polling_config: Polling configuration (address, count, kind, device_id)
+        
+    Returns:
+        List of raw register values from Modbus
+        
+    Raises:
+        Exception: If Modbus read fails
+    """
+    address = polling_config["poll_address"]
+    count = polling_config["poll_count"]
+    kind = polling_config["poll_kind"]
+    device_id = device.device_id  # Use device's Modbus device_id
+    
+    logger.debug(
+        f"Reading Modbus registers for device '{device.name}': "
+        f"kind={kind}, address={address}, count={count}, device_id={device_id}"
+    )
+    
+    # Use appropriate ModbusUtils method based on register kind
+    if kind == "holding":
+        modbus_data = modbus_utils.read_holding_registers(address, count, device_id)
+    elif kind == "input":
+        modbus_data = modbus_utils.read_input_registers(address, count, device_id)
+    elif kind == "coils":
+        modbus_data = modbus_utils.read_coils(address, count, device_id)
+    elif kind == "discretes":
+        modbus_data = modbus_utils.read_discrete_inputs(address, count, device_id)
+    else:
+        raise ValueError(f"Invalid register kind: {kind}. Must be 'holding', 'input', 'coils', or 'discretes'")
+    
+    logger.info(f"Successfully read {len(modbus_data)} registers from device '{device.name}'")
+    return modbus_data
+
+
+async def store_device_data_in_cache(
+    device_name: str,
+    mapped_registers: List[MappedRegisterData],
+    polling_config: Dict[str, Any],
+    timestamp: str
+) -> tuple[int, int]:
+    """
+    Store mapped register data in Redis cache.
+    
+    Args:
+        device_name: Device name for cache key
+        mapped_registers: List of mapped register data
+        polling_config: Polling configuration
+        timestamp: ISO format timestamp string
+        
+    Returns:
+        Tuple of (successful_reads, failed_reads)
+    """
+    try:
+        # Build register data dictionary
+        register_data_dict: Dict[int, Dict[str, Any]] = {}
+        
+        for register_data in mapped_registers:
+            register_entry: Dict[str, Any] = {
+                "name": register_data.name,
+                "value": register_data.value,
+                "address": register_data.address,
+                "kind": register_data.kind,
+                "size": register_data.size,
+                "device_id": register_data.device_id,
+            }
+            
+            # Add optional metadata
+            if register_data.data_type:
+                register_entry["Type"] = register_data.data_type
+            if register_data.scale_factor:
+                register_entry["scale_factor"] = register_data.scale_factor
+            if register_data.unit:
+                register_entry["unit"] = register_data.unit
+            if register_data.tags:
+                register_entry["tags"] = register_data.tags
+            
+            register_data_dict[register_data.address] = register_entry
+        
+        # Create cache object
+        cache_data: Dict[str, Any] = {
+            "ok": True,
+            "timestamp": timestamp,
+            "kind": polling_config["poll_kind"],
+            "address": polling_config["poll_address"],
+            "count": polling_config["poll_count"],
+            "device_id": polling_config.get("device_id"),  # Will be set by caller if needed
+            "data": register_data_dict
+        }
+        
+        # Store in cache
+        cache_key_latest = f"poll:{device_name}:latest"
+        cache_key_timestamped = f"poll:{device_name}:{timestamp}"
+        
+        await cache_service.set(
+            key=cache_key_latest,
+            value=cache_data,
+            ttl=settings.poll_cache_ttl
+        )
+        
+        await cache_service.set(
+            key=cache_key_timestamped,
+            value=cache_data,
+            ttl=settings.poll_cache_ttl
+        )
+        
+        successful_reads = len(register_data_dict)
+        logger.info(f"Successfully stored {successful_reads} registers in cache for device '{device_name}'")
+        return successful_reads, 0
+        
+    except Exception as e:
+        logger.error(f"Failed to store data in cache for device '{device_name}': {e}", exc_info=True)
+        return 0, len(mapped_registers)
+
+
+async def store_device_data_in_db(
+    device_id: int,
+    mapped_registers: List[MappedRegisterData],
+    timestamp_dt: datetime
+) -> tuple[int, int]:
+    """
+    Store mapped register data in database.
+    
+    Args:
+        device_id: Database device ID (primary key)
+        mapped_registers: List of mapped register data
+        timestamp_dt: Datetime object for database storage
+        
+    Returns:
+        Tuple of (successful_inserts, failed_inserts)
+    """
+    try:
+        batch_readings = []
+        for register_data in mapped_registers:
+            batch_readings.append({
+                'device_id': device_id,
+                'register_address': register_data.address,
+                'value': register_data.value,
+                'timestamp': timestamp_dt,
+                'quality': 'good',
+                'register_name': register_data.name,
+                'unit': register_data.unit or None
+            })
+        
+        inserted_count = await insert_register_readings_batch(batch_readings)
+        logger.info(f"Successfully stored {inserted_count} register readings in database")
+        return inserted_count, 0
+        
+    except Exception as e:
+        logger.error(f"Failed to store register readings in database: {e}", exc_info=True)
+        return 0, len(mapped_registers)
+
+
+async def poll_single_device(device: DeviceListItem) -> PollResult:
+    """
+    Poll a single device: load register map, read registers, map data, and store in cache/DB.
+    
+    Args:
+        device: Device to poll
+        
+    Returns:
+        PollResult with success status and statistics
+    """
+    device_name = device.name
+    result: PollResult = {
+        "device_name": device_name,
+        "success": False,
+        "cache_successful": 0,
+        "cache_failed": 0,
+        "db_successful": 0,
+        "db_failed": 0,
+        "error": None
+    }
     
     try:
-        # 1. Load register map from database (with CSV fallback)
-        device_name = settings.poll_device_name
-        json_data = await get_register_map_for_device(device_name)
+        # 1. Get polling configuration from device (already loaded in DeviceListItem)
+        if not device.poll_enabled:
+            result["error"] = f"Polling disabled for device '{device_name}'"
+            logger.debug(result["error"])
+            return result
         
+        # Convert polling config to dict for compatibility
+        polling_config = {
+            "poll_address": device.poll_address,
+            "poll_count": device.poll_count,
+            "poll_kind": device.poll_kind,
+            "poll_enabled": device.poll_enabled
+        }
+        
+        # 2. Load register map from database (with CSV fallback)
+        json_data = await get_register_map_for_device(device_name)
         if json_data is None:
-            logger.error(f"Register map not found for device '{device_name}' in database or CSV")
-            return
+            result["error"] = f"Register map not found for device '{device_name}' in database or CSV"
+            logger.error(result["error"])
+            return result
         
         register_map = json_to_register_map(json_data)
         logger.info(f"Loaded {len(register_map.points)} register points for device '{device_name}'")
         
         if not register_map.points:
-            logger.warning("No register points to poll")
-            return
+            result["error"] = f"No register points to poll for device '{device_name}'"
+            logger.warning(result["error"])
+            return result
         
-        # 2. Make a single modbus client call to poll points from a fixed index, and fixed range
-        logger.debug(
-            f"Reading Modbus registers: kind={settings.main_sel_751_poll_kind}, "
-            f"address={settings.main_sel_751_poll_address}, count={settings.main_sel_751_poll_count}, "
-            f"device_id={settings.main_sel_751_poll_device_id}"
-        )
+        # 3. Read Modbus registers
+        modbus_data = await read_device_registers(device, polling_config)
         
-        modbus_data = modbus_utils.read_device_registers_main_sel_751()
-        
-        logger.info(f"Successfully read {len(modbus_data)} registers from Modbus")
-        
-        # 3. Use map_modbus_data_to_registers() to map register points to their values
+        # 4. Map register data
         mapped_registers = map_modbus_data_to_registers(
             register_map=register_map,
             modbus_read_data=modbus_data,
-            poll_start_address=settings.main_sel_751_poll_address
+            poll_start_address=polling_config["poll_address"]
         )
         
         if not mapped_registers:
-            logger.warning("No register points mapped from Modbus data, skipping storage")
-            return
+            result["error"] = f"No register points mapped from Modbus data for device '{device_name}'"
+            logger.warning(result["error"])
+            return result
         
-        # 4. Get device_id for database storage
-        device_name = settings.poll_device_name
-        device_id = await get_device_id_by_name(device_name)
+        # 5. Get device_id (primary key) from device object
+        device_id = device.id
         
-        if device_id is None:
-            logger.warning(f"Device '{device_name}' not found in database. Database storage will be skipped.")
-        else:
-            logger.debug(f"Found device_id={device_id} for device '{device_name}'")
-        
-        # 5. Store data in Redis cache with timestamp
+        # 6. Store data in cache and database
         timestamp = datetime.now(timezone.utc).isoformat()
-        timestamp_dt = datetime.now(timezone.utc)  # For database storage
+        timestamp_dt = datetime.now(timezone.utc)
         
-        logger.info("Storing data in Redis cache")
-        logger.info(f"Register map: {len(register_map.points)} points")
+        # Add device_id (Modbus unit/slave ID) to polling_config for cache
+        polling_config["device_id"] = device.device_id  # Modbus device_id
         
-        try:
-            # Build a single large object containing all mapped registers, similar to ReadResponse
-            # Store all data from mapped_registers in a structure similar to /read/main-sel-751
-            register_data_dict: Dict[int, Dict[str, Any]] = {}
-            
-            for register_data in mapped_registers:
-                # Create RegisterData-like structure with all fields from MappedRegisterData
-                register_entry: Dict[str, Any] = {
-                    "name": register_data.name,
-                    "value": register_data.value,
-                    "address": register_data.address,
-                    "kind": register_data.kind,
-                    "size": register_data.size,
-                    "device_id": register_data.device_id,
-                }
-                
-                # Add optional metadata
-                if register_data.data_type:
-                    register_entry["Type"] = register_data.data_type
-                if register_data.scale_factor:
-                    register_entry["scale_factor"] = register_data.scale_factor
-                if register_data.unit:
-                    register_entry["unit"] = register_data.unit
-                if register_data.tags:
-                    register_entry["tags"] = register_data.tags
-                
-                # Use address as key (similar to ReadResponse.data structure)
-                register_data_dict[register_data.address] = register_entry
-            
-            # Create cache object similar to ReadResponse structure
-            cache_data: Dict[str, Any] = {
-                "ok": True,
-                "timestamp": timestamp,
-                "kind": settings.main_sel_751_poll_kind,
-                "address": settings.main_sel_751_poll_address,
-                "count": settings.main_sel_751_poll_count,
-                "device_id": settings.main_sel_751_poll_device_id,
-                "data": register_data_dict
-            }
-            
-            # Store in cache with keys: poll:{device_name}:latest and poll:{device_name}:{timestamp}
-            device_name = settings.poll_device_name
-            cache_key_latest = f"poll:{device_name}:latest"
-            cache_key_timestamped = f"poll:{device_name}:{timestamp}"
+        cache_successful, cache_failed = await store_device_data_in_cache(
+            device_name, mapped_registers, polling_config, timestamp
+        )
         
-            # TODO: Optimize caching strategy using Redis Sorted Sets (Option B)
-            # Current approach stores full objects in timestamped keys, which is inefficient for:
-            # - Memory usage (redundant metadata in each entry)
-            # - Querying past hour (requires fetching 60+ keys per device)
-            # 
-            # Proposed optimization:
-            # 1. Keep current structure for latest: poll:{device}:latest (full object)
-            # 2. Use Redis Sorted Set for history: poll:{device}:history (ZSET)
-            #    - Score: timestamp (Unix epoch)
-            #    - Value: JSON string with only {address: value} pairs (no metadata)
-            # 3. Store metadata separately: register_map:{device} (static, no TTL)
-            # 4. Query past hour: ZRANGEBYSCORE poll:{device}:history <1-hour-ago> +inf WITHSCORES
-            # 5. Cleanup old data: ZREMRANGEBYSCORE poll:{device}:history -inf <1-hour-ago>
-            # 
-            # Benefits:
-            # - 90% memory reduction (only values, not metadata)
-            # - Single Redis call per device for past hour queries
-            # - Efficient time-range queries
-            # - Better scalability for 10+ devices
-            
-            logger.info(f"Cache key latest: {cache_key_latest}")
-            logger.info(f"Cache key timestamped: {cache_key_timestamped}")
-            logger.info(f"Storing {len(register_data_dict)} registers in cache")
-            logger.info(f"Cache TTL: {settings.poll_cache_ttl}")  
-            # Store latest value (overwrites previous latest)
-            await cache_service.set(
-                key=cache_key_latest,
-                value=cache_data,
-                ttl=settings.poll_cache_ttl
-            )
-            
-            # Store timestamped value (for historical tracking)
-            await cache_service.set(
-                key=cache_key_timestamped,
-                value=cache_data,
-                ttl=settings.poll_cache_ttl
-            )
-            
-            successful_reads = len(register_data_dict)
-            failed_reads = 0
-            
-            logger.info(f"Successfully stored {successful_reads} registers in cache")
-            
-        except Exception as e:
-            logger.error(f"Failed to store data in cache: {e}", exc_info=True)
-            successful_reads = 0
-            failed_reads = len(mapped_registers)
-        
-        # 6. Store data in database (if device_id is available)
-        # TODO: Add failover mechanism - create a separate cron job that checks for DB insertion errors
-        # and retries failed inserts. This will handle cases where DB is temporarily unavailable.
         db_successful = 0
         db_failed = 0
-        
         if device_id is not None:
-            logger.info(f"Storing {len(mapped_registers)} register readings in database...")
-            
-            try:
-                # Prepare batch insert data from mapped_registers
-                batch_readings = []
-                for register_data in mapped_registers:
-                    batch_readings.append({
-                        'device_id': device_id,
-                        'register_address': register_data.address,
-                        'value': register_data.value,  # Will be converted to float in batch function
-                        'timestamp': timestamp_dt,
-                        'quality': 'good',  # Default to good, can be enhanced later
-                        'register_name': register_data.name,
-                        'unit': register_data.unit or None
-                    })
-                
-                # Execute batch insert
-                inserted_count = await insert_register_readings_batch(batch_readings)
-                db_successful = inserted_count
-                
-                logger.info(f"Successfully stored {db_successful} register readings in database")
-                
-            except Exception as e:
-                # Log error but don't fail the job
-                db_failed = len(mapped_registers)
-                logger.error(
-                    f"Failed to store register readings in database: {e}",
-                    exc_info=True
-                )
-                logger.warning(
-                    "Database storage failed, but job completed successfully. "
-                    "Redis cache storage was successful. "
-                    "TODO: Implement failover cron job to retry failed DB inserts."
-                )
+            db_successful, db_failed = await store_device_data_in_db(
+                device_id, mapped_registers, timestamp_dt
+            )
         else:
-            logger.debug("Skipping database storage (device not found in database)")
+            logger.debug(f"Device '{device_name}' not found in database, skipping DB storage")
+        
+        result["success"] = True
+        result["cache_successful"] = cache_successful
+        result["cache_failed"] = cache_failed
+        result["db_successful"] = db_successful
+        result["db_failed"] = db_failed
         
         logger.info(
-            f"Modbus polling job completed: "
-            f"Cache: {successful_reads} successful, {failed_reads} failed | "
-            f"Database: {db_successful} successful, {db_failed} failed "
-            f"(total: {len(mapped_registers)} mapped registers)"
+            f"Device '{device_name}' polling completed: "
+            f"Cache: {cache_successful} successful, {cache_failed} failed | "
+            f"Database: {db_successful} successful, {db_failed} failed"
         )
         
     except Exception as e:
         status_code, error_message = translate_modbus_error(e)
+        result["error"] = f"status_code={status_code}, error_message={error_message}"
         logger.error(
-            f"Error in Modbus polling job: status_code={status_code}, error_message={error_message}",
+            f"Error polling device '{device_name}': {result['error']}",
+            exc_info=True
+        )
+    
+    return result
+
+
+async def cron_job_poll_modbus_registers() -> None:
+    """
+    Scheduled job to poll Modbus registers for all enabled devices.
+    
+    This job:
+    1. Gets list of devices to poll (from database, filtered by poll_enabled)
+    2. For each device:
+       - Loads register map (DB first, then CSV fallback)
+       - Reads Modbus registers using device-specific polling config
+       - Maps register data to register points
+       - Stores data in Redis cache and database
+    3. Handles errors per device (isolated - one device failure doesn't stop others)
+    4. Logs summary statistics
+    """
+    logger.info("Starting Modbus polling job")
+    
+    try:
+        # 1. Get devices to poll
+        devices_to_poll = await get_devices_to_poll()
+        
+        if not devices_to_poll:
+            logger.warning("No devices to poll (all devices disabled or not found in config)")
+            return
+        
+        # 2. Poll each device in parallel (errors are isolated per device)
+        # Use asyncio.gather to run all device polling operations concurrently
+        # Note: ModbusClient is safe for concurrent use because:
+        # - It only stores read-only configuration
+        # - Each read_registers() call creates a new ModbusTcpClient connection via context manager
+        # - No shared mutable state between concurrent calls
+        results: List[PollResult] = await asyncio.gather(
+            *[poll_single_device(device) for device in devices_to_poll],
+            return_exceptions=True
+        )
+        
+        # Convert any exceptions to error results
+        processed_results: List[PollResult] = []
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                device_name = devices_to_poll[i].name if i < len(devices_to_poll) else "unknown"
+                logger.error(f"Unexpected error polling device '{device_name}': {result}", exc_info=True)
+                processed_results.append({
+                    "device_name": device_name,
+                    "success": False,
+                    "cache_successful": 0,
+                    "cache_failed": 0,
+                    "db_successful": 0,
+                    "db_failed": 0,
+                    "error": str(result)
+                })
+            else:
+                processed_results.append(result)
+        
+        results = processed_results
+        
+        # 3. Log summary
+        successful_devices = sum(1 for r in results if r.get("success", False))
+        failed_devices = len(results) - successful_devices
+        total_cache_successful = sum(r.get("cache_successful", 0) for r in results)
+        total_cache_failed = sum(r.get("cache_failed", 0) for r in results)
+        total_db_successful = sum(r.get("db_successful", 0) for r in results)
+        total_db_failed = sum(r.get("db_failed", 0) for r in results)
+        
+        logger.info(
+            f"Modbus polling job completed: "
+            f"{successful_devices} device(s) successful, {failed_devices} device(s) failed | "
+            f"Cache: {total_cache_successful} successful, {total_cache_failed} failed | "
+            f"Database: {total_db_successful} successful, {total_db_failed} failed"
+        )
+        
+        # Log individual device failures
+        for result in results:
+            if not result.get("success", False):
+                logger.warning(
+                    f"Device '{result.get('device_name', 'unknown')}' polling failed: "
+                    f"{result.get('error', 'Unknown error')}"
+                )
+        
+    except Exception as e:
+        logger.error(
+            f"Error in Modbus polling job: {e}",
             exc_info=True
         )
         # Don't re-raise - let scheduler handle retry on next interval

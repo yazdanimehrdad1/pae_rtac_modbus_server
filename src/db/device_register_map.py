@@ -64,6 +64,9 @@ async def get_register_map_by_device_name(device_name: str) -> Optional[Dict[str
         # SQLAlchemy JSON type automatically handles dict conversion
         return device_register_map.register_map
 
+
+
+
 # TODO: adjust this function to add json b based on the excel file
 async def create_register_map(device_id: int, register_map: Dict[str, Any]) -> bool:
     """
@@ -167,4 +170,6 @@ async def delete_register_map(device_id: int) -> bool:
             logger.warning(f"Register map not found for device ID {device_id}")
         
         return deleted
+
+
 

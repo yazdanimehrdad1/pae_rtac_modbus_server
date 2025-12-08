@@ -6,14 +6,15 @@ Uses SQLAlchemy 2.0+ async ORM.
 """
 
 from datetime import datetime
-from typing import Optional
-from sqlalchemy import select
+from typing import Optional, Dict, Any
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
 
 from db.connection import get_async_session_factory
 from schemas.db_models.models import DeviceCreate, DeviceUpdate, DeviceResponse, DeviceListItem
 from schemas.db_models.orm_models import Device
+from config import settings
 from logger import get_logger
 
 logger = get_logger(__name__)
@@ -42,7 +43,11 @@ async def create_device(device: DeviceCreate) -> DeviceResponse:
                 host=device.host,
                 port=device.port,
                 device_id=device.device_id,
-                description=device.description
+                description=device.description,
+                poll_address=device.poll_address,
+                poll_count=device.poll_count,
+                poll_kind=device.poll_kind,
+                poll_enabled=device.poll_enabled
             )
             
             # Add to session and flush to get the ID
@@ -65,6 +70,10 @@ async def create_device(device: DeviceCreate) -> DeviceResponse:
                 device_id=new_device.device_id,
                 description=new_device.description,
                 register_map=None,  # New devices don't have register map initially
+                poll_address=new_device.poll_address,
+                poll_count=new_device.poll_count,
+                poll_kind=new_device.poll_kind,
+                poll_enabled=new_device.poll_enabled if new_device.poll_enabled is not None else True,
                 created_at=new_device.created_at,
                 updated_at=new_device.updated_at
             )
@@ -100,19 +109,25 @@ async def get_all_devices() -> list[DeviceListItem]:
         devices = result.scalars().all()
         
         # Convert ORM models to Pydantic models
-        return [
-            DeviceListItem(
-                id=device.id,
-                name=device.name,
-                host=device.host,
-                port=device.port,
-                device_id=device.device_id,
-                description=device.description,
-                created_at=device.created_at,
-                updated_at=device.updated_at
+        device_list = []
+        for device in devices:
+            device_list.append(
+                DeviceListItem(
+                    id=device.id,
+                    name=device.name,
+                    host=device.host,
+                    port=device.port,
+                    device_id=device.device_id,
+                    description=device.description,
+                    poll_address=device.poll_address,
+                    poll_count=device.poll_count,
+                    poll_kind=device.poll_kind,
+                    poll_enabled=device.poll_enabled if device.poll_enabled is not None else True,
+                    created_at=device.created_at,
+                    updated_at=device.updated_at
+                )
             )
-            for device in devices
-        ]
+        return device_list
 
 
 async def get_device_by_id(device_id: int) -> Optional[DeviceResponse]:
@@ -142,6 +157,10 @@ async def get_device_by_id(device_id: int) -> Optional[DeviceResponse]:
             port=device.port,
             device_id=device.device_id,
             description=device.description,
+            poll_address=device.poll_address,
+            poll_count=device.poll_count,
+            poll_kind=device.poll_kind,
+            poll_enabled=device.poll_enabled if device.poll_enabled is not None else True,
             created_at=device.created_at,
             updated_at=device.updated_at
         )
@@ -177,6 +196,10 @@ async def get_device_by_device_id(device_id: int) -> Optional[DeviceResponse]:
             port=device.port,
             device_id=device.device_id,
             description=device.description,
+            poll_address=device.poll_address,
+            poll_count=device.poll_count,
+            poll_kind=device.poll_kind,
+            poll_enabled=device.poll_enabled if device.poll_enabled is not None else True,
             created_at=device.created_at,
             updated_at=device.updated_at
         )
@@ -258,6 +281,10 @@ async def update_device(device_id: int, device_update: DeviceUpdate) -> DeviceRe
                 port=device.port,
                 device_id=device.device_id,
                 description=device.description,
+                poll_address=device.poll_address,
+                poll_count=device.poll_count,
+                poll_kind=device.poll_kind,
+                poll_enabled=device.poll_enabled if device.poll_enabled is not None else True,
                 created_at=device.created_at,
                 updated_at=device.updated_at
             )
@@ -311,19 +338,35 @@ async def delete_device(device_id: int) -> Optional[DeviceResponse]:
                 port=device.port,
                 device_id=device.device_id,
                 description=device.description,
+                poll_address=device.poll_address,
+                poll_count=device.poll_count,
+                poll_kind=device.poll_kind,
+                poll_enabled=device.poll_enabled if device.poll_enabled is not None else True,
                 created_at=device.created_at,
                 updated_at=device.updated_at
             )
             
-            # Delete the device
+            # Delete the device using ORM delete to ensure cascade relationships are handled
+            # This will automatically delete related register_map and register_readings
+            # due to cascade="all, delete-orphan" in the ORM relationships
+            device_id_to_delete = device.device_id
+            device_name_to_delete = device.name
+            primary_key = device.id
+            
+            # Use ORM delete to respect cascade relationships
+            # Database-level CASCADE will also handle foreign key constraints
             session.delete(device)
+            await session.flush()  # Flush to check for constraint violations before commit
+            
             await session.commit()
             
-            logger.info(f"Deleted device with device_id {device_id} (primary key: {device.id})")
+            logger.info(f"Successfully deleted device '{device_name_to_delete}' with device_id {device_id_to_delete} (primary key: {primary_key}). Related register_map and register_readings were cascade deleted.")
             return device_response
             
         except Exception as e:
             await session.rollback()
             logger.error(f"Database error deleting device: {e}")
             raise
+
+
 

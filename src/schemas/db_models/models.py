@@ -17,6 +17,10 @@ class DeviceCreate(BaseModel):
     port: int = Field(default=502, ge=1, le=65535, description="Modbus TCP port (default: 502)")
     device_id: int = Field(default=1, ge=1, le=255, description="Modbus unit/slave ID")
     description: Optional[str] = Field(default=None, description="Optional device description")
+    poll_address: Optional[int] = Field(None, description="Start address for polling Modbus registers")
+    poll_count: Optional[int] = Field(None, description="Number of registers to read during polling")
+    poll_kind: Optional[str] = Field(None, description="Register type: holding, input, coils, or discretes")
+    poll_enabled: bool = Field(True, description="Whether polling is enabled for this device")
 
 
 class DeviceUpdate(BaseModel):
@@ -41,6 +45,10 @@ class DeviceListItem(BaseModel):
     port: int = Field(..., description="Modbus TCP port")
     device_id: int = Field(..., description="Modbus unit/slave ID")
     description: Optional[str] = Field(None, description="Device description")
+    poll_address: Optional[int] = Field(None, description="Start address for polling Modbus registers")
+    poll_count: Optional[int] = Field(None, description="Number of registers to read during polling")
+    poll_kind: Optional[str] = Field(None, description="Register type: holding, input, coils, or discretes")
+    poll_enabled: bool = Field(True, description="Whether polling is enabled for this device")
     created_at: datetime = Field(..., description="Timestamp when device was created")
     updated_at: datetime = Field(..., description="Timestamp when device was last updated")
     
@@ -49,21 +57,9 @@ class DeviceListItem(BaseModel):
     }
 
 
-class DeviceResponse(BaseModel):
+class DeviceResponse(DeviceListItem):
     """Response model for device data with optional register map."""
-    id: int = Field(..., description="Device ID")
-    name: str = Field(..., description="Device name")
-    host: str = Field(..., description="Device hostname or IP address")
-    port: int = Field(..., description="Modbus TCP port")
-    device_id: int = Field(..., description="Modbus unit/slave ID")
-    description: Optional[str] = Field(None, description="Device description")
     register_map: Optional[Dict[str, Any]] = Field(None, description="Device register map (loaded lazily from DB/CSV)")
-    created_at: datetime = Field(..., description="Timestamp when device was created")
-    updated_at: datetime = Field(..., description="Timestamp when device was last updated")
-    
-    model_config = {
-        "from_attributes": True,
-    }
 
 
 __all__ = ["DeviceCreate", "DeviceUpdate", "DeviceListItem", "DeviceResponse"]

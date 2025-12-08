@@ -8,9 +8,8 @@ from pathlib import Path
 from typing import Optional, Dict, Any, List, TypedDict
 import json
 
-from db.devices import get_device_id_by_name, create_device
+from db.devices import get_device_id_by_name
 from db.device_register_map import create_register_map, update_register_map, get_register_map_by_device_id
-from schemas.db_models.models import DeviceCreate
 from utils.map_csv_to_json import map_csv_to_json
 from config import settings
 from logger import get_logger
@@ -28,19 +27,21 @@ class DeviceLoadResult(TypedDict, total=False):
     error: Optional[str]
 
 
-async def load_register_map_from_csv(csv_path: Path, device_name: Optional[str] = None, device_id: Optional[int] = None) -> DeviceLoadResult:
+async def load_register_map_from_csv(
+    csv_path: Path,
+    device_name: Optional[str] = None
+) -> DeviceLoadResult:
     """
     Load a single register map CSV file into the database.
     
     This function:
-    1. Checks if device exists, creates it if not (with default host/port)
+    1. Checks if device exists in database, returns error if not found
     2. Converts CSV to JSON format
     3. Creates register map in database only if it doesn't already exist
     
     Args:
         csv_path: Path to the CSV file
         device_name: Device name (required, should be provided from JSON config)
-        device_id: Modbus unit/slave ID (optional, should be provided from JSON config)
         
     Returns:
         DeviceLoadResult with metadata about the loaded device (success field indicates if loading succeeded)
@@ -60,43 +61,23 @@ async def load_register_map_from_csv(csv_path: Path, device_name: Optional[str] 
         
         logger.info(f"Processing register map CSV for device: {device_name}")
         
-        # Step 2: Check if device exists, create if not
+        # Step 2: Check if device exists in database
         db_device_id = await get_device_id_by_name(device_name)
-        device_created = False
         
         if db_device_id is None:
-            # Device doesn't exist, create it
-            # Use default host/port from config
-            device_create = DeviceCreate(
-                name=device_name,
-                host=settings.modbus_host,  # Default from config
-                port=settings.modbus_port,  # Default from config
-                device_id=device_id,
-                description=f"Device created from register map CSV: {csv_path.name}"
+            # Device doesn't exist, log error and return
+            error_msg = f"Device '{device_name}' not found in database. Device must be created before loading register map."
+            logger.error(error_msg)
+            return DeviceLoadResult(
+                device_name=device_name,
+                device_id=0,
+                success=False,
+                device_created=False,
+                register_map_created=False,
+                error=error_msg
             )
-            
-            try:
-                device_response = await create_device(device_create)
-                db_device_id = device_response.id
-                device_created = True
-                logger.info(f"Created device '{device_name}' (ID: {db_device_id}) from CSV file")
-            except ValueError as e:
-                # Device might have been created by another process
-                logger.warning(f"Device creation failed (may already exist): {e}")
-                db_device_id = await get_device_id_by_name(device_name)
-                if db_device_id is None:
-                    error_msg = f"Could not create or find device '{device_name}'"
-                    logger.error(error_msg)
-                    return DeviceLoadResult(
-                        device_name=device_name,
-                        device_id=0,
-                        success=False,
-                        device_created=False,
-                        register_map_created=False,
-                        error=error_msg
-                    )
-        else:
-            logger.debug(f"Device '{device_name}' already exists (ID: {db_device_id})")
+        
+        logger.debug(f"Device '{device_name}' found in database (ID: {db_device_id})")
         
         # Step 3: Convert CSV to JSON
         try:
@@ -108,7 +89,7 @@ async def load_register_map_from_csv(csv_path: Path, device_name: Optional[str] 
                 device_name=device_name,
                 device_id=db_device_id,
                 success=False,
-                device_created=device_created,
+                device_created=False,
                 register_map_created=False,
                 error=error_msg
             )
@@ -135,7 +116,7 @@ async def load_register_map_from_csv(csv_path: Path, device_name: Optional[str] 
                         device_name=device_name,
                         device_id=db_device_id,
                         success=False,
-                        device_created=device_created,
+                        device_created=False,
                         register_map_created=False,
                         error=error_msg
                     )
@@ -149,7 +130,7 @@ async def load_register_map_from_csv(csv_path: Path, device_name: Optional[str] 
             device_name=device_name,
             device_id=db_device_id,
             success=True,
-            device_created=device_created,
+            device_created=False,  # Devices are not created in this function
             register_map_created=register_map_created,
             error=None
         )
@@ -178,7 +159,11 @@ def load_device_register_map_config(config_dir: Path) -> Dict[str, Dict[str, Any
     {
       "device-name": {
         "csv_file": "file.csv",
-        "device_id": 1
+        "device_id": 1,
+        "poll_address": 1400,
+        "poll_count": 100,
+        "poll_kind": "holding",
+        "poll_enabled": true
       }
     }
     
@@ -186,7 +171,8 @@ def load_device_register_map_config(config_dir: Path) -> Dict[str, Dict[str, Any
         config_dir: Path to the config directory
         
     Returns:
-        Dictionary mapping device names to config objects with 'csv_file' and 'device_id' keys
+        Dictionary mapping device names to config objects with 'csv_file', 'device_id', 
+        and optional polling configuration fields
     """
     config_file = config_dir / "device_register_maps.json"
     
@@ -209,14 +195,22 @@ def load_device_register_map_config(config_dir: Path) -> Dict[str, Dict[str, Any
                 # Legacy format: just a string (CSV filename)
                 normalized_mapping[device_name] = {
                     "csv_file": config_value,
-                    "device_id": None
+                    "device_id": None,
+                    "poll_address": None,
+                    "poll_count": None,
+                    "poll_kind": None,
+                    "poll_enabled": True  # Default to enabled
                 }
             elif isinstance(config_value, dict):
-                # New format: object with csv_file and device_id
+                # New format: object with csv_file, device_id, and optional polling config
                 device_id_value = config_value.get("device_id")
                 normalized_mapping[device_name] = {
                     "csv_file": config_value.get("csv_file"),
-                    "device_id": device_id_value
+                    "device_id": device_id_value,
+                    "poll_address": config_value.get("poll_address"),
+                    "poll_count": config_value.get("poll_count"),
+                    "poll_kind": config_value.get("poll_kind"),
+                    "poll_enabled": config_value.get("poll_enabled", True)  # Default to enabled
                 }
             else:
                 logger.warning(f"Invalid config format for device '{device_name}', skipping")
@@ -288,9 +282,11 @@ async def load_all_register_maps_from_config() -> Dict[str, DeviceLoadResult]:
             )
             continue
         
-        # Load the register map using the device name and device_id from the mapping
-        device_id_value = device_config.get("device_id")
-        result = await load_register_map_from_csv(csv_path, device_name, device_id_value)
+        # Load the register map using the device name from the mapping
+        result = await load_register_map_from_csv(
+            csv_path,
+            device_name
+        )
         results[device_name] = result
     
     # Log summary
@@ -303,4 +299,48 @@ async def load_all_register_maps_from_config() -> Dict[str, DeviceLoadResult]:
         logger.warning(f"Failed to load {failed} register map(s)")
     
     return results
+
+
+def get_device_polling_config(device_name: str, config_dir: Optional[Path] = None) -> Optional[Dict[str, Any]]:
+    """
+    Get polling configuration for a device from device_register_maps.json.
+    
+    Returns polling configuration with defaults from settings if not specified in JSON.
+    
+    Args:
+        device_name: Device name/identifier
+        config_dir: Optional path to config directory (defaults to settings-based path)
+        
+    Returns:
+        Dictionary with polling configuration:
+        {
+            "poll_address": int,
+            "poll_count": int,
+            "poll_kind": str,
+            "poll_enabled": bool
+        }
+        Returns None if device not found in config
+    """
+    if config_dir is None:
+        # Default to config directory relative to project root
+        config_dir = Path(__file__).parent.parent.parent / "config"
+    
+    # Load device config
+    device_configs = load_device_register_map_config(config_dir)
+    
+    if device_name not in device_configs:
+        logger.warning(f"Device '{device_name}' not found in device_register_maps.json")
+        return None
+    
+    device_config = device_configs[device_name]
+    
+    # Get polling config with defaults from settings
+    polling_config = {
+        "poll_address": device_config.get("poll_address") or settings.main_sel_751_poll_address,
+        "poll_count": device_config.get("poll_count") or settings.main_sel_751_poll_count,
+        "poll_kind": device_config.get("poll_kind") or settings.main_sel_751_poll_kind,
+        "poll_enabled": device_config.get("poll_enabled", True)  # Default to enabled
+    }
+    
+    return polling_config
 

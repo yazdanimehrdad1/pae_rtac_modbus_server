@@ -128,6 +128,10 @@ async def get_device(
                     device_id=device.device_id,
                     description=device.description,
                     register_map=register_map,
+                    poll_address=device.poll_address,
+                    poll_count=device.poll_count,
+                    poll_kind=device.poll_kind,
+                    poll_enabled=device.poll_enabled,
                     created_at=device.created_at,
                     updated_at=device.updated_at
                 )
