@@ -16,7 +16,7 @@ class RegisterPoint(BaseModel):
         ..., description="Type of register: holding, input, coils, or discretes"
     )
     size: int = Field(..., ge=1, le=2000, description="Number of registers/bits to read")
-    unit_id: Optional[int] = Field(None, ge=1, le=255, description="Modbus unit ID (optional, uses default if not specified)")
+    device_id: Optional[int] = Field(None, ge=1, le=255, description="Modbus unit/slave ID (optional, uses default if not specified)")
     
     # Optional fields for data processing
     data_type: Optional[Literal["int16", "uint16", "int32", "uint32", "float32", "bool"]] = Field(
@@ -47,9 +47,9 @@ class RegisterMap(BaseModel):
         """Filter points by register kind."""
         return [p for p in self.points if p.kind == kind]
     
-    def get_points_by_unit_id(self, unit_id: int) -> list[RegisterPoint]:
-        """Filter points by unit ID."""
-        return [p for p in self.points if p.unit_id == unit_id]
+    def get_points_by_device_id(self, device_id: int) -> list[RegisterPoint]:
+        """Filter points by device ID."""
+        return [p for p in self.points if p.device_id == device_id]
     
     def get_point_by_name(self, name: str) -> Optional[RegisterPoint]:
         """Get a point by its name."""

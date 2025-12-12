@@ -6,7 +6,7 @@ These models represent the database schema and are used for ORM operations.
 
 from datetime import datetime
 from typing import Optional, Dict, Any
-from sqlalchemy import String, Integer, Text, DateTime, func, Float, ForeignKey, JSON
+from sqlalchemy import String, Integer, Text, DateTime, func, Float, ForeignKey, JSON, Boolean
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -51,17 +51,46 @@ class Device(Base):
         comment="Modbus TCP port (default: 502)"
     )
     
-    unit_id: Mapped[int] = mapped_column(
+    device_id: Mapped[int] = mapped_column(
         Integer,
         nullable=False,
+        unique=True,
+        index=True,
         default=1,
-        comment="Modbus unit/slave ID"
+        comment="Modbus unit/slave ID (unique)"
     )
     
     description: Mapped[Optional[str]] = mapped_column(
         Text,
         nullable=True,
         comment="Optional device description"
+    )
+    
+    # Polling configuration
+    poll_address: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+        comment="Start address for polling Modbus registers"
+    )
+    
+    poll_count: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+        comment="Number of registers to read during polling"
+    )
+    
+    poll_kind: Mapped[Optional[str]] = mapped_column(
+        String(20),
+        nullable=True,
+        default="holding",
+        comment="Register type: holding, input, coils, or discretes"
+    )
+    
+    poll_enabled: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        comment="Whether polling is enabled for this device"
     )
     
     created_at: Mapped[datetime] = mapped_column(

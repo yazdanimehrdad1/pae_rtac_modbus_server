@@ -1,7 +1,6 @@
 """Modbus read endpoints."""
 
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import List
 
 from fastapi import APIRouter, HTTPException, status
@@ -9,76 +8,13 @@ from fastapi import APIRouter, HTTPException, status
 from schemas.api_models import ReadRequest, ReadResponse, RegisterData, SimpleReadResponse, RegisterValue
 from modbus.client import ModbusClient, translate_modbus_error
 from modbus.modbus_utills import ModbusUtils
-from utils.map_csv_to_json import map_csv_to_json, json_to_register_map
+from utils.map_csv_to_json import json_to_register_map, get_register_map_for_device
+from config import settings
 
 router = APIRouter()
 
-# Initialize Modbus client wrapper
-modbus_client = ModbusClient()
-modbus_utils = ModbusUtils(modbus_client)
-
-
-@router.get("/read/register_map", response_model=List[RegisterData])
-async def get_register_map():
-    """Get the register map from the CSV file."""
-    main_sel_751_register_map_path = Path("config/main_sel_751_register_map.csv")
-    json_data = map_csv_to_json(main_sel_751_register_map_path)
-    register_map = json_to_register_map(json_data)
-    
-    # Convert RegisterPoint objects to RegisterData objects
-    # Note: value is set to 0 as placeholder since we don't have actual values yet
-    register_data_list = [
-        RegisterData(
-            name=point.name,
-            value=0,  # Placeholder value - actual values come from polling
-            Type=point.data_type,
-            scale_factor=point.scale_factor,
-            unit=point.unit
-        )
-        for point in register_map.points
-    ]
-    return register_data_list
-
-
-@router.get("/read/main-sel-751", response_model=ReadResponse)
-async def read_main_sel_751_data():
-    """Read the main data from the 751 (hardcoded to address 1400, count 100)."""
-    try:
-        data = modbus_utils.read_device_registers_main_sel_751()
-        
-        # Map data to register map for better response
-        main_sel_751_register_map_path = Path("config/main_sel_751_register_map.csv")
-        json_data = map_csv_to_json(main_sel_751_register_map_path)
-        register_map = json_to_register_map(json_data)
-        
-        # Create list of register data
-        response_data = {}
-        for point in register_map.points:
-            # Check if this register is within the requested address range
-                # Calculate the index in the data array
-                data_index = point.address - 1400
-                if 0 <= data_index < len(data):
-                    response_data[point.address] = RegisterData(
-                        name=point.name,
-                        value=data[data_index],
-                        scale_factor=point.scale_factor,
-                        unit=point.unit,
-                        Type=point.data_type
-                    )
-        return ReadResponse(
-            ok=True,
-            timestamp=datetime.now(timezone.utc).isoformat(),
-            kind="holding",
-            address=1400,
-            count=100,
-            unit_id=1,
-            data=response_data
-        )
-    except Exception as e:
-        status_code, message = translate_modbus_error(e)
-        raise HTTPException(status_code=status_code, detail=message)
-
-
+# Initialize Modbus utils wrapper
+modbus_utils = ModbusUtils(ModbusClient())
 
 @router.post("/read", response_model=SimpleReadResponse)
 async def read_registers(request: ReadRequest):
@@ -98,12 +34,35 @@ async def read_registers(request: ReadRequest):
            (e.g., convert two 16-bit registers to a 32-bit float/integer)
     """
     try:
-        data = modbus_client.read_registers(
-            kind=request.kind,
-            address=request.address,
-            count=request.count,
-            unit_id=request.unit_id
-        )
+        # Use standardized functions based on register type
+        device_id = request.device_id or settings.modbus_device_id
+        
+        if request.kind == "holding":
+            data = modbus_utils.read_holding_registers(
+                address=request.address,
+                count=request.count,
+                device_id=device_id
+            )
+        elif request.kind == "input":
+            data = modbus_utils.read_input_registers(
+                address=request.address,
+                count=request.count,
+                device_id=device_id
+            )
+        elif request.kind == "coils":
+            data = modbus_utils.read_coils(
+                address=request.address,
+                count=request.count,
+                device_id=device_id
+            )
+        elif request.kind == "discretes":
+            data = modbus_utils.read_discrete_inputs(
+                address=request.address,
+                count=request.count,
+                device_id=device_id
+            )
+        else:
+            raise ValueError(f"Invalid kind: {request.kind}")
         
         # TODO: Add Prometheus metrics here
         # Example: modbus_reads_total.labels(kind=request.kind, status="success").inc()
@@ -124,7 +83,7 @@ async def read_registers(request: ReadRequest):
             kind=request.kind,
             address=request.address,
             count=request.count,
-            unit_id=request.unit_id or modbus_client.default_unit_id,
+            device_id=request.device_id or settings.modbus_device_id,
             data=response_data
         )
         
@@ -136,4 +95,55 @@ async def read_registers(request: ReadRequest):
     except Exception as e:
         status_code, message = translate_modbus_error(e)
         raise HTTPException(status_code=status_code, detail=message)
+
+
+
+@router.get("/read/main-sel-751", response_model=ReadResponse)
+async def read_main_sel_751_data():
+    """Read the main data from the 751 (hardcoded to address 1400, count 100)."""
+    try:
+        data = modbus_utils.read_device_registers_main_sel_751()
+        
+        # Get register map from database (with CSV fallback if not in DB)
+        device_name = "main-sel-751"
+        json_data = await get_register_map_for_device(device_name)
+        
+        response_data = {}
+        
+        if json_data is not None:
+            # Use register map to map data with names and metadata
+            register_map = json_to_register_map(json_data)
+            
+            for point in register_map.points:
+                # Check if this register is within the requested address range
+                # Calculate the index in the data array
+                data_index = point.address - 1400
+                if 0 <= data_index < len(data):
+                    response_data[point.address] = RegisterData(
+                        name=point.name,
+                        value=data[data_index],
+                        scale_factor=point.scale_factor,
+                        unit=point.unit,
+                        Type=point.data_type
+                    )
+        else:
+            # No register map available - raise error
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Register map not found for device '{device_name}'. Device may not be mapped to a CSV file or CSV file does not exist."
+            )
+        return ReadResponse(
+            ok=True,
+            timestamp=datetime.now(timezone.utc).isoformat(),
+            kind="holding",
+            address=1400,
+            count=100,
+            device_id=1,
+            data=response_data
+        )
+    except Exception as e:
+        status_code, message = translate_modbus_error(e)
+        raise HTTPException(status_code=status_code, detail=message)
+
+
 

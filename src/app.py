@@ -29,6 +29,9 @@ from db.connection import (
     close_all_db_connections
 )
 
+# Register map loader import
+from utils.config_loader import load_device_configs
+
 # Setup logging
 setup_logging(log_level=settings.log_level)
 logger = get_logger(__name__)
@@ -96,6 +99,16 @@ def create_app() -> FastAPI:
         except Exception as e:
             logger.error(f"Failed to initialize database: {e}")
             # Continue startup even if database fails (graceful degradation)
+        
+        # Load device configurations from file
+        try:
+            results = await load_device_configs()
+            if results:
+                successful = sum(1 for v in results.values() if v.get("success", False))
+                logger.info(f"Register map loading completed: {successful}/{len(results)} successful")
+        except Exception as e:
+            logger.error(f"Failed to load register maps from CSV files: {e}", exc_info=True)
+            # Continue startup even if register map loading fails (graceful degradation)
         
         # Start scheduler
         await start_scheduler()

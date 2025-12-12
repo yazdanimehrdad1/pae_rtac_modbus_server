@@ -7,11 +7,11 @@ import json
 from fastapi import APIRouter, HTTPException, status, Query
 
 from schemas.db_models.models import DeviceCreate, DeviceUpdate, DeviceResponse, DeviceListItem
-from db.devices import create_device, get_all_devices, get_device_by_id, update_device, delete_device
+from db.devices import create_device, get_all_devices, get_device_by_id, get_device_by_device_id, update_device, delete_device
 from utils.map_csv_to_json import get_register_map_for_device
 from logger import get_logger
 
-router = APIRouter(tags=["devices"])
+router = APIRouter(prefix="/devices", tags=["devices"])
 logger = get_logger(__name__)
 
 @router.get("/device", response_model=List[DeviceListItem])
@@ -70,10 +70,14 @@ async def get_device(
     include_register_map: bool = Query(False, description="Include register map in response")
 ):
     """
-    Get a device by ID.
+    Get a device by device_id (Modbus unit/slave ID).
+    
+    The device_id parameter refers to the Modbus unit/slave ID (e.g., 111, 222),
+    not the database primary key. The function queries directly by device_id,
+    which is unique and indexed for optimal performance.
     
     Args:
-        device_id: Device ID
+        device_id: Modbus unit/slave ID (not the database primary key)
         include_register_map: If True, include register map (loaded lazily from DB/CSV)
         
     Returns:
@@ -83,16 +87,16 @@ async def get_device(
         HTTPException: If device not found
     """
     try:
-        device = await get_device_by_id(device_id)
+        device = await get_device_by_device_id(device_id)
         if device is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Device with ID {device_id} not found"
+                detail=f"Device with device_id {device_id} not found"
             )
         
         # Load register map if requested
         if include_register_map:
-            logger.debug(f"Loading register map for device '{device.name}' (ID: {device_id})")
+            logger.debug(f"Loading register map for device '{device.name}' (device_id: {device_id}, primary key: {device.id})")
             try:
                 register_map = await get_register_map_for_device(device.name)
                 logger.debug(f"Register map loaded: {register_map is not None}")
@@ -121,9 +125,13 @@ async def get_device(
                     name=device.name,
                     host=device.host,
                     port=device.port,
-                    unit_id=device.unit_id,
+                    device_id=device.device_id,
                     description=device.description,
                     register_map=register_map,
+                    poll_address=device.poll_address,
+                    poll_count=device.poll_count,
+                    poll_kind=device.poll_kind,
+                    poll_enabled=device.poll_enabled,
                     created_at=device.created_at,
                     updated_at=device.updated_at
                 )
@@ -152,8 +160,11 @@ async def update_existing_device(device_id: int, device_update: DeviceUpdate):
     """
     Update a Modbus device.
     
+    The device_id parameter refers to the Modbus unit/slave ID (e.g., 111, 222),
+    not the database primary key.
+    
     Args:
-        device_id: Device ID to update
+        device_id: Modbus unit/slave ID (not the database primary key)
         device_update: Device update data (only provided fields will be updated)
         
     Returns:
@@ -191,24 +202,31 @@ async def update_existing_device(device_id: int, device_update: DeviceUpdate):
         )
 
 
-@router.delete("/device/{device_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/device/{device_id}", response_model=DeviceResponse)
 async def delete_existing_device(device_id: int):
     """
     Delete a Modbus device.
     
+    The device_id parameter refers to the Modbus unit/slave ID (e.g., 111, 222),
+    not the database primary key.
+    
     Args:
-        device_id: Device ID to delete
+        device_id: Modbus unit/slave ID (not the database primary key)
+        
+    Returns:
+        Metadata of the deleted device
         
     Raises:
         HTTPException: If device not found or database error occurs
     """
     try:
-        deleted = await delete_device(device_id)
-        if not deleted:
+        deleted_device = await delete_device(device_id)
+        if deleted_device is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Device with ID {device_id} not found"
+                detail=f"Device with device_id {device_id} not found"
             )
+        return deleted_device
     except HTTPException:
         raise
     except Exception as e:

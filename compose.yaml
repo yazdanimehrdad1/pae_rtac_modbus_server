@@ -44,7 +44,7 @@ services:
       # Values can come from .env file or environment variables
       - MODBUS_HOST=${MODBUS_HOST}
       - MODBUS_PORT=${MODBUS_PORT:-502}
-      - MODBUS_UNIT_ID=${MODBUS_UNIT_ID:-1}
+      - MODBUS_DEVICE_ID=${MODBUS_DEVICE_ID:-1}
       - MODBUS_TIMEOUT_S=${MODBUS_TIMEOUT_S:-5.0}
       - MODBUS_RETRIES=${MODBUS_RETRIES:-3}
       # Redis configuration
