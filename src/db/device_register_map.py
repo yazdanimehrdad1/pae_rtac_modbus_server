@@ -65,8 +65,6 @@ async def get_register_map_by_device_name(device_name: str) -> Optional[Dict[str
         return device_register_map.register_map
 
 
-
-
 # TODO: adjust this function to add json b based on the excel file
 async def create_register_map(device_id: int, register_map: Dict[str, Any]) -> bool:
     """

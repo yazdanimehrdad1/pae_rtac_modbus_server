@@ -30,7 +30,7 @@ from db.connection import (
 )
 
 # Register map loader import
-from db.register_map_loader import load_device_configs
+from utils.config_loader import load_device_configs
 
 # Setup logging
 setup_logging(log_level=settings.log_level)

@@ -270,8 +270,6 @@ def read_device_configs_from_json(config_dir: Path) -> Dict[str, Dict[str, Any]]
         return {}
 
 
-
-
 def get_device_polling_config(device_name: str, config_dir: Optional[Path] = None) -> Optional[Dict[str, Any]]:
     """
     Get polling configuration for a device from device_register_maps.json.
@@ -315,7 +313,7 @@ def get_device_polling_config(device_name: str, config_dir: Optional[Path] = Non
     
     return polling_config
 
-
+# TODO: maybe consider getting it from the cache instead of the database also if creating in DB add to cache
 async def load_device_configs() -> Dict[str, DeviceLoadResult]:
     """
     Load device configurations from file and initialize devices and register maps.
@@ -371,7 +369,7 @@ async def load_device_configs() -> Dict[str, DeviceLoadResult]:
         
         # Construct full path to CSV file (relative to config directory)
         csv_path = config_dir / csv_filename
-        
+        # TODO: lets add some smart mechanism to find a general csv file if it doesn't exist
         if not csv_path.exists():
             error_msg = f"CSV file not found for device '{device_name}': {csv_path}"
             logger.error(error_msg)
@@ -431,3 +429,4 @@ async def load_device_configs() -> Dict[str, DeviceLoadResult]:
         logger.warning(f"Failed to process {failed} device(s)")
     
     return results
+

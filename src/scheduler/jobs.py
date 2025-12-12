@@ -33,7 +33,7 @@ class PollResult(TypedDict, total=False):
     db_failed: int
     error: Optional[str]
 
-
+# TODO: maybe consider getting it from the cache instead of the database
 async def get_devices_to_poll() -> List[DeviceListItem]:
     """
     Get list of devices to poll from database, filtered by poll_enabled.
@@ -257,7 +257,8 @@ async def poll_single_device(device: DeviceListItem) -> PollResult:
             "poll_enabled": device.poll_enabled
         }
         
-        # 2. Load register map from database (with CSV fallback)
+        # TODO: maybe consider getting it from the cache instead of the database
+        # 2. Load register map from database (with CSV fallback) 
         json_data = await get_register_map_for_device(device_name)
         if json_data is None:
             result["error"] = f"Register map not found for device '{device_name}' in database or CSV"
@@ -294,6 +295,7 @@ async def poll_single_device(device: DeviceListItem) -> PollResult:
         timestamp = datetime.now(timezone.utc).isoformat()
         timestamp_dt = datetime.now(timezone.utc)
         
+        # TODO: maybe consider getting it from the cache instead of the database
         # Add device_id (Modbus unit/slave ID) to polling_config for cache
         polling_config["device_id"] = device.device_id  # Modbus device_id
         
