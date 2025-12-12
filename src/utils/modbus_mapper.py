@@ -8,6 +8,7 @@ This is the fundamental mapping that links register metadata with their actual r
 from pathlib import Path
 from typing import List, Dict, Any, Union
 import pandas as pd
+import struct
 
 from schemas.modbus_models import RegisterMap, RegisterPoint
 from logger import get_logger
@@ -65,6 +66,272 @@ class MappedRegisterData:
         return f"MappedRegisterData(name={self.name}, address={self.address}, value={self.value})"
 
 
+# ============================================================================
+# Multi-register value conversion helper functions
+# ============================================================================
+
+def _convert_uint32(register_values: List[int], byte_order: str = "big") -> int:
+    """
+    Convert two 16-bit registers to a 32-bit unsigned integer.
+    
+    Args:
+        register_values: List of 2 register values (16-bit each)
+        byte_order: "big" (Modbus standard) or "little"
+        
+    Returns:
+        32-bit unsigned integer value
+    """
+    if len(register_values) != 2:
+        raise ValueError(f"uint32 requires exactly 2 registers, got {len(register_values)}")
+    
+    if byte_order == "big":
+        # Big-endian: high word first (Modbus standard)
+        # register[0] is high 16 bits, register[1] is low 16 bits
+        return (register_values[0] << 16) | register_values[1]
+    else:
+        # Little-endian: low word first
+        return (register_values[1] << 16) | register_values[0]
+
+
+def _convert_int32(register_values: List[int], byte_order: str = "big") -> int:
+    """
+    Convert two 16-bit registers to a 32-bit signed integer.
+    
+    Args:
+        register_values: List of 2 register values (16-bit each)
+        byte_order: "big" (Modbus standard) or "little"
+        
+    Returns:
+        32-bit signed integer value
+    """
+    if len(register_values) != 2:
+        raise ValueError(f"int32 requires exactly 2 registers, got {len(register_values)}")
+    
+    # First combine as unsigned, then convert to signed
+    if byte_order == "big":
+        combined = (register_values[0] << 16) | register_values[1]
+    else:
+        combined = (register_values[1] << 16) | register_values[0]
+    
+    # Convert to signed 32-bit integer (handle two's complement)
+    if combined >= 0x80000000:
+        return combined - 0x100000000
+    return combined
+
+
+def _convert_float32(register_values: List[int], byte_order: str = "big") -> float:
+    """
+    Convert two 16-bit registers to a 32-bit IEEE 754 float.
+    
+    Args:
+        register_values: List of 2 register values (16-bit each)
+        byte_order: "big" (Modbus standard) or "little"
+        
+    Returns:
+        32-bit float value
+    """
+    if len(register_values) != 2:
+        raise ValueError(f"float32 requires exactly 2 registers, got {len(register_values)}")
+    
+    # Pack registers into bytes
+    if byte_order == "big":
+        # Big-endian: high word first
+        bytes_data = struct.pack('>HH', register_values[0], register_values[1])
+    else:
+        # Little-endian: low word first
+        bytes_data = struct.pack('<HH', register_values[1], register_values[0])
+    
+    # Unpack as float32
+    return struct.unpack('>f', bytes_data)[0] if byte_order == "big" else struct.unpack('<f', bytes_data)[0]
+
+
+def _convert_int64(register_values: List[int], byte_order: str = "big") -> int:
+    """
+    Convert four 16-bit registers to a 64-bit signed integer.
+    
+    Args:
+        register_values: List of 4 register values (16-bit each)
+        byte_order: "big" (Modbus standard) or "little"
+        
+    Returns:
+        64-bit signed integer value
+    """
+    if len(register_values) != 4:
+        raise ValueError(f"int64 requires exactly 4 registers, got {len(register_values)}")
+    
+    if byte_order == "big":
+        # Big-endian: highest word first
+        combined = (
+            (register_values[0] << 48) |
+            (register_values[1] << 32) |
+            (register_values[2] << 16) |
+            register_values[3]
+        )
+    else:
+        # Little-endian: lowest word first
+        combined = (
+            (register_values[3] << 48) |
+            (register_values[2] << 32) |
+            (register_values[1] << 16) |
+            register_values[0]
+        )
+    
+    # Convert to signed 64-bit integer (handle two's complement)
+    if combined >= 0x8000000000000000:
+        return combined - 0x10000000000000000
+    return combined
+
+
+def _convert_uint64(register_values: List[int], byte_order: str = "big") -> int:
+    """
+    Convert four 16-bit registers to a 64-bit unsigned integer.
+    
+    Args:
+        register_values: List of 4 register values (16-bit each)
+        byte_order: "big" (Modbus standard) or "little"
+        
+    Returns:
+        64-bit unsigned integer value
+    """
+    if len(register_values) != 4:
+        raise ValueError(f"uint64 requires exactly 4 registers, got {len(register_values)}")
+    
+    if byte_order == "big":
+        # Big-endian: highest word first
+        return (
+            (register_values[0] << 48) |
+            (register_values[1] << 32) |
+            (register_values[2] << 16) |
+            register_values[3]
+        )
+    else:
+        # Little-endian: lowest word first
+        return (
+            (register_values[3] << 48) |
+            (register_values[2] << 32) |
+            (register_values[1] << 16) |
+            register_values[0]
+        )
+
+
+def _convert_float64(register_values: List[int], byte_order: str = "big") -> float:
+    """
+    Convert four 16-bit registers to a 64-bit IEEE 754 double precision float.
+    
+    Args:
+        register_values: List of 4 register values (16-bit each)
+        byte_order: "big" (Modbus standard) or "little"
+        
+    Returns:
+        64-bit float (double) value
+    """
+    if len(register_values) != 4:
+        raise ValueError(f"float64 requires exactly 4 registers, got {len(register_values)}")
+    
+    # Pack registers into bytes
+    if byte_order == "big":
+        # Big-endian: highest word first
+        bytes_data = struct.pack('>HHHH', register_values[0], register_values[1], 
+                                 register_values[2], register_values[3])
+    else:
+        # Little-endian: lowest word first
+        bytes_data = struct.pack('<HHHH', register_values[3], register_values[2], 
+                                 register_values[1], register_values[0])
+    
+    # Unpack as float64 (double)
+    return struct.unpack('>d', bytes_data)[0] if byte_order == "big" else struct.unpack('<d', bytes_data)[0]
+
+
+def convert_multi_register_value(
+    register_values: List[Union[int, bool]],
+    data_type: str,
+    size: int,
+    byte_order: str = "big"
+) -> Union[int, float]:
+    """
+    Convert multiple 16-bit register values to a single value based on data type.
+    
+    Handles conversion for multi-register data types:
+    - size=2: int32, uint32, float32
+    - size=4: int64, uint64, float64
+    
+    Args:
+        register_values: List of register values (16-bit integers from Modbus read)
+        data_type: Data type string (e.g., "uint32", "int32", "float32", "int64", "uint64", "float64")
+        size: Number of registers (must match data_type requirements)
+        byte_order: Byte order - "big" (Modbus standard) or "little" (default: "big")
+        
+    Returns:
+        Converted value as int or float
+        
+    Raises:
+        ValueError: If size/data_type combination is invalid or unsupported
+    """
+    # Validate inputs
+    if not register_values:
+        raise ValueError("register_values cannot be empty")
+    
+    if byte_order not in ("big", "little"):
+        raise ValueError(f"byte_order must be 'big' or 'little', got '{byte_order}'")
+    
+    # Convert bool to int if needed
+    register_values_int = [int(v) for v in register_values]
+    
+    # Validate size matches data_type expectations
+    expected_sizes = {
+        "int32": 2,
+        "uint32": 2,
+        "float32": 2,
+        "int64": 4,
+        "uint64": 4,
+        "float64": 4,
+    }
+    
+    if data_type in expected_sizes:
+        expected_size = expected_sizes[data_type]
+        if size != expected_size:
+            raise ValueError(
+                f"data_type '{data_type}' requires size={expected_size}, but got size={size}"
+            )
+        if len(register_values_int) < expected_size:
+            raise ValueError(
+                f"data_type '{data_type}' requires {expected_size} registers, "
+                f"but only {len(register_values_int)} provided"
+            )
+    elif size == 1:
+        # Single register types (int16, uint16, bool) - handled by caller
+        raise ValueError(
+            f"convert_multi_register_value should not be called for single-register types. "
+            f"Use the value directly for data_type='{data_type}' with size=1"
+        )
+    else:
+        raise ValueError(
+            f"Unsupported data_type '{data_type}' with size={size}. "
+            f"Supported multi-register types: {list(expected_sizes.keys())}"
+        )
+    
+    # Dispatch to appropriate conversion function
+    if data_type == "uint32":
+        return _convert_uint32(register_values_int, byte_order)
+    elif data_type == "int32":
+        return _convert_int32(register_values_int, byte_order)
+    elif data_type == "float32":
+        return _convert_float32(register_values_int, byte_order)
+    elif data_type == "int64":
+        return _convert_int64(register_values_int, byte_order)
+    elif data_type == "uint64":
+        return _convert_uint64(register_values_int, byte_order)
+    elif data_type == "float64":
+        return _convert_float64(register_values_int, byte_order)
+    else:
+        # This should not be reached due to validation above, but just in case
+        raise ValueError(f"Unsupported data_type: {data_type}")
+
+
+# ============================================================================
+# Main mapping function
+# ============================================================================
+
 def map_modbus_data_to_registers(
     register_map: RegisterMap,
     modbus_read_data: List[Union[int, bool]],
@@ -90,15 +357,6 @@ def map_modbus_data_to_registers(
         
     Returns:
         List of MappedRegisterData objects, one for each register point that was found in the read data
-        
-    Example:
-        >>> from utils.map_csv_to_json import map_csv_to_json, json_to_register_map
-        >>> register_map = json_to_register_map(map_csv_to_json(Path("config/main_sel_751_register_map.csv")))
-        >>> # Modbus read: modbus_client.read_registers(kind="holding", address=1400, count=100, device_id=1)
-        >>> modbus_data = [5000, 1, 100, 200, 300, 400, 500, 600, 0, 0, 10000, 20000, ...]
-        >>> mapped = map_modbus_data_to_registers(register_map, modbus_data, poll_start_address=1400)
-        >>> # If address 1400 has value 5000, address 1401 has value 1, etc.
-        >>> # Returns list of MappedRegisterData objects with register info + values
     """
     logger.debug(f"Mapping {len(register_map.points)} register points to Modbus read data")
     
@@ -119,7 +377,9 @@ def map_modbus_data_to_registers(
                 f"address is before poll start address {poll_start_address}"
             )
             continue
-        
+        # what if the last point has a size of 2? so the index is 1400 + 2 = 1402 and the length of the modbus_read_data is 1400?
+        # so we need to check if the index + size is greater than the length of the modbus_read_data
+        # so if the index + size is greater than the length of the modbus_read_data then we need to skip the point
         if data_index + point.size > len(modbus_read_data):
             logger.debug(
                 f"Skipping point '{point.name}' (address={point.address}, size={point.size}): "
@@ -127,22 +387,48 @@ def map_modbus_data_to_registers(
                 f"need index {data_index} to {data_index + point.size - 1})"
             )
             continue
-        
+            
 
-        # TODO: If the point.size or point.data_type represents a 32 bit register it needs to be taken care of here. 
-        # For example if the point.size is 2 and the point.data_type is "uint32" then the value should be the first 2 registers concatenated together.
-        # If the point.size is 2 and the point.data_type is "int32" then the value should be the first 2 registers concatenated together and then sign extended to 32 bits.
-        # If the point.size is 4 and the point.data_type is "float32" then the value should be the first 4 registers concatenated together and then converted to a float32.
-        # If the point.size is 4 and the point.data_type is "int32" then the value should be the first 4 registers concatenated together and then converted to a int32.
-        # If the point.size is 4 and the point.data_type is "uint32" then the value should be the first 4 registers concatenated together and then converted to a uint32.
-        # If the point.size is 8 and the point.data_type is "float64" then the value should be the first 8 registers concatenated together and then converted to a float64.
-        # If the point.size is 8 and the point.data_type is "int64" then the value should be the first 8 registers concatenated together and then converted to a int64.
-        # If the point.size is 8 and the point.data_type is "uint64" then the value should be the first 8 registers concatenated together and then converted to a uint64.
-        # So the output of map_modbus_data_to_registers should contain the calculated value for registers that are 32 bits, ...
+        # TODO: Track consumed registers to prevent overlapping register mappings
+        #
+        # PROBLEM DESCRIPTION:
+        # When a register point has size > 1, it consumes multiple consecutive registers.
+        # For example:
+        #   - Point A: address=1407, size=2, data_type="int32" → consumes registers 1407 and 1408
+        #   - Point B: address=1408, size=1, data_type="uint16" → tries to consume register 1408
+        #
+        # Without tracking, both points would be processed, causing:
+        #   1. Register 1408 to be mapped twice (once as part of Point A's int32, once as Point B)
+        #   2. Incorrect/duplicate data in the output
+        #   3. Potential confusion about which value is correct
+        #
+        # PROPOSED SOLUTION USING set():
+        # Use a set to track all register addresses that have been consumed by previous points.
+        # 
+        # Implementation steps:
+        #   1. Initialize an empty set before the loop: consumed_registers = set()
+        #   2. For each point, calculate the range of registers it uses:
+        #      point_registers = set(range(point.address, point.address + point.size))
+        #   3. Check for overlap with already consumed registers:
+        #      if point_registers & consumed_registers:
+        #          logger.warning(f"Skipping '{point.name}': overlaps with previously processed registers")
+        #          continue
+        #   4. If no overlap, mark all registers in this point's range as consumed:
+        #      consumed_registers.update(point_registers)
+        #   5. Then proceed with normal processing
+        #
+        # Example:
+        #   Point A (address=1407, size=2): point_registers = {1407, 1408}
+        #     - No overlap → process it, consumed_registers = {1407, 1408}
+        #   Point B (address=1408, size=1): point_registers = {1408}
+        #     - Overlap detected ({1408} & {1407, 1408} = {1408}) → skip it
+        #
+        # ALTERNATIVE APPROACHES:
+        #   - Validate register map at load time (catches issues early, but requires fixing CSV)
+        #   - Hybrid: validate at load + runtime tracking as safety net
+        #   - Trust the register map (assume CSV is well-formed, no tracking needed)
 
-        # Extract the value(s) for this register point and convert to single value
-        # For size=1: extract single value
-        # For size>1: combine registers based on data_type (TODO: implement 32-bit, 64-bit conversion)
+        # Extract the value(s) for this register point
         point_values = modbus_read_data[data_index:data_index + point.size]
         
         # Convert array to single value based on size and data_type
@@ -150,13 +436,25 @@ def map_modbus_data_to_registers(
             # Single register: use the value directly
             point_value = point_values[0]
         else:
-            # Multi-register: for now, use first value (TODO: implement proper 32-bit/64-bit conversion)
-            # This should be expanded based on the TODO comments above
-            point_value = point_values[0]
-            logger.warning(
-                f"Register '{point.name}' has size={point.size} but multi-register conversion not yet implemented. "
-                f"Using first value only."
-            )
+            # Multi-register: use convert_multi_register_value to combine registers
+            data_type = point.data_type or "uint16"
+            try:
+                point_value = convert_multi_register_value(
+                    register_values=point_values,
+                    data_type=data_type,
+                    size=point.size,
+                    byte_order="big"  # Modbus standard is big-endian
+                )
+            except ValueError as e:
+                logger.error(
+                    f"Failed to convert multi-register value for '{point.name}' "
+                    f"(address={point.address}, size={point.size}, data_type={data_type}): {e}"
+                )
+                # Fallback to first value to avoid breaking the mapping
+                point_value = point_values[0]
+                logger.warning(
+                    f"Using first register value only for '{point.name}' due to conversion error"
+                )
         
         
         # 4. Create MappedRegisterData object linking register info with values

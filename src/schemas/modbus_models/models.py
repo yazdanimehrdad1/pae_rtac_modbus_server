@@ -19,7 +19,7 @@ class RegisterPoint(BaseModel):
     device_id: Optional[int] = Field(None, ge=1, le=255, description="Modbus unit/slave ID (optional, uses default if not specified)")
     
     # Optional fields for data processing
-    data_type: Optional[Literal["int16", "uint16", "int32", "uint32", "float32", "bool"]] = Field(
+    data_type: Optional[Literal["int16", "uint16", "int32", "uint32", "float32", "int64", "uint64", "float64", "bool"]] = Field(
         default="uint16", description="Data type interpretation"
     )
     scale_factor: Optional[float] = Field(
@@ -34,8 +34,12 @@ class RegisterPoint(BaseModel):
         """Validate size based on data type if specified."""
         if hasattr(info, "data") and "data_type" in info.data:
             data_type = info.data.get("data_type")
+            # 32-bit types require 2 registers
             if data_type in ["int32", "uint32", "float32"] and v < 2:
                 raise ValueError(f"Data type {data_type} requires at least 2 registers")
+            # 64-bit types require 4 registers
+            if data_type in ["int64", "uint64", "float64"] and v < 4:
+                raise ValueError(f"Data type {data_type} requires at least 4 registers")
         return v
 
 
