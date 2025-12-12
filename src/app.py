@@ -30,7 +30,7 @@ from db.connection import (
 )
 
 # Register map loader import
-from db.register_map_loader import load_all_register_maps_from_config
+from db.register_map_loader import load_device_configs
 
 # Setup logging
 setup_logging(log_level=settings.log_level)
@@ -100,9 +100,9 @@ def create_app() -> FastAPI:
             logger.error(f"Failed to initialize database: {e}")
             # Continue startup even if database fails (graceful degradation)
         
-        # Load register maps from CSV files in config folder
+        # Load device configurations from file
         try:
-            results = await load_all_register_maps_from_config()
+            results = await load_device_configs()
             if results:
                 successful = sum(1 for v in results.values() if v.get("success", False))
                 logger.info(f"Register map loading completed: {successful}/{len(results)} successful")

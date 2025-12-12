@@ -10,6 +10,7 @@ from typing import Optional, Dict, Any
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import selectinload
 
 from db.connection import get_async_session_factory
 from schemas.db_models.models import DeviceCreate, DeviceUpdate, DeviceResponse, DeviceListItem
@@ -321,8 +322,11 @@ async def delete_device(device_id: int) -> Optional[DeviceResponse]:
     async with session_factory() as session:
         try:
             # Get the device to delete by device_id (Modbus unit/slave ID)
+            # Load register_map relationship to ensure cascade delete works properly
             result = await session.execute(
-                select(Device).where(Device.device_id == device_id)
+                select(Device)
+                .where(Device.device_id == device_id)
+                .options(selectinload(Device.register_map))
             )
             device = result.scalar_one_or_none()
             
