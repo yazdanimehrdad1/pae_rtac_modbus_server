@@ -210,7 +210,8 @@ async def store_device_data_in_db(
                 'timestamp': timestamp_dt,
                 'quality': 'good',
                 'register_name': register_data.name,
-                'unit': register_data.unit or None
+                'unit': register_data.unit or None,
+                'scale_factor': register_data.scale_factor or None
             })
         
         inserted_count = await insert_register_readings_batch(batch_readings)

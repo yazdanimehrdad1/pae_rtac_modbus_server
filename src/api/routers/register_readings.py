@@ -10,10 +10,48 @@ from db.register_readings import (
     get_latest_readings_for_device
 )
 from db.devices import get_device_by_id
+from cache.cache import CacheService
 from logger import get_logger
+from schemas.db_models.models import DeviceResponse
 
 router = APIRouter(prefix="/register_readings", tags=["register_readings"])
 logger = get_logger(__name__)
+
+# Initialize cache service
+cache_service = CacheService()
+
+
+async def get_device_with_cache(device_id: int) -> DeviceResponse:
+    """
+    Get device by ID with cache-first lookup.
+    
+    Args:
+        device_id: Device ID (database primary key)
+        
+    Returns:
+        DeviceResponse if found
+        
+    Raises:
+        HTTPException: If device not found
+    """
+    # First try cache
+    cache_key = f"device:id:{device_id}"
+    cached_device = await cache_service.get(cache_key)
+    
+    if cached_device is not None:
+        # Device found in cache, reconstruct Pydantic model from dict
+        logger.debug(f"Device ID {device_id} found in cache")
+        return DeviceResponse(**cached_device)
+    else:
+        # Not in cache, query database
+        logger.debug(f"Device ID {device_id} not in cache, querying database")
+        device = await get_device_by_id(device_id)
+        if device is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Device with ID {device_id} not found"
+            )
+        return device
 
 
 @router.get("/device/{device_id}/latest")
@@ -35,13 +73,8 @@ async def get_device_latest_readings(
         HTTPException: If device not found
     """
     try:
-        # Verify device exists
-        device = await get_device_by_id(device_id)
-        if device is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Device with ID {device_id} not found"
-            )
+        # Verify device exists (cache-first lookup)
+        device = await get_device_with_cache(device_id)
         
         # Parse register_addresses if provided
         register_list = None
@@ -90,13 +123,8 @@ async def get_register_latest_reading(device_id: int, register_address: int):
         HTTPException: If device not found or reading not found
     """
     try:
-        # Verify device exists
-        device = await get_device_by_id(device_id)
-        if device is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Device with ID {device_id} not found"
-            )
+        # Verify device exists (cache-first lookup)
+        device = await get_device_with_cache(device_id)
         
         # Get latest reading
         reading = await get_latest_reading(device_id, register_address)
@@ -144,13 +172,8 @@ async def get_register_time_series(
         HTTPException: If device not found or invalid time format
     """
     try:
-        # Verify device exists
-        device = await get_device_by_id(device_id)
-        if device is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Device with ID {device_id} not found"
-            )
+        # Verify device exists (cache-first lookup)
+        device = await get_device_with_cache(device_id)
         
         # Parse time strings to datetime objects
         start_dt = None
@@ -229,13 +252,8 @@ async def get_multiple_registers_time_series(
         HTTPException: If device not found or invalid parameters
     """
     try:
-        # Verify device exists
-        device = await get_device_by_id(device_id)
-        if device is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Device with ID {device_id} not found"
-            )
+        # Verify device exists (cache-first lookup)
+        device = await get_device_with_cache(device_id)
         
         # Parse register addresses
         try:

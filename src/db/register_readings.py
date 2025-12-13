@@ -24,7 +24,8 @@ async def insert_register_reading(
     timestamp: Optional[datetime] = None,
     quality: str = 'good',
     register_name: Optional[str] = None,
-    unit: Optional[str] = None
+    unit: Optional[str] = None,
+    scale_factor: Optional[float] = None
 ) -> bool:
     """
     Insert a single register reading into the database.
@@ -37,6 +38,7 @@ async def insert_register_reading(
         quality: Data quality flag ('good', 'bad', 'uncertain', 'substituted')
         register_name: Register name (denormalized from register_map)
         unit: Unit of measurement (denormalized from register_map)
+        scale_factor: Scale factor to apply to raw value (denormalized from register_map)
         
     Returns:
         True if inserted successfully, False otherwise
@@ -57,7 +59,8 @@ async def insert_register_reading(
                 value=value,
                 quality=quality,
                 register_name=register_name,
-                unit=unit
+                unit=unit,
+                scale_factor=scale_factor
             )
             
             statement = statement.on_conflict_do_update(
@@ -66,7 +69,8 @@ async def insert_register_reading(
                     value=statement.excluded.value,
                     quality=statement.excluded.quality,
                     register_name=statement.excluded.register_name,
-                    unit=statement.excluded.unit
+                    unit=statement.excluded.unit,
+                    scale_factor=statement.excluded.scale_factor
                 )
             )
             
@@ -96,6 +100,7 @@ async def insert_register_readings_batch(
             - quality (str, optional, default 'good')
             - register_name (str, optional)
             - unit (str, optional)
+            - scale_factor (float, optional)
         
     Returns:
         Number of successfully inserted readings
@@ -123,7 +128,8 @@ async def insert_register_readings_batch(
                     'value': float(reading['value']),  # Ensure it's a float
                     'quality': reading.get('quality', 'good'),
                     'register_name': reading.get('register_name'),
-                    'unit': reading.get('unit')
+                    'unit': reading.get('unit'),
+                    'scale_factor': reading.get('scale_factor')
                 })
             
             # Build batch INSERT query with ON CONFLICT
@@ -280,12 +286,12 @@ async def get_latest_readings_for_device(
         rank_subquery = (
             select(
                 RegisterReading.timestamp,
-                RegisterReading.device_id,
                 RegisterReading.register_address,
                 RegisterReading.value,
                 RegisterReading.quality,
                 RegisterReading.register_name,
                 RegisterReading.unit,
+                RegisterReading.scale_factor,
                 sql_func.row_number().over(
                     partition_by=RegisterReading.register_address,
                     order_by=RegisterReading.timestamp.desc()
@@ -294,6 +300,7 @@ async def get_latest_readings_for_device(
             .where(RegisterReading.device_id == device_id)
         )
         
+        # If register_addresses is provided, filter the subquery to only include the specified register addresses
         if register_addresses:
             rank_subquery = rank_subquery.where(
                 RegisterReading.register_address.in_(register_addresses)
@@ -306,12 +313,12 @@ async def get_latest_readings_for_device(
         statement = (
             select(
                 ranked.c.timestamp,
-                ranked.c.device_id,
                 ranked.c.register_address,
                 ranked.c.value,
                 ranked.c.quality,
                 ranked.c.register_name,
-                ranked.c.unit
+                ranked.c.unit,
+                ranked.c.scale_factor
             )
             .where(ranked.c.rn == 1)
         )
@@ -322,12 +329,12 @@ async def get_latest_readings_for_device(
         return [
             {
                 'timestamp': row.timestamp,
-                'device_id': row.device_id,
                 'register_address': row.register_address,
                 'value': row.value,
                 'quality': row.quality,
                 'register_name': row.register_name,
-                'unit': row.unit
+                'unit': row.unit,
+                'scale': row.scale_factor  # Scale factor from database
             }
             for row in rows
         ]
