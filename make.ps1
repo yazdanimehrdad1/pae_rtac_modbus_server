@@ -68,12 +68,61 @@ function Invoke-TestSetup {
 
 switch ($Command.ToLower()) {
     "up-build" {
-        Write-Host "Building and starting containers..." -ForegroundColor Green
-        docker-compose up -d --build
+        Write-Host "Building and starting services..." -ForegroundColor Green
+        docker-compose build
+        docker-compose up -d postgres redis
+        Write-Host "Waiting for PostgreSQL to be healthy..." -ForegroundColor Cyan
+        $timeout = 60
+        $ready = $false
+        while ($timeout -gt 0) {
+            try {
+                $env:POSTGRES_USER = if ($env:POSTGRES_USER) { $env:POSTGRES_USER } else { "rtac_user" }
+                $result = docker-compose exec -T postgres pg_isready -U $env:POSTGRES_USER 2>$null
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Host "PostgreSQL is ready!" -ForegroundColor Green
+                    $ready = $true
+                    break
+                }
+            } catch {
+                # Continue waiting
+            }
+            Start-Sleep -Seconds 1
+            $timeout--
+        }
+        if (-not $ready) {
+            Write-Host "ERROR: PostgreSQL health check timeout" -ForegroundColor Red
+            exit 1
+        }
+        Write-Host "Starting application service (migrations will run automatically)..." -ForegroundColor Green
+        docker-compose up -d pae-rtac-server
     }
     "up" {
-        Write-Host "Starting containers..." -ForegroundColor Green
-        docker-compose up -d
+        Write-Host "Starting services..." -ForegroundColor Green
+        docker-compose up -d postgres redis
+        Write-Host "Waiting for PostgreSQL to be healthy..." -ForegroundColor Cyan
+        $timeout = 60
+        $ready = $false
+        while ($timeout -gt 0) {
+            try {
+                $env:POSTGRES_USER = if ($env:POSTGRES_USER) { $env:POSTGRES_USER } else { "rtac_user" }
+                $result = docker-compose exec -T postgres pg_isready -U $env:POSTGRES_USER 2>$null
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Host "PostgreSQL is ready!" -ForegroundColor Green
+                    $ready = $true
+                    break
+                }
+            } catch {
+                # Continue waiting
+            }
+            Start-Sleep -Seconds 1
+            $timeout--
+        }
+        if (-not $ready) {
+            Write-Host "ERROR: PostgreSQL health check timeout" -ForegroundColor Red
+            exit 1
+        }
+        Write-Host "Starting application service (migrations will run automatically)..." -ForegroundColor Green
+        docker-compose up -d pae-rtac-server
     }
     "down" {
         Write-Host "Stopping containers..." -ForegroundColor Yellow
@@ -88,10 +137,33 @@ switch ($Command.ToLower()) {
         docker-compose build --no-cache
     }
     "up-rebuild" {
-        Write-Host "Rebuilding Docker image (no cache)..." -ForegroundColor Yellow
+        Write-Host "Rebuilding and starting services..." -ForegroundColor Yellow
         docker-compose build --no-cache
-        Write-Host "Starting containers..." -ForegroundColor Green
-        docker-compose up -d
+        docker-compose up -d postgres redis
+        Write-Host "Waiting for PostgreSQL to be healthy..." -ForegroundColor Cyan
+        $timeout = 60
+        $ready = $false
+        while ($timeout -gt 0) {
+            try {
+                $env:POSTGRES_USER = if ($env:POSTGRES_USER) { $env:POSTGRES_USER } else { "rtac_user" }
+                $result = docker-compose exec -T postgres pg_isready -U $env:POSTGRES_USER 2>$null
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Host "PostgreSQL is ready!" -ForegroundColor Green
+                    $ready = $true
+                    break
+                }
+            } catch {
+                # Continue waiting
+            }
+            Start-Sleep -Seconds 1
+            $timeout--
+        }
+        if (-not $ready) {
+            Write-Host "ERROR: PostgreSQL health check timeout" -ForegroundColor Red
+            exit 1
+        }
+        Write-Host "Starting application service (migrations will run automatically)..." -ForegroundColor Green
+        docker-compose up -d pae-rtac-server
     }
     "restart" {
         Write-Host "Restarting containers..." -ForegroundColor Yellow
