@@ -28,10 +28,14 @@ __all__ = ["ModbusClient", "translate_modbus_error"]
 
 
 @contextmanager
-def modbus_client():
+def modbus_client(host: Optional[str] = None, port: Optional[int] = None):
     """
     Context manager for Modbus TCP client connections.
     Ensures proper cleanup of sockets after use.
+    
+    Args:
+        host: Modbus server hostname or IP address (defaults to MODBUS_HOST env var)
+        port: Modbus server port (defaults to MODBUS_PORT env var)
     
     TODO: Replace with persistent pooled client for better performance
     in high-throughput scenarios. Consider using connection pooling
@@ -41,8 +45,8 @@ def modbus_client():
         ModbusTcpClient: Configured Modbus TCP client instance
     """
     client = ModbusTcpClient(
-        host=MODBUS_HOST,
-        port=MODBUS_PORT,
+        host=host or MODBUS_HOST,
+        port=port or MODBUS_PORT,
         timeout=MODBUS_TIMEOUT_S,
         retries=MODBUS_RETRIES
     )
@@ -52,20 +56,24 @@ def modbus_client():
         client.close()
 
 
-def translate_modbus_error(error: Exception) -> Tuple[int, str]:
+def translate_modbus_error(error: Exception, host: Optional[str] = None, port: Optional[int] = None) -> Tuple[int, str]:
     """
     Translate Modbus exceptions into appropriate HTTP status codes and messages.
     
     Args:
         error: The exception raised during Modbus operation
+        host: Modbus server hostname or IP address (for error messages)
+        port: Modbus server port (for error messages)
         
     Returns:
         Tuple of (HTTP status code, error message)
     """
     if isinstance(error, ConnectionException):
+        error_host = host or MODBUS_HOST
+        error_port = port or MODBUS_PORT
         return (
             503,  # HTTP_503_SERVICE_UNAVAILABLE
-            f"Failed to connect to Modbus server at {MODBUS_HOST}:{MODBUS_PORT}"
+            f"Failed to connect to Modbus server at {error_host}:{error_port}"
         )
     elif isinstance(error, ExceptionResponse):
         # Modbus protocol errors (invalid address, illegal value, etc.)
@@ -109,7 +117,9 @@ class ModbusClient:
         kind: Literal["holding", "input", "coils", "discretes"],
         address: int,
         count: int,
-        device_id: Optional[int] = None
+        device_id: Optional[int] = None,
+        host: Optional[str] = None,
+        port: Optional[int] = None
     ) -> List[Union[int, bool]]:
         """
         Read Modbus registers or coils/discrete inputs.
@@ -119,6 +129,8 @@ class ModbusClient:
             address: Starting address
             count: Number of registers/bits to read
             device_id: Modbus unit/slave ID (uses default if None)
+            host: Modbus server hostname or IP address (uses default if None)
+            port: Modbus server port (uses default if None)
             
         Returns:
             List of register values or bits
@@ -127,8 +139,11 @@ class ModbusClient:
             Exception: Various Modbus exceptions that should be translated
         """
         device_id = device_id or self.default_device_id
+        # Use provided host/port or fall back to instance defaults
+        connection_host = host or self.host
+        connection_port = port or self.port
         
-        with modbus_client() as client:
+        with modbus_client(host=connection_host, port=connection_port) as client:
             if not client.connect():
                 raise ConnectionException("Failed to connect to Modbus server")
             
