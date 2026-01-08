@@ -1,7 +1,10 @@
 {
   "main-sel-751": {
     "csv_file": "main_sel_751_register_map.csv",
+    "host": "192.168.168.201",
+    "port": 502,
     "device_id": 1,
+    "description": "Main SEL-751 relay",
     "poll_address": 1400,
     "poll_count": 100,
     "poll_kind": "holding",

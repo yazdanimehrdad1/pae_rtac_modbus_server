@@ -26,9 +26,26 @@ help:
 	@echo "  make apply-migration - Apply database migrations (in container)"
 	@echo "  make run        - Run service locally (non-Docker)"
 
-# Start containers
+# Start containers (ensures postgres is healthy, then starts services)
 up:
-	docker-compose -f compose.yaml up -d
+	@echo "Starting services..."
+	@docker-compose -f compose.yaml up -d postgres redis
+	@echo "Waiting for PostgreSQL to be healthy..."
+	@timeout=60; \
+	while [ $$timeout -gt 0 ]; do \
+		if docker-compose -f compose.yaml exec -T postgres pg_isready -U $$POSTGRES_USER 2>/dev/null || docker-compose -f compose.yaml exec -T postgres pg_isready -U rtac_user 2>/dev/null; then \
+			echo "PostgreSQL is ready!"; \
+			break; \
+		fi; \
+		sleep 1; \
+		timeout=$$((timeout-1)); \
+	done; \
+	if [ $$timeout -eq 0 ]; then \
+		echo "ERROR: PostgreSQL health check timeout"; \
+		exit 1; \
+	fi
+	@echo "Starting application service (migrations will run automatically)..."
+	@docker-compose -f compose.yaml up -d pae-rtac-server
 
 # Stop and remove containers
 down:
@@ -44,12 +61,47 @@ rebuild:
 
 # Build and start containers
 up-build:
-	docker-compose -f compose.yaml up -d --build
+	@echo "Building and starting services..."
+	@docker-compose -f compose.yaml build
+	@docker-compose -f compose.yaml up -d postgres redis
+	@echo "Waiting for PostgreSQL to be healthy..."
+	@timeout=60; \
+	while [ $$timeout -gt 0 ]; do \
+		if docker-compose -f compose.yaml exec -T postgres pg_isready -U $$POSTGRES_USER 2>/dev/null || docker-compose -f compose.yaml exec -T postgres pg_isready -U rtac_user 2>/dev/null; then \
+			echo "PostgreSQL is ready!"; \
+			break; \
+		fi; \
+		sleep 1; \
+		timeout=$$((timeout-1)); \
+	done; \
+	if [ $$timeout -eq 0 ]; then \
+		echo "ERROR: PostgreSQL health check timeout"; \
+		exit 1; \
+	fi
+	@echo "Starting application service (migrations will run automatically)..."
+	@docker-compose -f compose.yaml up -d pae-rtac-server
 
 # Rebuild and start containers (no cache)
 up-rebuild:
-	docker-compose -f compose.yaml build --no-cache
-	docker-compose -f compose.yaml up -d
+	@echo "Rebuilding and starting services..."
+	@docker-compose -f compose.yaml build --no-cache
+	@docker-compose -f compose.yaml up -d postgres redis
+	@echo "Waiting for PostgreSQL to be healthy..."
+	@timeout=60; \
+	while [ $$timeout -gt 0 ]; do \
+		if docker-compose -f compose.yaml exec -T postgres pg_isready -U $$POSTGRES_USER 2>/dev/null || docker-compose -f compose.yaml exec -T postgres pg_isready -U rtac_user 2>/dev/null; then \
+			echo "PostgreSQL is ready!"; \
+			break; \
+		fi; \
+		sleep 1; \
+		timeout=$$((timeout-1)); \
+	done; \
+	if [ $$timeout -eq 0 ]; then \
+		echo "ERROR: PostgreSQL health check timeout"; \
+		exit 1; \
+	fi
+	@echo "Starting application service (migrations will run automatically)..."
+	@docker-compose -f compose.yaml up -d pae-rtac-server
 
 # Restart containers
 restart:

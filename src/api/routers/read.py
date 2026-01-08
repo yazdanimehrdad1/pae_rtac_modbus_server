@@ -9,12 +9,21 @@ from schemas.api_models import ReadRequest, ReadResponse, RegisterData, SimpleRe
 from modbus.client import ModbusClient, translate_modbus_error
 from modbus.modbus_utills import ModbusUtils
 from utils.map_csv_to_json import json_to_register_map, get_register_map_for_device
+from db.devices import get_device_by_id, get_device_id_by_name
+from cache.cache import CacheService
 from config import settings
+from logger import get_logger
 
 router = APIRouter()
 
+# Initialize logger
+logger = get_logger(__name__)
+
 # Initialize Modbus utils wrapper
 modbus_utils = ModbusUtils(ModbusClient())
+
+# Initialize cache service
+cache_service = CacheService()
 
 @router.post("/read", response_model=SimpleReadResponse)
 async def read_registers(request: ReadRequest):
@@ -41,25 +50,33 @@ async def read_registers(request: ReadRequest):
             data = modbus_utils.read_holding_registers(
                 address=request.address,
                 count=request.count,
-                device_id=device_id
+                device_id=device_id,
+                host=request.host,
+                port=request.port
             )
         elif request.kind == "input":
             data = modbus_utils.read_input_registers(
                 address=request.address,
                 count=request.count,
-                device_id=device_id
+                device_id=device_id,
+                host=request.host,
+                port=request.port
             )
         elif request.kind == "coils":
             data = modbus_utils.read_coils(
                 address=request.address,
                 count=request.count,
-                device_id=device_id
+                device_id=device_id,
+                host=request.host,
+                port=request.port
             )
         elif request.kind == "discretes":
             data = modbus_utils.read_discrete_inputs(
                 address=request.address,
                 count=request.count,
-                device_id=device_id
+                device_id=device_id,
+                host=request.host,
+                port=request.port
             )
         else:
             raise ValueError(f"Invalid kind: {request.kind}")
@@ -100,12 +117,66 @@ async def read_registers(request: ReadRequest):
 
 @router.get("/read/main-sel-751", response_model=ReadResponse)
 async def read_main_sel_751_data():
-    """Read the main data from the 751 (hardcoded to address 1400, count 100)."""
+    """Read the main data from the 751 device using device-specific configuration."""
+    device_name = "main-sel-751"
+    
     try:
-        data = modbus_utils.read_device_registers_main_sel_751()
+        # Get device from database to get host/port configuration
+        # First try cache
+        cache_key = f"device:{device_name}"
+        cached_device = await cache_service.get(cache_key)
+        
+        if cached_device is not None:
+            # Device found in cache, reconstruct Pydantic model from dict
+            logger.debug(f"Device '{device_name}' found in cache")
+            from schemas.db_models.models import DeviceResponse
+            device = DeviceResponse(**cached_device)
+        else:
+            # Not in cache, query database
+            logger.debug(f"Device '{device_name}' not in cache, querying database")
+            db_device_id = await get_device_id_by_name(device_name)
+            if db_device_id is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Device '{device_name}' not found in database"
+                )
+            device = await get_device_by_id(db_device_id)
+            if device is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Device '{device_name}' not found in database"
+                )
+        
+        # Use device's polling configuration
+        poll_address = device.poll_address or settings.main_sel_751_poll_address
+        poll_count = device.poll_count or settings.main_sel_751_poll_count
+        poll_kind = device.poll_kind or settings.main_sel_751_poll_kind
+        modbus_device_id = device.device_id
+        
+        # Read Modbus registers using device-specific host/port
+        if poll_kind == "holding":
+            data = modbus_utils.read_holding_registers(
+                address=poll_address,
+                count=poll_count,
+                device_id=modbus_device_id,
+                host=device.host,
+                port=device.port
+            )
+        elif poll_kind == "input":
+            data = modbus_utils.read_input_registers(
+                address=poll_address,
+                count=poll_count,
+                device_id=modbus_device_id,
+                host=device.host,
+                port=device.port
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unsupported register kind '{poll_kind}' for device '{device_name}'"
+            )
         
         # Get register map from database (with CSV fallback if not in DB)
-        device_name = "main-sel-751"
         json_data = await get_register_map_for_device(device_name)
         
         response_data = {}
@@ -117,7 +188,7 @@ async def read_main_sel_751_data():
             for point in register_map.points:
                 # Check if this register is within the requested address range
                 # Calculate the index in the data array
-                data_index = point.address - 1400
+                data_index = point.address - poll_address
                 if 0 <= data_index < len(data):
                     response_data[point.address] = RegisterData(
                         name=point.name,
@@ -135,14 +206,28 @@ async def read_main_sel_751_data():
         return ReadResponse(
             ok=True,
             timestamp=datetime.now(timezone.utc).isoformat(),
-            kind="holding",
-            address=1400,
-            count=100,
-            device_id=1,
+            kind=poll_kind,
+            address=poll_address,
+            count=poll_count,
+            device_id=modbus_device_id,
             data=response_data
         )
+    except HTTPException:
+        raise
     except Exception as e:
-        status_code, message = translate_modbus_error(e)
+        # Try to get device info for better error messages
+        try:
+            db_device_id = await get_device_id_by_name(device_name)
+            if db_device_id:
+                device = await get_device_by_id(db_device_id)
+                if device:
+                    status_code, message = translate_modbus_error(e, host=device.host, port=device.port)
+                else:
+                    status_code, message = translate_modbus_error(e)
+            else:
+                status_code, message = translate_modbus_error(e)
+        except:
+            status_code, message = translate_modbus_error(e)
         raise HTTPException(status_code=status_code, detail=message)
 
 

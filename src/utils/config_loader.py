@@ -338,6 +338,7 @@ async def load_device_configs() -> Dict[str, DeviceLoadResult]:
     Returns:
         Dictionary mapping device names to DeviceLoadResult metadata
     """
+    # TODO: compare cache,db and the csv/json, if different update
     config_dir = Path("config")
     results = {}
     

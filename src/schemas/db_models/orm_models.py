@@ -183,6 +183,12 @@ class RegisterReading(Base):
         comment="Unit of measurement (denormalized from register_map)"
     )
     
+    scale_factor: Mapped[Optional[float]] = mapped_column(
+        Float,
+        nullable=True,
+        comment="Scale factor to apply to raw value (denormalized from register_map)"
+    )
+    
     # Relationship to Device
     device: Mapped["Device"] = relationship("Device", back_populates="register_readings")
     

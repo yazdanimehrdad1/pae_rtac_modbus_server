@@ -12,6 +12,8 @@ class ReadRequest(BaseModel):
     address: int = Field(..., ge=0, le=65535, description="Starting address")
     count: int = Field(..., ge=1, le=2000, description="Number of registers/bits to read")
     device_id: Optional[int] = Field(None, ge=1, le=255, description="Modbus unit/slave ID (optional)")
+    host: Optional[str] = Field(None, description="Modbus server hostname or IP address (optional, uses default if not provided)")
+    port: Optional[int] = Field(None, ge=1, le=65535, description="Modbus TCP port (optional, uses default if not provided)")
 
 
 class RegisterData(BaseModel):

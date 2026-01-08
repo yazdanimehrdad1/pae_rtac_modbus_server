@@ -88,14 +88,15 @@ async def read_device_registers(
     )
     
     # Use appropriate ModbusUtils method based on register kind
+    # Pass device-specific host and port for connection
     if kind == "holding":
-        modbus_data = modbus_utils.read_holding_registers(address, count, device_id)
+        modbus_data = modbus_utils.read_holding_registers(address, count, device_id, host=device.host, port=device.port)
     elif kind == "input":
-        modbus_data = modbus_utils.read_input_registers(address, count, device_id)
+        modbus_data = modbus_utils.read_input_registers(address, count, device_id, host=device.host, port=device.port)
     elif kind == "coils":
-        modbus_data = modbus_utils.read_coils(address, count, device_id)
+        modbus_data = modbus_utils.read_coils(address, count, device_id, host=device.host, port=device.port)
     elif kind == "discretes":
-        modbus_data = modbus_utils.read_discrete_inputs(address, count, device_id)
+        modbus_data = modbus_utils.read_discrete_inputs(address, count, device_id, host=device.host, port=device.port)
     else:
         raise ValueError(f"Invalid register kind: {kind}. Must be 'holding', 'input', 'coils', or 'discretes'")
     
@@ -209,7 +210,8 @@ async def store_device_data_in_db(
                 'timestamp': timestamp_dt,
                 'quality': 'good',
                 'register_name': register_data.name,
-                'unit': register_data.unit or None
+                'unit': register_data.unit or None,
+                'scale_factor': register_data.scale_factor or None
             })
         
         inserted_count = await insert_register_readings_batch(batch_readings)
@@ -325,7 +327,8 @@ async def poll_single_device(device: DeviceListItem) -> PollResult:
         )
         
     except Exception as e:
-        status_code, error_message = translate_modbus_error(e)
+        # Pass device host/port for better error messages
+        status_code, error_message = translate_modbus_error(e, host=device.host, port=device.port)
         result["error"] = f"status_code={status_code}, error_message={error_message}"
         logger.error(
             f"Error polling device '{device_name}': {result['error']}",
