@@ -16,10 +16,11 @@ COPY pyproject.toml ./
 COPY src/ ./src/
 COPY config/ ./config/
 COPY scripts/ ./scripts/
-COPY docker/entrypoint.sh ./docker/entrypoint.sh
+COPY docker/entrypoint.sh /app/docker/entrypoint.sh
 
-# Make entrypoint script executable
-RUN chmod +x ./docker/entrypoint.sh
+# Make entrypoint script executable and fix line endings (in case of Windows CRLF)
+RUN chmod +x /app/docker/entrypoint.sh && \
+    sed -i 's/\r$//' /app/docker/entrypoint.sh
 
 # Install dependencies
 # TODO: Consider using uv/pdm/poetry for better dependency management
@@ -35,7 +36,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/healthz')" || exit 1
 
 # Set entrypoint to run migrations before starting the app
-ENTRYPOINT ["./docker/entrypoint.sh"]
+ENTRYPOINT ["/app/docker/entrypoint.sh"]
 
 # Run the application
 # TODO: Update to use gunicorn with uvicorn workers for production

@@ -216,14 +216,14 @@ switch ($Command.ToLower()) {
     }
     "format" {
         Write-Host "Formatting Python files with black..." -ForegroundColor Green
-        docker-compose -f compose.yaml exec pae-rtac-server black src/
+        docker-compose -f docker-compose.yaml exec pae-rtac-server black src/
         if ($LASTEXITCODE -ne 0) {
             Write-Host "Error running black in container" -ForegroundColor Red
             exit $LASTEXITCODE
         }
         
         Write-Host "Running ruff to fix import sorting and other issues..." -ForegroundColor Green
-        docker-compose -f compose.yaml exec pae-rtac-server ruff check --fix src/
+        docker-compose -f docker-compose.yaml exec pae-rtac-server ruff check --fix src/
         if ($LASTEXITCODE -ne 0) {
             Write-Host "Ruff found issues (some may be non-fixable)" -ForegroundColor Yellow
         }

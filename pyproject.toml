@@ -17,6 +17,7 @@ dependencies = [
     "apscheduler>=3.10.0",  # Scheduler for cron jobs
     "asyncpg>=0.29.0",  # PostgreSQL async driver
     "sqlalchemy[asyncio]>=2.0.0",  # SQLAlchemy 2.0+ with async support
+    "httpx>=0.25.0",  # HTTP client for cross-service communication
     # TODO: Add when implementing migrations
     # "alembic>=1.13.0",
     # TODO: Add when implementing metrics

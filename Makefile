@@ -29,11 +29,11 @@ help:
 # Start containers (ensures postgres is healthy, then starts services)
 up:
 	@echo "Starting services..."
-	@docker-compose -f compose.yaml up -d postgres redis
+	@docker-compose -f docker-compose.yaml up -d postgres redis
 	@echo "Waiting for PostgreSQL to be healthy..."
 	@timeout=60; \
 	while [ $$timeout -gt 0 ]; do \
-		if docker-compose -f compose.yaml exec -T postgres pg_isready -U $$POSTGRES_USER 2>/dev/null || docker-compose -f compose.yaml exec -T postgres pg_isready -U rtac_user 2>/dev/null; then \
+		if docker-compose -f docker-compose.yaml exec -T postgres pg_isready -U $$POSTGRES_USER 2>/dev/null || docker-compose -f docker-compose.yaml exec -T postgres pg_isready -U rtac_user 2>/dev/null; then \
 			echo "PostgreSQL is ready!"; \
 			break; \
 		fi; \
@@ -45,29 +45,29 @@ up:
 		exit 1; \
 	fi
 	@echo "Starting application service (migrations will run automatically)..."
-	@docker-compose -f compose.yaml up -d pae-rtac-server
+	@docker-compose -f docker-compose.yaml up -d pae-rtac-server
 
 # Stop and remove containers
 down:
-	docker-compose -f compose.yaml down
+	docker-compose -f docker-compose.yaml down
 
 # Build the Docker image (uses cache)
 build:
-	docker-compose -f compose.yaml build
+	docker-compose -f docker-compose.yaml build
 
 # Rebuild the Docker image (no cache - forces fresh build)
 rebuild:
-	docker-compose -f compose.yaml build --no-cache
+	docker-compose -f docker-compose.yaml build --no-cache
 
 # Build and start containers
 up-build:
 	@echo "Building and starting services..."
-	@docker-compose -f compose.yaml build
-	@docker-compose -f compose.yaml up -d postgres redis
+	@docker-compose -f docker-compose.yaml build
+	@docker-compose -f docker-compose.yaml up -d postgres redis
 	@echo "Waiting for PostgreSQL to be healthy..."
 	@timeout=60; \
 	while [ $$timeout -gt 0 ]; do \
-		if docker-compose -f compose.yaml exec -T postgres pg_isready -U $$POSTGRES_USER 2>/dev/null || docker-compose -f compose.yaml exec -T postgres pg_isready -U rtac_user 2>/dev/null; then \
+		if docker-compose -f docker-compose.yaml exec -T postgres pg_isready -U $$POSTGRES_USER 2>/dev/null || docker-compose -f docker-compose.yaml exec -T postgres pg_isready -U rtac_user 2>/dev/null; then \
 			echo "PostgreSQL is ready!"; \
 			break; \
 		fi; \
@@ -79,17 +79,17 @@ up-build:
 		exit 1; \
 	fi
 	@echo "Starting application service (migrations will run automatically)..."
-	@docker-compose -f compose.yaml up -d pae-rtac-server
+	@docker-compose -f docker-compose.yaml up -d pae-rtac-server
 
 # Rebuild and start containers (no cache)
 up-rebuild:
 	@echo "Rebuilding and starting services..."
-	@docker-compose -f compose.yaml build --no-cache
-	@docker-compose -f compose.yaml up -d postgres redis
+	@docker-compose -f docker-compose.yaml build --no-cache
+	@docker-compose -f docker-compose.yaml up -d postgres redis
 	@echo "Waiting for PostgreSQL to be healthy..."
 	@timeout=60; \
 	while [ $$timeout -gt 0 ]; do \
-		if docker-compose -f compose.yaml exec -T postgres pg_isready -U $$POSTGRES_USER 2>/dev/null || docker-compose -f compose.yaml exec -T postgres pg_isready -U rtac_user 2>/dev/null; then \
+		if docker-compose -f docker-compose.yaml exec -T postgres pg_isready -U $$POSTGRES_USER 2>/dev/null || docker-compose -f docker-compose.yaml exec -T postgres pg_isready -U rtac_user 2>/dev/null; then \
 			echo "PostgreSQL is ready!"; \
 			break; \
 		fi; \
@@ -101,28 +101,28 @@ up-rebuild:
 		exit 1; \
 	fi
 	@echo "Starting application service (migrations will run automatically)..."
-	@docker-compose -f compose.yaml up -d pae-rtac-server
+	@docker-compose -f docker-compose.yaml up -d pae-rtac-server
 
 # Restart containers
 restart:
-	docker-compose -f compose.yaml restart
+	docker-compose -f docker-compose.yaml restart
 
 # View logs
 logs:
-	docker-compose -f compose.yaml logs -f pae-rtac-server
+	docker-compose -f docker-compose.yaml logs -f pae-rtac-server
 
 # Open a shell in the container
 shell:
-	docker-compose -f compose.yaml exec pae-rtac-server /bin/bash
+	docker-compose -f docker-compose.yaml exec pae-rtac-server /bin/bash
 
 # Clean up containers and images
 clean:
-	docker-compose -f compose.yaml down
+	docker-compose -f docker-compose.yaml down
 	docker rmi pae-rtac-server 2>/dev/null || true
 
 # View container status
 ps:
-	docker-compose -f compose.yaml ps
+	docker-compose -f docker-compose.yaml ps
 
 # Check service health
 health:
@@ -137,11 +137,11 @@ dev:
 test-setup:
 	@echo "Preparing test environment..."
 	@echo "Checking if Redis container is running..."
-	@docker-compose -f compose.yaml ps redis | grep -q "Up" || docker-compose -f compose.yaml up -d redis
+	@docker-compose -f docker-compose.yaml ps redis | grep -q "Up" || docker-compose -f docker-compose.yaml up -d redis
 	@echo "Waiting for Redis to be healthy..."
 	@timeout=30; \
 	while [ $$timeout -gt 0 ]; do \
-		if docker-compose -f compose.yaml exec -T redis redis-cli ping > /dev/null 2>&1; then \
+		if docker-compose -f docker-compose.yaml exec -T redis redis-cli ping > /dev/null 2>&1; then \
 			echo "Redis is ready!"; \
 			break; \
 		fi; \
@@ -165,9 +165,9 @@ lint:
 # Format code
 format:
 	@echo "Formatting Python files with black..."
-	@docker-compose -f compose.yaml exec pae-rtac-server black src/ 2>/dev/null || echo "Note: Running black in container..."
+	@docker-compose -f docker-compose.yaml exec pae-rtac-server black src/ 2>/dev/null || echo "Note: Running black in container..."
 	@echo "Running ruff to fix import sorting and other issues..."
-	@docker-compose -f compose.yaml exec pae-rtac-server ruff check --fix src/ 2>/dev/null || echo "Note: Running ruff in container..."
+	@docker-compose -f docker-compose.yaml exec pae-rtac-server ruff check --fix src/ 2>/dev/null || echo "Note: Running ruff in container..."
 	@echo "Formatting complete!"
 
 
@@ -177,7 +177,7 @@ migrate:
 
 # Apply database migrations (in container)
 apply-migration:
-	@docker-compose -f compose.yaml exec pae-rtac-server python scripts/migrate_db.py
+	@docker-compose -f docker-compose.yaml exec pae-rtac-server python scripts/migrate_db.py
 
 # Run the service locally (non-Docker)
 run:

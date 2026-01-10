@@ -1,0 +1,2 @@
+"""Cross-service communication routes."""
+

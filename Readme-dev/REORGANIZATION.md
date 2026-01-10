@@ -39,12 +39,12 @@
 ### Docker & Deployment
 - ✅ `docker/Dockerfile` - Updated for new structure
 - ✅ `docker/gunicorn_conf.py` - Production server config
-- ✅ `compose.yaml` - Updated (renamed from docker-compose.yml)
+- ✅ `docker-compose.yaml` - Updated (renamed from compose.yaml)
 - ✅ `k8s/` - Kubernetes manifests (placeholder)
 
 ### Build & Development
 - ✅ `Makefile` - Updated with new commands:
-  - Uses `compose.yaml` instead of `docker-compose.yml`
+  - Uses `docker-compose.yaml`
   - Added `dev`, `test`, `lint`, `fmt`, `migrate`, `run` targets
 - ✅ `ARCHITECTURE.md` - Expert recommendations document
 

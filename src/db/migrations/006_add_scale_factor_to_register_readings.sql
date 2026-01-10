@@ -13,3 +13,5 @@ COMMENT ON COLUMN register_readings.scale_factor IS 'Scale factor to apply to ra
 
 
 
+
+
