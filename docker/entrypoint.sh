@@ -13,12 +13,21 @@ import asyncio
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path('/app/src')))
-from db.connection import check_db_health
-result = asyncio.run(check_db_health())
-sys.exit(0 if result else 1)
-" 2>/dev/null; then
+try:
+    from db.connection import check_db_health
+    result = asyncio.run(check_db_health())
+    sys.exit(0 if result else 1)
+except Exception as e:
+    print(f'Health check error: {e}', file=sys.stderr)
+    sys.exit(1)
+" 2>&1; then
         echo "PostgreSQL is ready!"
         break
+    else
+        # Show error on first attempt or every 10 seconds
+        if [ $timeout -eq 60 ] || [ $((timeout % 10)) -eq 0 ]; then
+            echo "PostgreSQL health check failed, retrying..."
+        fi
     fi
     echo "Waiting for PostgreSQL... ($timeout seconds remaining)"
     sleep 1

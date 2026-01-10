@@ -73,6 +73,9 @@ class Settings(BaseSettings):
     # Pod identification (for Kubernetes)
     pod_name: str = Field(default="", alias="POD_NAME")  # Falls back to HOSTNAME if not set
     
+    # Sites Manager Configuration
+    sites_manager_base_url: str = Field(default="http://pae-sites-manager-app-test:8020", alias="SITES_MANAGER_BASE_URL")
+    
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

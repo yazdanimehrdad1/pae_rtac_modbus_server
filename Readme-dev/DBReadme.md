@@ -373,7 +373,7 @@ If the database doesn't exist, it should be created automatically by the contain
 docker-compose exec postgres psql -U rtac_user -d postgres -c "\l"
 ```
 
-If `rtac_modbus` is missing, check the `POSTGRES_DB` environment variable in `compose.yaml`.
+If `rtac_modbus` is missing, check the `POSTGRES_DB` environment variable in `docker-compose.yaml`.
 
 ## Migration Best Practices (TODO)
 

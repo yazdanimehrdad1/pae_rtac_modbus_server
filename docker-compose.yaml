@@ -3,10 +3,12 @@ services:
     image: redis:7-alpine
     container_name: pae-rtac-server-redis
     ports:
-      - "6379:6379"
+      - "6380:6379"
     volumes:
       - redis-data:/data
     command: redis-server --appendonly yes
+    networks:
+      - rtac-server-network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -18,13 +20,15 @@ services:
     image: timescale/timescaledb:latest-pg16
     container_name: pae-rtac-server-postgres
     ports:
-      - "5432:5432"
+      - "5435:5432"
     environment:
       - POSTGRES_DB=${POSTGRES_DB:-rtac_modbus}
       - POSTGRES_USER=${POSTGRES_USER:-rtac_user}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-rtac_password}
     volumes:
       - postgres-data:/var/lib/postgresql/data
+    networks:
+      - rtac-server-network
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-rtac_user} -d ${POSTGRES_DB:-rtac_modbus}"]
@@ -57,6 +61,8 @@ services:
       - POSTGRES_DB=${POSTGRES_DB:-rtac_modbus}
       - POSTGRES_USER=${POSTGRES_USER:-rtac_user}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-rtac_password}
+      # Sites Manager configuration
+      - SITES_MANAGER_BASE_URL=${SITES_MANAGER_BASE_URL:-http://pae-sites-manager-app-test:8020}
     volumes:
       # Mount .env file if it exists (optional - environment variables take precedence)
       - ./.env:/app/.env:ro
@@ -65,10 +71,19 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+    networks:
+      - rtac-server-network
+      - shared-network
     restart: unless-stopped
-    # No network isolation needed - connects directly to external Modbus server
 
 volumes:
   redis-data:
   postgres-data:
+
+networks:
+  rtac-server-network:
+    driver: bridge
+  shared-network:
+    external: true
+    name: pae-shared-network
 
