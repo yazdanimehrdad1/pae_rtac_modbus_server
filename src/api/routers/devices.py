@@ -7,7 +7,7 @@ import json
 from fastapi import APIRouter, HTTPException, status, Query
 
 from schemas.db_models.models import DeviceCreate, DeviceUpdate, DeviceResponse, DeviceListItem
-from db.devices import create_device, get_all_devices, get_device_by_id, get_device_by_device_id, update_device, delete_device
+from db.devices import create_device, get_all_devices, get_device_by_id, get_device_by_device_id, update_device, delete_device, delete_device_by_id
 from utils.map_csv_to_json import get_register_map_for_device
 from logger import get_logger
 
@@ -33,34 +33,47 @@ async def get_all_devices_endpoint():
         )
 
 
-@router.post("/device", response_model=DeviceResponse, status_code=status.HTTP_201_CREATED)
-async def create_new_device(device: DeviceCreate):
+@router.post("/device/site/{site_id}", response_model=DeviceResponse, status_code=status.HTTP_201_CREATED)
+async def create_new_device(site_id: str, device: DeviceCreate):
     """
-    Create a new Modbus device.
+    Create a new Modbus device and associate it with a site.
     
     Args:
+        site_id: Site ID (UUID) to associate this device with
         device: Device configuration data
         
     Returns:
         Created device with ID and timestamps
         
     Raises:
-        HTTPException: If device name already exists or database error occurs
+        HTTPException: If site not found, device name already exists, or database error occurs
     """
     try:
-        created_device = await create_device(device)
+        created_device = await create_device(device, site_id=site_id)
         return created_device
     except ValueError as e:
+        error_msg = str(e)
+        # Handle site not found
+        if "not found" in error_msg.lower() and "site" in error_msg.lower():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=error_msg
+            )
         # Handle unique constraint violation (duplicate name)
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=str(e)
+            detail=error_msg
         )
     except Exception as e:
         logger.error(f"Error creating device: {e}", exc_info=True)
+        error_detail = {
+            "error": "Failed to create device",
+            "error_type": type(e).__name__,
+            "message": str(e)
+        }
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to create device"
+            detail=error_detail
         )
 
 
@@ -98,7 +111,7 @@ async def get_device(
         if include_register_map:
             logger.debug(f"Loading register map for device '{device.name}' (device_id: {device_id}, primary key: {device.id})")
             try:
-                register_map = await get_register_map_for_device(device.name)
+                register_map = await get_register_map_for_device(device.id)
                 logger.debug(f"Register map loaded: {register_map is not None}")
                 
                 # Ensure register_map is a dict, not a string
@@ -202,77 +215,52 @@ async def update_existing_device(device_id: int, device_update: DeviceUpdate):
         )
 
 
-@router.delete("/device/{device_id}", response_model=DeviceResponse)
-async def delete_existing_device(device_id: int):
+@router.delete("/site/{site_id}/device/device/{device_id}", response_model=DeviceResponse)
+async def delete_existing_device(site_id: str, device_id: int):
     """
-    Delete a Modbus device.
-    
-    The device_id parameter refers to the Modbus unit/slave ID (e.g., 111, 222),
-    not the database primary key.
+    Delete a Modbus device from a specific site.
     
     Args:
+        site_id: Site ID (UUID) that the device belongs to
         device_id: Modbus unit/slave ID (not the database primary key)
         
     Returns:
         Metadata of the deleted device
         
     Raises:
-        HTTPException: If device not found or database error occurs
+        HTTPException: If site not found, device not found, device doesn't belong to site, or database error occurs
     """
     try:
-        deleted_device = await delete_device(device_id)
+        deleted_device = await delete_device(device_id, site_id=site_id)
         if deleted_device is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Device with device_id {device_id} not found"
+                detail=f"Device with device_id {device_id} not found in site '{site_id}'"
             )
         return deleted_device
+    except ValueError as e:
+        error_msg = str(e)
+        # Handle site not found or device doesn't belong to site
+        if "not found" in error_msg.lower():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=error_msg
+            )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=error_msg
+        )
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error deleting device: {e}", exc_info=True)
+        error_detail = {
+            "error": "Failed to delete device",
+            "error_type": type(e).__name__,
+            "message": str(e)
+        }
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to delete device"
-        )
-
-
-@router.get("/device/{device_name}/register_map", response_model=Dict[str, Any])
-async def get_device_register_map(device_name: str):
-    """
-    Get register map for a device in JSON format.
-    
-    Uses lazy loading: checks DB first, then falls back to CSV if not found.
-    If loaded from CSV, it will be saved to DB for future use.
-    
-    Args:
-        device_name: Device identifier (e.g., "main-sel-751")
-        
-    Returns:
-        JSON structure with metadata and registers array
-        
-    Raises:
-        HTTPException: If device name not found or register map cannot be loaded
-    """
-    try:
-        # Use wrapper function for lazy loading (DB first, then CSV)
-        register_map = await get_register_map_for_device(device_name)
-        
-        if register_map is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Register map not found for device '{device_name}'. Device may not be mapped to a CSV file or CSV file does not exist."
-            )
-        
-        return register_map
-        
-    except HTTPException:
-        # Re-raise HTTP exceptions
-        raise
-    except Exception as e:
-        logger.error(f"Error getting register map for device '{device_name}': {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve register map"
+            detail=error_detail
         )
 

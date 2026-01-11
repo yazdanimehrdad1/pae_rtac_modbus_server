@@ -40,29 +40,6 @@ async def get_register_map_by_device_id(device_id: int) -> Optional[Dict[str, An
         return device_register_map.register_map
 
 
-async def get_register_map_by_device_name(device_name: str) -> Optional[Dict[str, Any]]:
-    """
-    Get register map for a device by device name.
-    
-    Args:
-        device_name: Device name/identifier
-        
-    Returns:
-        Register map dictionary if found, None otherwise
-    """
-    async with get_session() as session:
-        statement = select(DeviceRegisterMap).join(
-            Device, DeviceRegisterMap.device_id == Device.id
-        ).where(Device.name == device_name)
-        
-        result = await session.execute(statement)
-        device_register_map = result.scalar_one_or_none()
-        
-        if device_register_map is None or device_register_map.register_map is None:
-            return None
-        
-        # SQLAlchemy JSON type automatically handles dict conversion
-        return device_register_map.register_map
 
 
 # TODO: adjust this function to add json b based on the excel file

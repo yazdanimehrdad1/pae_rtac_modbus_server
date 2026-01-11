@@ -84,6 +84,6 @@ networks:
   rtac-server-network:
     driver: bridge
   shared-network:
-    external: true
     name: pae-shared-network
+    driver: bridge
 

@@ -6,6 +6,7 @@ These models represent the database schema and are used for ORM operations.
 
 from datetime import datetime
 from typing import Optional, Dict, Any
+import uuid
 from sqlalchemy import String, Integer, Text, DateTime, func, Float, ForeignKey, JSON, Boolean
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -93,6 +94,15 @@ class Device(Base):
         comment="Whether polling is enabled for this device"
     )
     
+    # Foreign key to Site
+    site_id: Mapped[Optional[str]] = mapped_column(
+        String(36),
+        ForeignKey("sites.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+        comment="Foreign key to sites table (optional - device can exist without a site)"
+    )
+    
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -121,6 +131,12 @@ class Device(Base):
         back_populates="device",
         uselist=False,
         cascade="all, delete-orphan"
+    )
+    
+    # Relationship to Site (many-to-one)
+    site: Mapped[Optional["Site"]] = relationship(
+        "Site",
+        back_populates="devices"
     )
     
     def __repr__(self) -> str:
@@ -247,4 +263,105 @@ class DeviceRegisterMap(Base):
     
     def __repr__(self) -> str:
         return f"<DeviceRegisterMap(id={self.id}, device_id={self.device_id})>"
+
+
+class Site(Base):
+    """
+    SQLAlchemy model for the sites table.
+    
+    Represents a site/location where devices are deployed.
+    """
+    __tablename__ = "sites"
+    
+    id: Mapped[str] = mapped_column(
+        String(36),
+        primary_key=True,
+        default=lambda: str(uuid.uuid4()),
+        comment="Primary key, UUID string"
+    )
+    
+    owner: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        index=True,
+        comment="Site owner"
+    )
+    
+    name: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        unique=True,
+        index=True,
+        comment="Site name (must be unique)"
+    )
+    
+    location: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        comment="Site location"
+    )
+    
+    operator: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        comment="Site operator"
+    )
+    
+    capacity: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        comment="Site capacity"
+    )
+    
+    device_count: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        comment="Number of devices at this site (denormalized for performance)"
+    )
+    
+    description: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Optional site description"
+    )
+    
+    coordinates: Mapped[Optional[Dict[str, float]]] = mapped_column(
+        JSON,
+        nullable=True,
+        comment="Geographic coordinates as JSON: {lat: float, lng: float}"
+    )
+    
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        comment="Timestamp when site record was created"
+    )
+    
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+        comment="Timestamp when site record was last updated"
+    )
+    
+    last_update: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+        comment="Timestamp of last update (synced from external source)"
+    )
+    
+    # Relationship to Device (one-to-many)
+    devices: Mapped[list["Device"]] = relationship(
+        "Device",
+        back_populates="site",
+        cascade="all, delete-orphan"
+    )
+    
+    def __repr__(self) -> str:
+        return f"<Site(id={self.id}, name='{self.name}', location='{self.location}')>"
 

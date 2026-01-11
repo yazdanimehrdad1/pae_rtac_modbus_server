@@ -11,7 +11,7 @@ from datetime import datetime
 import pandas as pd
 
 from schemas.modbus_models import RegisterMap, RegisterPoint
-from db.device_register_map import get_register_map_by_device_name, create_register_map
+from db.device_register_map import get_register_map_by_device_id, create_register_map
 from db.connection import get_db_pool
 from logger import get_logger
 
@@ -180,85 +180,25 @@ def json_to_register_map(json_data: Dict[str, Any]) -> RegisterMap:
     return RegisterMap(points=points)
 
 
-async def get_register_map_for_device(device_name: str) -> Optional[Dict[str, Any]]:
+async def get_register_map_for_device(device_id: int) -> Optional[Dict[str, Any]]:
     """
-    Get register map for a device with lazy loading from DB/CSV.
-    
-    This function implements lazy loading:
-    1. First checks if register map exists in DB
-    2. If found, returns it from DB
-    3. If not found, reads from CSV file, saves to DB, and returns it
-    4. If CSV file doesn't exist or device name is not mapped, logs warning and returns None
+    Get register map for a device from the database.
     
     Args:
-        device_name: Device name/identifier (e.g., "main-sel-751")
+        device_id: Device ID
         
     Returns:
-        Register map dictionary if found/loaded, None otherwise
+        Register map dictionary if found in DB, None otherwise
     """
-    # Step 1: Check DB first
     try:
-        register_map = await get_register_map_by_device_name(device_name)
+        register_map = await get_register_map_by_device_id(device_id)
         if register_map is not None:
-            logger.info(f"Register map found in DB for device: {device_name}")
+            logger.info(f"Register map found in DB for device ID: {device_id}")
             return register_map
+        else:
+            logger.warning(f"Register map not found in DB for device ID: {device_id}")
+            return None
     except Exception as e:
-        # Log database error but continue to try CSV fallback
-        logger.warning(f"Error querying DB for register map for device '{device_name}': {e}")
-        # Continue to CSV fallback below
-    
-    # Step 2: Not in DB, try to load from CSV
-    logger.info(f"Register map not found in DB for device '{device_name}', attempting to load from CSV")
-    
-    try:
-        # Get CSV file path (may raise ValueError if device name not mapped)
-        csv_path = get_register_map_csv_path(device_name)
-    except ValueError as e:
-        logger.warning(f"Device '{device_name}' is not mapped to a CSV file: {e}")
-        return None
-    
-    # Check if CSV file exists
-    if not csv_path.exists():
-        logger.warning(f"CSV file not found for device '{device_name}': {csv_path}")
-        return None
-    
-    try:
-        # Read and convert CSV to JSON
-        json_data = map_csv_to_json(csv_path)
-        
-        # Get device_id to save register map to DB
-        pool = await get_db_pool()
-        async with pool.acquire() as conn:
-            row = await conn.fetchrow("""
-                SELECT id
-                FROM devices
-                WHERE name = $1
-            """, device_name)
-            
-            if row is None:
-                logger.warning(f"Device '{device_name}' not found in devices table, cannot save register map to DB")
-                return json_data  # Still return the JSON data even if we can't save it
-            
-            device_id = row['id']
-        
-        # Save to DB (may raise ValueError if already exists, but we checked DB first, so this shouldn't happen)
-        try:
-            await create_register_map(device_id, json_data)
-            logger.info(f"Successfully loaded and saved register map to DB for device: {device_name}")
-        except ValueError as e:
-            # This shouldn't happen since we checked DB first, but handle gracefully
-            logger.warning(f"Could not save register map to DB for device '{device_name}': {e}")
-            # Still return the JSON data
-        
-        return json_data
-        
-    except FileNotFoundError as e:
-        logger.warning(f"CSV file not found for device '{device_name}': {e}")
-        return None
-    except ValueError as e:
-        logger.warning(f"Failed to process CSV file for device '{device_name}': {e}")
-        return None
-    except Exception as e:
-        logger.error(f"Unexpected error loading register map for device '{device_name}': {e}", exc_info=True)
+        logger.warning(f"Error querying DB for register map for device ID '{device_id}': {e}")
         return None
 

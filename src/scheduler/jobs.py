@@ -260,10 +260,10 @@ async def poll_single_device(device: DeviceListItem) -> PollResult:
         }
         
         # TODO: maybe consider getting it from the cache instead of the database
-        # 2. Load register map from database (with CSV fallback) 
-        json_data = await get_register_map_for_device(device_name)
+        # 2. Load register map from database by device ID
+        json_data = await get_register_map_for_device(device.id)
         if json_data is None:
-            result["error"] = f"Register map not found for device '{device_name}' in database or CSV"
+            result["error"] = f"Register map not found for device '{device_name}' (ID: {device.id}) in database"
             logger.error(result["error"])
             return result
         
