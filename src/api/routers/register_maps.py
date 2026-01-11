@@ -6,7 +6,9 @@ from pydantic import ValidationError
 
 from schemas.db_models.models import RegisterMapCreate
 from utils.map_csv_to_json import get_register_map_for_device
-from db.device_register_map import create_register_map
+from db.device_register_map import create_register_map, get_register_map_by_device_id, update_register_map, delete_register_map
+from db.devices import get_device_by_id
+from db.sites import get_site_by_id
 from helpers.register_maps import validate_register_map_format, get_expected_format
 from logger import get_logger
 
@@ -14,35 +16,46 @@ router = APIRouter(prefix="/register_maps", tags=["register_maps"])
 logger = get_logger(__name__)
 
 
-@router.get("/device/{device_id}", response_model=Dict[str, Any])
-async def get_device_register_map(device_id: int):
+@router.get("/site/{site_id}/device/{device_id}", response_model=Dict[str, Any])
+async def get_device_register_map(site_id: str, device_id: int):
     """
     Get register map for a device in JSON format by device ID.
     
     Retrieves the register map from the database for the specified device.
     
     Args:
-        device_id: Device ID (primary key)
+        site_id: Site ID (UUID) that the device belongs to
+        device_id: Device ID (database primary key)
         
     Returns:
         JSON structure with metadata and registers array
         
     Raises:
-        HTTPException: If device ID not found or register map cannot be loaded
+        HTTPException: If site not found, device not found, device doesn't belong to site, or register map cannot be loaded
     """
-
     try:
-        # Get register map by device ID
-        register_map = await get_register_map_for_device(device_id)
+        # Get register map by device ID with site validation
+        register_map = await get_register_map_by_device_id(device_id, site_id=site_id)
         
         if register_map is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Register map not found for device ID '{device_id}'"
+                detail=f"Register map not found for device ID '{device_id}' in site '{site_id}'"
             )
         
         return register_map
         
+    except ValueError as e:
+        error_msg = str(e)
+        if "not found" in error_msg.lower():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=error_msg
+            )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=error_msg
+        )
     except HTTPException:
         # Re-raise HTTP exceptions
         raise
@@ -54,8 +67,8 @@ async def get_device_register_map(device_id: int):
         )
 
 
-@router.post("/device/{device_id}", response_model=Dict[str, Any], status_code=status.HTTP_201_CREATED)
-async def create_device_register_map(device_id: int, register_map: RegisterMapCreate):
+@router.post("/site/{site_id}/device/{device_id}", response_model=Dict[str, Any], status_code=status.HTTP_201_CREATED)
+async def create_device_register_map(site_id: str, device_id: int, register_map: RegisterMapCreate):
     """
     Create a register map for a device.
     
@@ -63,14 +76,16 @@ async def create_device_register_map(device_id: int, register_map: RegisterMapCr
     The register map must include a 'registers' array with at least one register definition.
     
     Args:
-        device_id: Device ID (primary key)
+        site_id: Site ID (UUID) that the device belongs to
+        device_id: Device ID (database primary key)
         register_map: Register map data with metadata and registers array
         
     Returns:
         Created register map as stored in the database
         
     Raises:
-        HTTPException: If device ID not found, register map already exists, or validation fails
+        HTTPException: If site not found, device not found, device doesn't belong to site, 
+                      register map already exists, or validation fails
     """
     try:
         # Validate register map format using helper function (includes all field and range validations)
@@ -79,11 +94,11 @@ async def create_device_register_map(device_id: int, register_map: RegisterMapCr
         # Convert Pydantic model to dict
         register_map_dict = register_map.to_dict()
         
-        # Create register map in database
-        await create_register_map(device_id, register_map_dict)
+        # Create register map in database with site validation
+        await create_register_map(device_id, register_map_dict, site_id=site_id)
         
         # Retrieve and return the created register map
-        created_map = await get_register_map_for_device(device_id)
+        created_map = await get_register_map_by_device_id(device_id, site_id=site_id)
         
         if created_map is None:
             # This shouldn't happen, but handle it just in case
@@ -137,11 +152,23 @@ async def create_device_register_map(device_id: int, register_map: RegisterMapCr
             detail=error_detail
         )
     except ValueError as e:
-        # Handle device not found or duplicate register map
+        # Handle site not found, device not found, device doesn't belong to site, or duplicate register map
         error_msg = str(e)
-        if "not found" in error_msg.lower() or "does not exist" in error_msg.lower():
+        logger.warning(f"ValueError when creating register map for device {device_id} in site {site_id}: {error_msg}")
+        
+        if "site" in error_msg.lower() and "not found" in error_msg.lower():
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
+                detail=error_msg
+            )
+        elif "device" in error_msg.lower() and "not found" in error_msg.lower():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=error_msg
+            )
+        elif "does not belong" in error_msg.lower():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
                 detail=error_msg
             )
         elif "already exists" in error_msg.lower() or "duplicate" in error_msg.lower():
@@ -164,7 +191,225 @@ async def create_device_register_map(device_id: int, register_map: RegisterMapCr
         )
 
 
-    # 2. Read register map endpoint (GET /device/{device_id}) - implemented above
-    # 3. Update register map endpoint (PUT /device/{device_id})
-    # 4. Delete register map endpoint (DELETE /device/{device_id})
+@router.put("/site/{site_id}/device/{device_id}", response_model=Dict[str, Any])
+async def update_device_register_map(site_id: str, device_id: int, register_map: RegisterMapCreate):
+    """
+    Update a register map for a device.
+    
+    Updates the register map in the database for the specified device.
+    The register map must include a 'registers' array with at least one register definition.
+    
+    Args:
+        site_id: Site ID (UUID) that the device belongs to
+        device_id: Device ID (database primary key)
+        register_map: Register map data with metadata and registers array
+        
+    Returns:
+        Updated register map as stored in the database
+        
+    Raises:
+        HTTPException: If site not found, device not found, device doesn't belong to site, 
+                      register map not found, or validation fails
+    """
+    try:
+        # Validate register map format using helper function
+        validate_register_map_format(register_map)
+        
+        # Convert Pydantic model to dict
+        register_map_dict = register_map.to_dict()
+        
+        # Update register map in database with site validation
+        updated = await update_register_map(device_id, register_map_dict, site_id=site_id)
+        
+        if not updated:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Register map not found for device ID '{device_id}' in site '{site_id}'"
+            )
+        
+        # Retrieve and return the updated register map
+        updated_map = await get_register_map_by_device_id(device_id, site_id=site_id)
+        
+        if updated_map is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Register map was updated but could not be retrieved"
+            )
+        
+        return updated_map
+        
+    except ValidationError as e:
+        error_detail = {
+            "error": "Invalid register map format",
+            "message": "The request body does not match the expected register map format",
+            "expected_format": get_expected_format()
+        }
+        logger.warning(f"Validation error for register map on device {device_id}: {e.errors()}")
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=error_detail
+        )
+    except ValueError as e:
+        error_msg = str(e)
+        if "not found" in error_msg.lower():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=error_msg
+            )
+        elif "does not belong" in error_msg.lower():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=error_msg
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=error_msg
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating register map for device ID '{device_id}': {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update register map"
+        )
+
+
+@router.delete("/site/{site_id}/device/{device_id}", status_code=status.HTTP_200_OK)
+async def delete_device_register_map(site_id: str, device_id: int):
+    """
+    Delete a register map for a device.
+    
+    Deletes the register map from the database for the specified device.
+    Validates that the device exists and belongs to the specified site.
+    
+    Args:
+        site_id: Site ID (UUID) that the device belongs to
+        device_id: Device ID (database primary key, not Modbus device_id)
+        
+    Returns:
+        Success message with details
+        
+    Raises:
+        HTTPException: 
+            - 404: If site not found, device not found, or register map not found
+            - 400: If device doesn't belong to site
+            - 500: For database errors
+    """
+    try:
+        logger.info(f"Attempting to delete register map for device ID '{device_id}' in site '{site_id}'")
+        
+        # Get site and device information before deletion (for response)
+        site = await get_site_by_id(site_id)
+        if site is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={
+                    "error": "Site not found",
+                    "message": f"Site with id '{site_id}' not found",
+                    "site_id": site_id
+                }
+            )
+        
+        device = await get_device_by_id(device_id)
+        if device is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={
+                    "error": "Device not found",
+                    "message": f"Device with id '{device_id}' not found",
+                    "device_id": device_id
+                }
+            )
+        
+        # Validate device belongs to site
+        if device.site_id != site_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "error": "Device does not belong to site",
+                    "message": f"Device with id '{device_id}' does not belong to site '{site_id}'",
+                    "site_id": site_id,
+                    "device_id": device_id
+                }
+            )
+        
+        # Delete register map with site validation
+        deleted = await delete_register_map(device_id, site_id=site_id)
+        
+        if not deleted:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={
+                    "error": "Register map not found",
+                    "message": f"Register map not found for device ID '{device_id}' in site '{site_id}'",
+                    "site_id": site_id,
+                    "site_name": site.name,
+                    "device_id": device_id,
+                    "device_name": device.name
+                }
+            )
+        
+        logger.info(f"Successfully deleted register map for device '{device.name}' (ID: {device_id}) in site '{site.name}' (ID: {site_id})")
+        return {
+            "message": f"Register map deleted successfully for device '{device.name}' (ID: {device_id})",
+            "site_id": site_id,
+            "site_name": site.name,
+            "device_id": device_id,
+            "device_name": device.name
+        }
+        
+    except ValueError as e:
+        error_msg = str(e)
+        logger.warning(f"ValueError when deleting register map for device {device_id} in site {site_id}: {error_msg}")
+        
+        if "site" in error_msg.lower() and "not found" in error_msg.lower():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={
+                    "error": "Site not found",
+                    "message": error_msg,
+                    "site_id": site_id
+                }
+            )
+        elif "device" in error_msg.lower() and "not found" in error_msg.lower():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={
+                    "error": "Device not found",
+                    "message": error_msg,
+                    "device_id": device_id
+                }
+            )
+        elif "does not belong" in error_msg.lower():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "error": "Device does not belong to site",
+                    "message": error_msg,
+                    "site_id": site_id,
+                    "device_id": device_id
+                }
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "error": "Validation error",
+                    "message": error_msg
+                }
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting register map for device ID '{device_id}': {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "error": "Failed to delete register map",
+                "error_type": type(e).__name__,
+                "message": str(e)
+            }
+        )
 

@@ -180,18 +180,19 @@ def json_to_register_map(json_data: Dict[str, Any]) -> RegisterMap:
     return RegisterMap(points=points)
 
 
-async def get_register_map_for_device(device_id: int) -> Optional[Dict[str, Any]]:
+async def get_register_map_for_device(device_id: int, site_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """
     Get register map for a device from the database.
     
     Args:
-        device_id: Device ID
+        device_id: Device ID (database primary key)
+        site_id: Optional site ID to validate that the device belongs to this site
         
     Returns:
         Register map dictionary if found in DB, None otherwise
     """
     try:
-        register_map = await get_register_map_by_device_id(device_id)
+        register_map = await get_register_map_by_device_id(device_id, site_id=site_id)
         if register_map is not None:
             logger.info(f"Register map found in DB for device ID: {device_id}")
             return register_map

@@ -30,8 +30,8 @@ from db.connection import (
     close_all_db_connections
 )
 
-# Register map loader import
-from utils.config_loader import load_device_configs
+# Register map loader import (disabled - devices must be created via API)
+# from utils.config_loader import load_device_configs
 
 # Setup logging
 setup_logging(log_level=settings.log_level)
@@ -106,14 +106,17 @@ def create_app() -> FastAPI:
             # Continue startup even if database fails (graceful degradation)
         
         # Load device configurations from file
-        try:
-            results = await load_device_configs()
-            if results:
-                successful = sum(1 for v in results.values() if v.get("success", False))
-                logger.info(f"Register map loading completed: {successful}/{len(results)} successful")
-        except Exception as e:
-            logger.error(f"Failed to load register maps from CSV files: {e}", exc_info=True)
-            # Continue startup even if register map loading fails (graceful degradation)
+        # NOTE: Device creation is disabled - devices must be created via API endpoints
+        # Register maps can be loaded separately if needed
+        # try:
+        #     results = await load_device_configs()
+        #     if results:
+        #         successful = sum(1 for v in results.values() if v.get("success", False))
+        #         logger.info(f"Register map loading completed: {successful}/{len(results)} successful")
+        # except Exception as e:
+        #     logger.error(f"Failed to load register maps from CSV files: {e}", exc_info=True)
+        #     # Continue startup even if register map loading fails (graceful degradation)
+        logger.info("Device auto-creation disabled - devices must be created via API endpoints")
         
         # Start scheduler
         await start_scheduler()
