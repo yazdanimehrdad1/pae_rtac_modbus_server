@@ -11,7 +11,7 @@ from datetime import datetime
 import pandas as pd
 
 from schemas.modbus_models import RegisterMap, RegisterPoint
-from db.device_register_map import get_register_map_by_device_id, create_register_map
+from db.device_register_map import get_register_map, create_register_map
 from db.connection import get_db_pool
 from logger import get_logger
 
@@ -19,36 +19,8 @@ logger = get_logger(__name__)
 
 
 
-def get_register_map_csv_path(device_name: str) -> Path:
-    """
-    Map device name to register map CSV file path.
-    
-    Args:
-        device_name: Device identifier (e.g., "sel_751")
-        
-    Returns:
-        Path to the CSV file
-        
-    Raises:
-        ValueError: If device name is not recognized
-    """
-    # Map device names to CSV files
-    device_map = {
-        "main-sel-751": "main_sel_751_register_map.csv",
-        # Add more device mappings here as needed
-        # "sel_750": "sel_750_register_map.csv",
-    }
-    
-    if device_name not in device_map:
-        available = ", ".join(device_map.keys())
-        raise ValueError(f"Device '{device_name}' not found. Available devices: {available}")
-    
-    csv_filename = device_map[device_name]
-    csv_path = Path("config") / csv_filename
-    
-    return csv_path
 
-
+# TODO: adjust this when creating the route for importing register maps via csv
 def map_csv_to_json(
     csv_path: Path
 ) -> Dict[str, Any]:
@@ -179,27 +151,32 @@ def json_to_register_map(json_data: Dict[str, Any]) -> RegisterMap:
     
     return RegisterMap(points=points)
 
-
-async def get_register_map_for_device(device_id: int, site_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
-    """
-    Get register map for a device from the database.
-    
-    Args:
-        device_id: Device ID (database primary key)
-        site_id: Optional site ID to validate that the device belongs to this site
+#TODO: adjust this function to get register map for a device if it exist in cache and if not from db , and if none exists then return none
+# async def get_register_map_for_device(device_id: int, site_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+#     """
+# lets make this function to obtain register map for a device if it exist in cache and if not from db , and if none exists then return none
+#     """
+#     try:
+#         # If site_id is not provided, get it from the device
+#         if site_id is None:
+#             from db.devices import get_device_by_id
+#             device = await get_device_by_id(device_id)
+#             if device and device.site_id:
+#                 site_id = device.site_id
+#             else:
+#                 # Device has no site_id, can't query register map (site_id is required)
+#                 logger.warning(f"Device ID {device_id} has no site_id. Cannot retrieve register map without site_id.")
+#                 return None
         
-    Returns:
-        Register map dictionary if found in DB, None otherwise
-    """
-    try:
-        register_map = await get_register_map_by_device_id(device_id, site_id=site_id)
-        if register_map is not None:
-            logger.info(f"Register map found in DB for device ID: {device_id}")
-            return register_map
-        else:
-            logger.warning(f"Register map not found in DB for device ID: {device_id}")
-            return None
-    except Exception as e:
-        logger.warning(f"Error querying DB for register map for device ID '{device_id}': {e}")
-        return None
+#         # Use the validated function with site_id
+#         register_map = await get_register_map(device_id, site_id=site_id)
+#         if register_map is not None:
+#             logger.info(f"Register map found in DB for device ID: {device_id}")
+#             return register_map
+#         else:
+#             logger.warning(f"Register map not found in DB for device ID: {device_id}")
+#             return None
+#     except Exception as e:
+#         logger.warning(f"Error querying DB for register map for device ID '{device_id}': {e}")
+#         return None
 

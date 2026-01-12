@@ -69,6 +69,8 @@ async def create_device(device: DeviceCreate, site_id: Optional[str] = None) -> 
                 port=device.port,
                 device_id=device.device_id,
                 description=device.description,
+                main_type=device.main_type,
+                sub_type=device.sub_type,
                 poll_address=device.poll_address,
                 poll_count=device.poll_count,
                 poll_kind=device.poll_kind,
@@ -115,6 +117,8 @@ async def create_device(device: DeviceCreate, site_id: Optional[str] = None) -> 
                 port=created_device.port,
                 device_id=created_device.device_id,
                 description=created_device.description,
+                main_type=created_device.main_type,
+                sub_type=created_device.sub_type,
                 register_map=None,  # New devices don't have register map initially
                 poll_address=created_device.poll_address,
                 poll_count=created_device.poll_count,
@@ -195,6 +199,64 @@ async def get_all_devices() -> list[DeviceListItem]:
                     port=device.port,
                     device_id=device.device_id,
                     description=device.description,
+                    main_type=device.main_type,
+                    sub_type=device.sub_type,
+                    poll_address=device.poll_address,
+                    poll_count=device.poll_count,
+                    poll_kind=device.poll_kind,
+                    poll_enabled=device.poll_enabled if device.poll_enabled is not None else True,
+                    site_id=device.site_id,
+                    created_at=device.created_at,
+                    updated_at=device.updated_at
+                )
+            )
+        return device_list
+
+
+async def get_devices_by_site_id(site_id: str) -> list[DeviceListItem]:
+    """
+    Get all devices for a specific site.
+    
+    Args:
+        site_id: Site ID (UUID) to filter devices by
+        
+    Returns:
+        List of devices for the specified site (without register_map for performance), ordered by ID
+        
+    Raises:
+        ValueError: If site doesn't exist
+    """
+    session_factory = get_async_session_factory()
+    async with session_factory() as session:
+        # Validate site exists
+        site_result = await session.execute(
+            select(Site).where(Site.id == site_id)
+        )
+        site = site_result.scalar_one_or_none()
+        if site is None:
+            raise ValueError(f"Site with id '{site_id}' not found")
+        
+        # Query devices for this site ordered by ID
+        result = await session.execute(
+            select(Device)
+            .where(Device.site_id == site_id)
+            .order_by(Device.id)
+        )
+        devices = result.scalars().all()
+        
+        # Convert ORM models to Pydantic models
+        device_list = []
+        for device in devices:
+            device_list.append(
+                DeviceListItem(
+                    id=device.id,
+                    name=device.name,
+                    host=device.host,
+                    port=device.port,
+                    device_id=device.device_id,
+                    description=device.description,
+                    main_type=device.main_type,
+                    sub_type=device.sub_type,
                     poll_address=device.poll_address,
                     poll_count=device.poll_count,
                     poll_kind=device.poll_kind,
@@ -234,6 +296,8 @@ async def get_device_by_id(device_id: int) -> Optional[DeviceResponse]:
             port=device.port,
             device_id=device.device_id,
             description=device.description,
+            main_type=device.main_type,
+            sub_type=device.sub_type,
             poll_address=device.poll_address,
             poll_count=device.poll_count,
             poll_kind=device.poll_kind,
@@ -244,23 +308,38 @@ async def get_device_by_id(device_id: int) -> Optional[DeviceResponse]:
         )
 
 
-async def get_device_by_device_id(device_id: int) -> Optional[DeviceResponse]:
+async def get_device_by_device_id(device_id: int, site_id: str) -> Optional[DeviceResponse]:
     """
-    Get a device by device_id (Modbus unit/slave ID).
+    Get a device by device_id (Modbus unit/slave ID) and site_id.
     
-    Queries directly by device_id since it's unique and indexed for optimal performance.
+    Queries by both device_id and site_id to ensure the device belongs to the specified site.
     
     Args:
         device_id: Modbus unit/slave ID (not the primary key)
+        site_id: Site ID (UUID) to validate that the device belongs to this site
         
     Returns:
-        Device if found, None otherwise
+        Device if found and belongs to site, None otherwise
+        
+    Raises:
+        ValueError: If site doesn't exist
     """
     session_factory = get_async_session_factory()
     async with session_factory() as session:
-        # Query directly by device_id (unique and indexed)
+        # Validate site exists
+        site_result = await session.execute(
+            select(Site).where(Site.id == site_id)
+        )
+        site = site_result.scalar_one_or_none()
+        if site is None:
+            raise ValueError(f"Site with id '{site_id}' not found")
+        
+        # Query by both device_id and site_id
         result = await session.execute(
-            select(Device).where(Device.device_id == device_id)
+            select(Device).where(
+                Device.device_id == device_id,
+                Device.site_id == site_id
+            )
         )
         device = result.scalar_one_or_none()
         
@@ -274,6 +353,8 @@ async def get_device_by_device_id(device_id: int) -> Optional[DeviceResponse]:
             port=device.port,
             device_id=device.device_id,
             description=device.description,
+            main_type=device.main_type,
+            sub_type=device.sub_type,
             poll_address=device.poll_address,
             poll_count=device.poll_count,
             poll_kind=device.poll_kind,
@@ -304,32 +385,44 @@ async def get_device_id_by_name(device_name: str) -> Optional[int]:
         return device_id
 
 
-async def update_device(device_id: int, device_update: DeviceUpdate) -> DeviceResponse:
+async def update_device(device_id: int, device_update: DeviceUpdate, site_id: str) -> DeviceResponse:
     """
     Update a device in the database.
     
     Args:
         device_id: Modbus unit/slave ID (not the primary key)
         device_update: Device update data (only provided fields will be updated)
+        site_id: Site ID (UUID) to validate that the device belongs to this site
         
     Returns:
         Updated device with new timestamps
         
     Raises:
-        ValueError: If device not found or name already exists
+        ValueError: If site not found, device not found, device doesn't belong to site, or name already exists
         IntegrityError: For other database constraint violations
     """
     session_factory = get_async_session_factory()
     async with session_factory() as session:
         try:
-            # Get existing device by device_id (Modbus unit/slave ID)
+            # Validate site exists
+            site_result = await session.execute(
+                select(Site).where(Site.id == site_id)
+            )
+            site = site_result.scalar_one_or_none()
+            if site is None:
+                raise ValueError(f"Site with id '{site_id}' not found")
+            
+            # Get existing device by device_id and site_id
             result = await session.execute(
-                select(Device).where(Device.device_id == device_id)
+                select(Device).where(
+                    Device.device_id == device_id,
+                    Device.site_id == site_id
+                )
             )
             device = result.scalar_one_or_none()
             
             if device is None:
-                raise ValueError(f"Device with device_id {device_id} not found")
+                raise ValueError(f"Device with device_id {device_id} not found in site '{site_id}'")
             
             # Update only provided fields
             if device_update.name is not None:
@@ -342,6 +435,10 @@ async def update_device(device_id: int, device_update: DeviceUpdate) -> DeviceRe
                 device.device_id = device_update.device_id
             if device_update.description is not None:
                 device.description = device_update.description
+            if device_update.main_type is not None:
+                device.main_type = device_update.main_type
+            if device_update.sub_type is not None:
+                device.sub_type = device_update.sub_type
             
             # Handle site_id changes and update device_count
             old_site_id = device.site_id
@@ -398,10 +495,13 @@ async def update_device(device_id: int, device_update: DeviceUpdate) -> DeviceRe
                 port=device.port,
                 device_id=device.device_id,
                 description=device.description,
+                main_type=device.main_type,
+                sub_type=device.sub_type,
                 poll_address=device.poll_address,
                 poll_count=device.poll_count,
                 poll_kind=device.poll_kind,
                 poll_enabled=device.poll_enabled if device.poll_enabled is not None else True,
+                site_id=device.site_id,
                 created_at=device.created_at,
                 updated_at=device.updated_at
             )

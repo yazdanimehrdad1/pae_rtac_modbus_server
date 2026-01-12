@@ -179,7 +179,7 @@ async def update_site_endpoint(site_id: str, site_update: SiteUpdate):
             detail=error_detail
         )
 
-
+#TODO" lets make sure cascade delete is implemented and soft delete is implemented
 @router.delete("/{site_id}", response_model=SiteResponse)
 async def delete_site_endpoint(site_id: str):
     """

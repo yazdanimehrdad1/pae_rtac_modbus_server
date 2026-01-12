@@ -67,6 +67,18 @@ class Device(Base):
         comment="Optional device description"
     )
     
+    main_type: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        comment="Device main type (required)"
+    )
+    
+    sub_type: Mapped[Optional[str]] = mapped_column(
+        String(255),
+        nullable=True,
+        comment="Device sub type (optional)"
+    )
+    
     # Polling configuration
     poll_address: Mapped[Optional[int]] = mapped_column(
         Integer,

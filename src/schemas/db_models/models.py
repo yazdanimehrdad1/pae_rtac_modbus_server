@@ -18,6 +18,8 @@ class DeviceCreate(BaseModel):
     port: int = Field(default=502, ge=1, le=65535, description="Modbus TCP port (default: 502)")
     device_id: int = Field(default=1, ge=1, le=255, description="Modbus unit/slave ID")
     description: Optional[str] = Field(default=None, description="Optional device description")
+    main_type: str = Field(..., min_length=1, max_length=255, description="Device main type (required)")
+    sub_type: Optional[str] = Field(default=None, max_length=255, description="Device sub type (optional)")
     poll_address: Optional[int] = Field(None, description="Start address for polling Modbus registers")
     poll_count: Optional[int] = Field(None, description="Number of registers to read during polling")
     poll_kind: Optional[str] = Field(None, description="Register type: holding, input, coils, or discretes")
@@ -37,6 +39,8 @@ class DeviceUpdate(BaseModel):
     port: Optional[int] = Field(None, ge=1, le=65535, description="Modbus TCP port")
     device_id: Optional[int] = Field(None, ge=1, le=255, description="Modbus unit/slave ID")
     description: Optional[str] = Field(None, description="Device description")
+    main_type: Optional[str] = Field(None, min_length=1, max_length=255, description="Device main type")
+    sub_type: Optional[str] = Field(None, max_length=255, description="Device sub type")
     site_id: Optional[str] = Field(None, description="Site ID (UUID) to associate this device with. Set to null to remove association.")
 
 
@@ -48,6 +52,8 @@ class DeviceListItem(BaseModel):
     port: int = Field(..., description="Modbus TCP port")
     device_id: int = Field(..., description="Modbus unit/slave ID")
     description: Optional[str] = Field(None, description="Device description")
+    main_type: str = Field(..., description="Device main type")
+    sub_type: Optional[str] = Field(None, description="Device sub type")
     poll_address: Optional[int] = Field(None, description="Start address for polling Modbus registers")
     poll_count: Optional[int] = Field(None, description="Number of registers to read during polling")
     poll_kind: Optional[str] = Field(None, description="Register type: holding, input, coils, or discretes")

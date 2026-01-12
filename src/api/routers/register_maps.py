@@ -5,8 +5,7 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import ValidationError
 
 from schemas.db_models.models import RegisterMapCreate
-from utils.map_csv_to_json import get_register_map_for_device
-from db.device_register_map import create_register_map, get_register_map_by_device_id, update_register_map, delete_register_map
+from db.device_register_map import create_register_map, get_register_map, update_register_map, delete_register_map
 from db.devices import get_device_by_id
 from db.sites import get_site_by_id
 from helpers.register_maps import validate_register_map_format, get_expected_format
@@ -35,7 +34,7 @@ async def get_device_register_map(site_id: str, device_id: int):
     """
     try:
         # Get register map by device ID with site validation
-        register_map = await get_register_map_by_device_id(device_id, site_id=site_id)
+        register_map = await get_register_map(device_id, site_id=site_id)
         
         if register_map is None:
             raise HTTPException(
@@ -95,10 +94,10 @@ async def create_device_register_map(site_id: str, device_id: int, register_map:
         register_map_dict = register_map.to_dict()
         
         # Create register map in database with site validation
-        await create_register_map(device_id, register_map_dict, site_id=site_id)
+        await create_register_map(site_id, device_id, register_map_dict)
         
         # Retrieve and return the created register map
-        created_map = await get_register_map_by_device_id(device_id, site_id=site_id)
+        created_map = await get_register_map(device_id, site_id=site_id)
         
         if created_map is None:
             # This shouldn't happen, but handle it just in case
@@ -219,7 +218,7 @@ async def update_device_register_map(site_id: str, device_id: int, register_map:
         register_map_dict = register_map.to_dict()
         
         # Update register map in database with site validation
-        updated = await update_register_map(device_id, register_map_dict, site_id=site_id)
+        updated = await update_register_map(site_id, device_id, register_map_dict)
         
         if not updated:
             raise HTTPException(
@@ -228,7 +227,7 @@ async def update_device_register_map(site_id: str, device_id: int, register_map:
             )
         
         # Retrieve and return the updated register map
-        updated_map = await get_register_map_by_device_id(device_id, site_id=site_id)
+        updated_map = await get_register_map(device_id, site_id=site_id)
         
         if updated_map is None:
             raise HTTPException(
@@ -336,7 +335,7 @@ async def delete_device_register_map(site_id: str, device_id: int):
             )
         
         # Delete register map with site validation
-        deleted = await delete_register_map(device_id, site_id=site_id)
+        deleted = await delete_register_map(site_id, device_id)
         
         if not deleted:
             raise HTTPException(

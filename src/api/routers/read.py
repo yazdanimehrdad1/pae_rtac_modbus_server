@@ -176,8 +176,8 @@ async def read_main_sel_751_data():
                 detail=f"Unsupported register kind '{poll_kind}' for device '{device_name}'"
             )
         
-        # Get register map from database by device ID
-        json_data = await get_register_map_for_device(device.id)
+        
+        json_data = await get_register_map_for_device(device.id, site_id=device.site_id if device.site_id else None)
         
         response_data = {}
         

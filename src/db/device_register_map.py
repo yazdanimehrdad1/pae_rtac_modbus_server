@@ -15,31 +15,45 @@ from logger import get_logger
 logger = get_logger(__name__)
 
 
-async def get_register_map_by_device_id(device_id: int, site_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+async def get_register_map(device_id: int, site_id: str) -> Optional[Dict[str, Any]]:
     """
     Get register map for a device by device ID.
     
     Args:
         device_id: Device ID (database primary key)
-        site_id: Optional site ID to validate that the device belongs to this site
+        site_id: Site ID to validate that the device belongs to this site
         
     Returns:
         Register map dictionary if found, None otherwise
         
     Raises:
-        ValueError: If site_id is provided and device doesn't belong to that site, or site doesn't exist
+        ValueError: If site doesn't exist, device doesn't exist, or device doesn't belong to that site
     """
     async with get_session() as session:
-        # Validate site_id if provided - site must exist
-        if site_id:
-            site_result = await session.execute(
-                select(Site).where(Site.id == site_id)
+        # Validate site_id - site must exist
+        site_result = await session.execute(
+            select(Site).where(Site.id == site_id)
+        )
+        site = site_result.scalar_one_or_none()
+        if site is None:
+            raise ValueError(f"Site with id '{site_id}' not found")
+        
+        # Query register map with join to Device, filtering by both device_id and site_id
+        # This ensures the device exists and belongs to the specified site in a single query
+        statement = (
+            select(DeviceRegisterMap)
+            .join(Device, DeviceRegisterMap.device_id == Device.id)
+            .where(
+                DeviceRegisterMap.device_id == device_id,
+                Device.site_id == site_id
             )
-            site = site_result.scalar_one_or_none()
-            if site is None:
-                raise ValueError(f"Site with id '{site_id}' not found")
-            
-            # Validate that device exists and belongs to the specified site
+        )
+        
+        result = await session.execute(statement)
+        device_register_map = result.scalar_one_or_none()
+        
+        if device_register_map is None:
+            # Check if device exists but doesn't belong to site, or device doesn't exist
             device_result = await session.execute(
                 select(Device).where(Device.id == device_id)
             )
@@ -50,15 +64,11 @@ async def get_register_map_by_device_id(device_id: int, site_id: Optional[str] =
             
             if device.site_id != site_id:
                 raise ValueError(f"Device with id '{device_id}' does not belong to site '{site_id}'")
+            
+            # Device exists and belongs to site, but register map doesn't exist
+            return None
         
-        statement = select(DeviceRegisterMap).where(
-            DeviceRegisterMap.device_id == device_id
-        )
-        
-        result = await session.execute(statement)
-        device_register_map = result.scalar_one_or_none()
-        
-        if device_register_map is None or device_register_map.register_map is None:
+        if device_register_map.register_map is None:
             return None
         
         # SQLAlchemy JSON type automatically handles dict conversion
@@ -68,14 +78,14 @@ async def get_register_map_by_device_id(device_id: int, site_id: Optional[str] =
 
 
 # TODO: adjust this function to add json b based on the excel file
-async def create_register_map(device_id: int, register_map: Dict[str, Any], site_id: Optional[str] = None) -> bool:
+async def create_register_map( site_id: str, device_id: int, register_map: Dict[str, Any]) -> bool:
     """
     Create a new register map for a device.
     
     Args:
         device_id: Device ID (database primary key)
         register_map: Register map dictionary to store
-        site_id: Optional site ID to validate that the device belongs to this site
+        site_id: Site ID (required) to validate that the device belongs to this site
         
     Returns:
         True if created successfully, False otherwise
@@ -86,38 +96,45 @@ async def create_register_map(device_id: int, register_map: Dict[str, Any], site
     """
     async with get_session() as session:
         try:
-            # Validate site_id if provided - site must exist
-            if site_id:
-                logger.debug(f"Validating site_id '{site_id}' for register map creation on device {device_id}")
-                site_result = await session.execute(
-                    select(Site).where(Site.id == site_id)
+            # Validate site_id - site must exist
+            logger.debug(f"Validating site_id '{site_id}' for register map creation on device {device_id}")
+            site_result = await session.execute(
+                select(Site).where(Site.id == site_id)
+            )
+            site = site_result.scalar_one_or_none()
+            if site is None:
+                error_msg = f"Site with id '{site_id}' not found"
+                logger.warning(f"{error_msg} when creating register map for device {device_id} on site {site_id}")
+                raise ValueError(error_msg)
+            logger.debug(f"Site '{site_id}' found: {site.name}")
+            
+            # Validate that device exists and belongs to the specified site (query by both device_id and site_id)
+            logger.debug(f"Validating device_id {device_id} for register map creation in site '{site_id}'")
+            device_result = await session.execute(
+                select(Device).where(
+                    Device.id == device_id,
+                    Device.site_id == site_id
                 )
-                site = site_result.scalar_one_or_none()
-                if site is None:
-                    error_msg = f"Site with id '{site_id}' not found"
-                    logger.warning(f"{error_msg} when creating register map for device {device_id}")
-                    raise ValueError(error_msg)
-                logger.debug(f"Site '{site_id}' found: {site.name}")
-                
-                # Validate that device exists and belongs to the specified site
-                logger.debug(f"Validating device_id {device_id} for register map creation in site '{site_id}'")
-                device_result = await session.execute(
-                    select(Device).where(Device.id == device_id)
-                )
-                device = device_result.scalar_one_or_none()
-                
-                if device is None:
-                    error_msg = f"Device with id '{device_id}' not found"
-                    logger.warning(f"{error_msg} when creating register map for site '{site_id}'")
-                    raise ValueError(error_msg)
-                
-                logger.debug(f"Device {device_id} found: name='{device.name}', site_id='{device.site_id}'")
-                
-                if device.site_id != site_id:
-                    error_msg = f"Device with id '{device_id}' (name: '{device.name}') belongs to site '{device.site_id}', not '{site_id}'"
-                    logger.warning(error_msg)
-                    raise ValueError(error_msg)
-                logger.debug(f"Device {device_id} validation passed - belongs to site '{site_id}'")
+            )
+            device = device_result.scalar_one_or_none()
+            
+            if device is None:
+                error_msg = f"Device with id '{device_id}' not found in site '{site_id}'"
+                logger.warning(f"{error_msg} when creating register map")
+                raise ValueError(error_msg)
+            
+            logger.debug(f"Device {device_id} found: name='{device.name}', site_id='{device.site_id}' - validation passed")
+            
+            # Check if register map already exists for this device
+            existing_map_result = await session.execute(
+                select(DeviceRegisterMap).where(DeviceRegisterMap.device_id == device_id)
+            )
+            existing_map = existing_map_result.scalar_one_or_none()
+            
+            if existing_map is not None:
+                error_msg = f"Register map already exists for device ID {device_id}"
+                logger.warning(error_msg)
+                raise ValueError(error_msg)
             
             # Create new DeviceRegisterMap instance
             device_register_map = DeviceRegisterMap(
@@ -128,7 +145,7 @@ async def create_register_map(device_id: int, register_map: Dict[str, Any], site
             session.add(device_register_map)
             await session.commit()
             
-            logger.info(f"Created register map for device ID {device_id}")
+            logger.info(f"Created register map for device ID {device_id} on site {site_id}")
             return True
             
         except IntegrityError as e:
@@ -150,43 +167,52 @@ async def create_register_map(device_id: int, register_map: Dict[str, Any], site
             raise
 
 # TODO: adjust this function to update json b based on the excel file
-async def update_register_map(device_id: int, register_map: Dict[str, Any], site_id: Optional[str] = None) -> bool:
+async def update_register_map(site_id: str, device_id: int, register_map: Dict[str, Any]) -> bool:
     """
     Update register map for a device.
     
     Args:
+        site_id: Site ID to validate that the device belongs to this site
         device_id: Device ID (database primary key)
         register_map: Register map dictionary to store
-        site_id: Optional site ID to validate that the device belongs to this site
         
     Returns:
-        True if updated successfully, False if device_id not found
+        True if updated successfully, False if register map not found
         
     Raises:
-        ValueError: If site_id is provided and device doesn't belong to that site, or site doesn't exist
+        ValueError: If site doesn't exist, device doesn't exist in that site, or register map doesn't exist
     """
     async with get_session() as session:
-        # Validate site_id if provided - site must exist
-        if site_id:
-            site_result = await session.execute(
-                select(Site).where(Site.id == site_id)
-            )
-            site = site_result.scalar_one_or_none()
-            if site is None:
-                raise ValueError(f"Site with id '{site_id}' not found")
-            
-            # Validate that device exists and belongs to the specified site
-            device_result = await session.execute(
-                select(Device).where(Device.id == device_id)
-            )
-            device = device_result.scalar_one_or_none()
-            
-            if device is None:
-                raise ValueError(f"Device with id '{device_id}' not found")
-            
-            if device.site_id != site_id:
-                raise ValueError(f"Device with id '{device_id}' does not belong to site '{site_id}'")
+        # Validate site_id - site must exist
+        logger.debug(f"Validating site_id '{site_id}' for register map update on device {device_id}")
+        site_result = await session.execute(
+            select(Site).where(Site.id == site_id)
+        )
+        site = site_result.scalar_one_or_none()
+        if site is None:
+            error_msg = f"Site with id '{site_id}' not found"
+            logger.warning(f"{error_msg} when updating register map for device {device_id}")
+            raise ValueError(error_msg)
+        logger.debug(f"Site '{site_id}' found: {site.name}")
         
+        # Validate that device exists and belongs to the specified site (query by both device_id and site_id)
+        logger.debug(f"Validating device_id {device_id} for register map update in site '{site_id}'")
+        device_result = await session.execute(
+            select(Device).where(
+                Device.id == device_id,
+                Device.site_id == site_id
+            )
+        )
+        device = device_result.scalar_one_or_none()
+        
+        if device is None:
+            error_msg = f"Device with id '{device_id}' not found in site '{site_id}'"
+            logger.warning(f"{error_msg} when updating register map")
+            raise ValueError(error_msg)
+        
+        logger.debug(f"Device {device_id} found: name='{device.name}', site_id='{device.site_id}' - validation passed")
+        
+        # Update register map (only if it exists)
         statement = update(DeviceRegisterMap).where(
             DeviceRegisterMap.device_id == device_id
         ).values(register_map=register_map)
@@ -197,48 +223,56 @@ async def update_register_map(device_id: int, register_map: Dict[str, Any], site
         updated = result.rowcount > 0
         
         if updated:
-            logger.info(f"Updated register map for device ID {device_id}")
+            logger.info(f"Updated register map for device ID {device_id} on site {site_id}")
         else:
-            logger.warning(f"Register map not found for device ID {device_id}")
+            logger.warning(f"Register map not found for device ID {device_id} in site '{site_id}'")
         
         return updated
 
 
-async def delete_register_map(device_id: int, site_id: Optional[str] = None) -> bool:
+async def delete_register_map(site_id: str, device_id: int) -> bool:
     """
     Delete register map for a device.
     
     Args:
+        site_id: Site ID to validate that the device belongs to this site
         device_id: Device ID (database primary key)
-        site_id: Optional site ID to validate that the device belongs to this site
         
     Returns:
         True if register map was deleted, False if not found
         
     Raises:
-        ValueError: If site_id is provided and device doesn't belong to that site, or site doesn't exist
+        ValueError: If site doesn't exist, device doesn't exist in that site, or register map doesn't exist
     """
     async with get_session() as session:
-        # Validate site_id if provided - site must exist
-        if site_id:
-            site_result = await session.execute(
-                select(Site).where(Site.id == site_id)
+        # Validate site_id - site must exist
+        logger.debug(f"Validating site_id '{site_id}' for register map deletion on device {device_id}")
+        site_result = await session.execute(
+            select(Site).where(Site.id == site_id)
+        )
+        site = site_result.scalar_one_or_none()
+        if site is None:
+            error_msg = f"Site with id '{site_id}' not found"
+            logger.warning(f"{error_msg} when deleting register map for device {device_id}")
+            raise ValueError(error_msg)
+        logger.debug(f"Site '{site_id}' found: {site.name}")
+        
+        # Validate that device exists and belongs to the specified site (query by both device_id and site_id)
+        logger.debug(f"Validating device_id {device_id} for register map deletion in site '{site_id}'")
+        device_result = await session.execute(
+            select(Device).where(
+                Device.id == device_id,
+                Device.site_id == site_id
             )
-            site = site_result.scalar_one_or_none()
-            if site is None:
-                raise ValueError(f"Site with id '{site_id}' not found")
-            
-            # Validate that device exists and belongs to the specified site
-            device_result = await session.execute(
-                select(Device).where(Device.id == device_id)
-            )
-            device = device_result.scalar_one_or_none()
-            
-            if device is None:
-                raise ValueError(f"Device with id '{device_id}' not found")
-            
-            if device.site_id != site_id:
-                raise ValueError(f"Device with id '{device_id}' does not belong to site '{site_id}'")
+        )
+        device = device_result.scalar_one_or_none()
+        
+        if device is None:
+            error_msg = f"Device with id '{device_id}' not found in site '{site_id}'"
+            logger.warning(f"{error_msg} when deleting register map")
+            raise ValueError(error_msg)
+        
+        logger.debug(f"Device {device_id} found: name='{device.name}', site_id='{device.site_id}' - validation passed")
         
         statement = delete(DeviceRegisterMap).where(
             DeviceRegisterMap.device_id == device_id
@@ -250,9 +284,9 @@ async def delete_register_map(device_id: int, site_id: Optional[str] = None) -> 
         deleted = result.rowcount > 0
         
         if deleted:
-            logger.info(f"Deleted register map for device ID {device_id}")
+            logger.info(f"Deleted register map for device ID {device_id} on site {site_id}")
         else:
-            logger.warning(f"Register map not found for device ID {device_id}")
+            logger.warning(f"Register map not found for device ID {device_id} in site '{site_id}'")
         
         return deleted
 
