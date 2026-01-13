@@ -4,12 +4,18 @@ Application configuration using Pydantic Settings.
 Environment-driven configuration with validation and type safety.
 """
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
 
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
+    
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False
+    )
     
     # Modbus Configuration
     modbus_host: str = Field(default="localhost", alias="MODBUS_HOST")
@@ -74,11 +80,6 @@ class Settings(BaseSettings):
     
     # Sites Manager Configuration
     sites_manager_base_url: str = Field(default="http://pae-sites-manager-app-test:8020", alias="SITES_MANAGER_BASE_URL")
-    
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = False
 
 
 # Global settings instance

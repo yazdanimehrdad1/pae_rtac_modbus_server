@@ -9,53 +9,16 @@ from db.register_readings import (
     get_latest_reading,
     get_latest_readings_for_device
 )
-from db.devices import get_device_by_id
-from cache.cache import CacheService
+from helpers.device import get_device_with_cache
 from logger import get_logger
-from schemas.db_models.models import DeviceResponse
 
 router = APIRouter(prefix="/register_readings", tags=["register_readings"])
 logger = get_logger(__name__)
 
-# Initialize cache service
-cache_service = CacheService()
 
-
-async def get_device_with_cache(device_id: int) -> DeviceResponse:
-    """
-    Get device by ID with cache-first lookup.
-    
-    Args:
-        device_id: Device ID (database primary key)
-        
-    Returns:
-        DeviceResponse if found
-        
-    Raises:
-        HTTPException: If device not found
-    """
-    # First try cache
-    cache_key = f"device:id:{device_id}"
-    cached_device = await cache_service.get(cache_key)
-    
-    if cached_device is not None:
-        # Device found in cache, reconstruct Pydantic model from dict
-        logger.debug(f"Device ID {device_id} found in cache")
-        return DeviceResponse(**cached_device)
-    else:
-        # Not in cache, query database
-        logger.debug(f"Device ID {device_id} not in cache, querying database")
-        device = await get_device_by_id(device_id)
-        if device is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Device with ID {device_id} not found"
-            )
-        return device
-
-
-@router.get("/device/{device_id}/latest")
+@router.get("/site/{site_id}/device/{device_id}/latest")
 async def get_device_latest_readings(
+    site_id: str,
     device_id: int,
     register_addresses: Optional[str] = Query(None, description="Comma-separated list of register addresses (e.g., '100,101,102')")
 ):
@@ -63,6 +26,7 @@ async def get_device_latest_readings(
     Get latest readings for all registers (or specific registers) of a device.
     
     Args:
+        site_id: Site ID (UUID)
         device_id: Device ID
         register_addresses: Optional comma-separated list of register addresses to filter
         
@@ -74,7 +38,7 @@ async def get_device_latest_readings(
     """
     try:
         # Verify device exists (cache-first lookup)
-        device = await get_device_with_cache(device_id)
+        device = await get_device_with_cache(device_id, site_id)
         
         # Parse register_addresses if provided
         register_list = None
@@ -88,9 +52,17 @@ async def get_device_latest_readings(
                 )
         
         # Get latest readings
-        readings = await get_latest_readings_for_device(device_id, register_list)
+        try:
+            readings = await get_latest_readings_for_device(device_id, site_id, register_list)
+        except ValueError as e:
+            # Site doesn't exist or device doesn't belong to site
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=str(e)
+            )
         
         return {
+            "site_id": site_id,
             "device_id": device_id,
             "device_name": device.name,
             "readings": readings,
@@ -107,12 +79,13 @@ async def get_device_latest_readings(
         )
 
 
-@router.get("/device/{device_id}/register/{register_address}/latest")
-async def get_register_latest_reading(device_id: int, register_address: int):
+@router.get("/site/{site_id}/device/{device_id}/register/{register_address}/latest")
+async def get_register_latest_reading(site_id: str, device_id: int, register_address: int):
     """
     Get the latest reading for a specific register.
     
     Args:
+        site_id: Site ID (UUID)
         device_id: Device ID
         register_address: Register address
         
@@ -124,10 +97,16 @@ async def get_register_latest_reading(device_id: int, register_address: int):
     """
     try:
         # Verify device exists (cache-first lookup)
-        device = await get_device_with_cache(device_id)
+        device = await get_device_with_cache(device_id, site_id)
         
         # Get latest reading
-        reading = await get_latest_reading(device_id, register_address)
+        try:
+            reading = await get_latest_reading(device_id, site_id, register_address)
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=str(e)
+            )
         
         if reading is None:
             raise HTTPException(
@@ -135,6 +114,9 @@ async def get_register_latest_reading(device_id: int, register_address: int):
                 detail=f"No readings found for device {device_id}, register {register_address}"
             )
         
+        # Add site_id to response
+        if isinstance(reading, dict):
+            reading["site_id"] = site_id
         return reading
         
     except HTTPException:
@@ -147,8 +129,9 @@ async def get_register_latest_reading(device_id: int, register_address: int):
         )
 
 
-@router.get("/device/{device_id}/register/{register_address}")
+@router.get("/site/{site_id}/device/{device_id}/register/{register_address}")
 async def get_register_time_series(
+    site_id: str,
     device_id: int,
     register_address: int,
     start_time: Optional[str] = Query(None, description="Start time in ISO format (e.g., '2025-01-18T08:00:00Z')"),
@@ -159,6 +142,7 @@ async def get_register_time_series(
     Get time-series data for a specific register.
     
     Args:
+        site_id: Site ID (UUID)
         device_id: Device ID
         register_address: Register address
         start_time: Optional start time (ISO format)
@@ -173,7 +157,7 @@ async def get_register_time_series(
     """
     try:
         # Verify device exists (cache-first lookup)
-        device = await get_device_with_cache(device_id)
+        device = await get_device_with_cache(device_id, site_id)
         
         # Parse time strings to datetime objects
         start_dt = None
@@ -198,18 +182,26 @@ async def get_register_time_series(
                 )
         
         # Get readings
-        readings = await get_all_readings(
-            device_id=device_id,
-            register_address=register_address,
-            start_time=start_dt,
-            end_time=end_dt,
-            limit=limit
-        )
+        try:
+            readings = await get_all_readings(
+                site_id=site_id,
+                device_id=device_id,
+                register_address=register_address,
+                start_time=start_dt,
+                end_time=end_dt,
+                limit=limit
+            )
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=str(e)
+            )
         
         # Reverse order for time-series (oldest first)
         readings.reverse()
         
         return {
+            "site_id": site_id,
             "device_id": device_id,
             "device_name": device.name,
             "register_address": register_address,
@@ -227,8 +219,9 @@ async def get_register_time_series(
         )
 
 
-@router.get("/device/{device_id}/registers")
+@router.get("/site/{site_id}/device/{device_id}/registers")
 async def get_multiple_registers_time_series(
+    site_id: str,
     device_id: int,
     register_addresses: str = Query(..., description="Comma-separated list of register addresses (e.g., '100,101,102')"),
     start_time: Optional[str] = Query(None, description="Start time in ISO format (e.g., '2025-01-18T08:00:00Z')"),
@@ -239,6 +232,7 @@ async def get_multiple_registers_time_series(
     Get time-series data for multiple registers.
     
     Args:
+        site_id: Site ID (UUID)
         device_id: Device ID
         register_addresses: Comma-separated list of register addresses (e.g., '100,101,102')
         start_time: Optional start time (ISO format)
@@ -253,7 +247,7 @@ async def get_multiple_registers_time_series(
     """
     try:
         # Verify device exists (cache-first lookup)
-        device = await get_device_with_cache(device_id)
+        device = await get_device_with_cache(device_id, site_id)
         
         # Parse register addresses
         try:
@@ -289,18 +283,26 @@ async def get_multiple_registers_time_series(
         # Get readings for each register
         result = {}
         for register_address in register_list:
-            readings = await get_all_readings(
-                device_id=device_id,
-                register_address=register_address,
-                start_time=start_dt,
-                end_time=end_dt,
-                limit=limit
-            )
+            try:
+                readings = await get_all_readings(
+                    site_id=site_id,
+                    device_id=device_id,
+                    register_address=register_address,
+                    start_time=start_dt,
+                    end_time=end_dt,
+                    limit=limit
+                )
+            except ValueError as e:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=str(e)
+                )
             # Reverse order for time-series (oldest first)
             readings.reverse()
             result[str(register_address)] = readings
         
         return {
+            "site_id": site_id,
             "device_id": device_id,
             "device_name": device.name,
             "register_addresses": register_list,
@@ -320,6 +322,7 @@ async def get_multiple_registers_time_series(
 
 @router.get("")
 async def get_readings(
+    site_id: Optional[str] = Query(None, description="Filter by site ID (UUID)"),
     device_id: Optional[int] = Query(None, description="Filter by device ID"),
     register_address: Optional[int] = Query(None, description="Filter by register address"),
     start_time: Optional[str] = Query(None, description="Start time in ISO format (e.g., '2025-01-18T08:00:00Z')"),
@@ -331,6 +334,7 @@ async def get_readings(
     Get all register readings with optional filters.
     
     Args:
+        site_id: Optional filter by site ID (UUID)
         device_id: Optional filter by device ID
         register_address: Optional filter by register address
         start_time: Optional start time (ISO format)
@@ -368,16 +372,24 @@ async def get_readings(
                 )
         
         # Get readings
-        readings = await get_all_readings(
-            device_id=device_id,
-            register_address=register_address,
-            start_time=start_dt,
-            end_time=end_dt,
-            limit=limit,
-            offset=offset
-        )
+        try:
+            readings = await get_all_readings(
+                site_id=site_id,
+                device_id=device_id,
+                register_address=register_address,
+                start_time=start_dt,
+                end_time=end_dt,
+                limit=limit,
+                offset=offset
+            )
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=str(e)
+            )
         
         return {
+            "site_id": site_id,
             "readings": readings,
             "count": len(readings),
             "limit": limit,

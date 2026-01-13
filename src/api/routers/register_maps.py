@@ -6,7 +6,7 @@ from pydantic import ValidationError
 
 from schemas.db_models.models import RegisterMapCreate
 from db.device_register_map import create_register_map, get_register_map, update_register_map, delete_register_map
-from db.devices import get_device_by_id
+from db.devices import get_device_by_id_internal
 from db.sites import get_site_by_id
 from helpers.register_maps import validate_register_map_format, get_expected_format
 from logger import get_logger
@@ -311,7 +311,7 @@ async def delete_device_register_map(site_id: str, device_id: int):
                 }
             )
         
-        device = await get_device_by_id(device_id)
+        device = await get_device_by_id_internal(device_id)
         if device is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,

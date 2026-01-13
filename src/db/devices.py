@@ -21,46 +21,43 @@ from logger import get_logger
 logger = get_logger(__name__)
 
 
-async def create_device(device: DeviceCreate, site_id: Optional[str] = None) -> DeviceResponse:
+async def create_device(device: DeviceCreate, site_id: str) -> DeviceResponse:
     """
-    Create a new device in the database and optionally associate it with a site.
+    Create a new device in the database and associate it with a site.
     
     Args:
         device: Device creation data
-        site_id: Optional site ID (UUID) to associate this device with. If provided, site must exist.
+        site_id: Site ID (UUID) to associate this device with. Site must exist.
         
     Returns:
         Created device with ID and timestamps
         
     Raises:
-        ValueError: If site not found (when site_id is provided) or device name already exists
+        ValueError: If site not found or device name already exists in the site
         IntegrityError: For other database constraint violations
     """
     session_factory = get_async_session_factory()
     async with session_factory() as session:
         try:
-            # Validate site_id if provided - site must exist
-            site = None
-            if site_id:
-                site_result = await session.execute(
-                    select(Site).where(Site.id == site_id)
-                )
-                site = site_result.scalar_one_or_none()
-                if site is None:
-                    raise ValueError(f"Site with id '{site_id}' not found")
+            # Validate site_id - site must exist (required)
+            site_result = await session.execute(
+                select(Site).where(Site.id == site_id)
+            )
+            site = site_result.scalar_one_or_none()
+            if site is None:
+                raise ValueError(f"Site with id '{site_id}' not found")
             
             # Check if device name already exists in this specific site
-            if site_id:
-                existing_device_result = await session.execute(
-                    select(Device).where(
-                        Device.name == device.name,
-                        Device.site_id == site_id
-                    )
+            existing_device_result = await session.execute(
+                select(Device).where(
+                    Device.name == device.name,
+                    Device.site_id == site_id
                 )
-                existing_device = existing_device_result.scalar_one_or_none()
-                if existing_device is not None:
-                    # Device with same name already exists in this site
-                    raise ValueError(f"Device with name '{device.name}' already exists in site '{site.name}'")
+            )
+            existing_device = existing_device_result.scalar_one_or_none()
+            if existing_device is not None:
+                # Device with same name already exists in this site
+                raise ValueError(f"Device with name '{device.name}' already exists in site '{site.name}'")
             
             # Create new Device instance
             new_device = Device(
@@ -82,13 +79,12 @@ async def create_device(device: DeviceCreate, site_id: Optional[str] = None) -> 
             session.add(new_device)
             await session.flush()  # Flush to get the ID without committing
             
-            # Update device_count in site if site_id is provided
-            if site_id:
-                await session.execute(
-                    update(Site)
-                    .where(Site.id == site_id)
-                    .values(device_count=Site.device_count + 1)
-                )
+            # Update device_count in site (site_id is required)
+            await session.execute(
+                update(Site)
+                .where(Site.id == site_id)
+                .values(device_count=Site.device_count + 1)
+            )
             
             # Store the primary key before commit
             device_primary_key = new_device.id
@@ -133,37 +129,9 @@ async def create_device(device: DeviceCreate, site_id: Optional[str] = None) -> 
             await session.rollback()
             # Check if it's a unique constraint violation
             if "unique" in str(e).lower() or "duplicate" in str(e).lower() or "already exists" in str(e).lower():
-                # For site-scoped uniqueness, we should have site_id and site available
-                if site_id and site:
-                    logger.warning(f"Device name '{device.name}' already exists in site '{site.name}'")
-                    raise ValueError(f"Device with name '{device.name}' already exists in site '{site.name}'") from e
-                else:
-                    # Fallback: try to query for the existing device to get site info
-                    try:
-                        existing_device_result = await session.execute(
-                            select(Device).where(
-                                Device.name == device.name,
-                                Device.site_id == site_id
-                            )
-                        )
-                        existing_device = existing_device_result.scalar_one_or_none()
-                        if existing_device and existing_device.site_id:
-                            site_result = await session.execute(
-                                select(Site).where(Site.id == existing_device.site_id)
-                            )
-                            existing_site = site_result.scalar_one_or_none()
-                            if existing_site:
-                                logger.warning(f"Device name '{device.name}' already exists in site '{existing_site.name}'")
-                                raise ValueError(f"Device with name '{device.name}' already exists in site '{existing_site.name}'") from e
-                    except ValueError:
-                        # Re-raise ValueError (our custom error with site info)
-                        raise
-                    except Exception as query_error:
-                        # Log but fall through to generic error message
-                        logger.debug(f"Could not query existing device for site info: {query_error}")
-                    
-                    logger.warning(f"Device name '{device.name}' already exists")
-                    raise ValueError(f"Device with name '{device.name}' already exists") from e
+                # site_id and site are always available since site_id is required
+                logger.warning(f"Device name '{device.name}' already exists in site '{site.name}'")
+                raise ValueError(f"Device with name '{device.name}' already exists in site '{site.name}'") from e
             else:
                 logger.error(f"Database integrity error creating device: {e}")
                 raise
@@ -173,18 +141,34 @@ async def create_device(device: DeviceCreate, site_id: Optional[str] = None) -> 
             raise
 
 
-async def get_all_devices() -> list[DeviceListItem]:
+async def get_all_devices(site_id: str) -> list[DeviceListItem]:
     """
-    Get all devices from the database.
+    Get all devices from the database for a specific site.
     
+    Args:
+        site_id: Site ID (UUID) to filter devices by
+        
     Returns:
-        List of all devices (without register_map for performance), ordered by ID
+        List of all devices for the specified site (without register_map for performance), ordered by ID
+        
+    Raises:
+        ValueError: If site doesn't exist
     """
     session_factory = get_async_session_factory()
     async with session_factory() as session:
-        # Query all devices ordered by ID
+        # Validate site exists
+        site_result = await session.execute(
+            select(Site).where(Site.id == site_id)
+        )
+        site = site_result.scalar_one_or_none()
+        if site is None:
+            raise ValueError(f"Site with id '{site_id}' not found")
+        
+        # Query all devices that belong to the specified site
         result = await session.execute(
-            select(Device).order_by(Device.id)
+            select(Device)
+            .where(Device.site_id == site_id)
+            .order_by(Device.id)
         )
         devices = result.scalars().all()
         
@@ -269,12 +253,70 @@ async def get_devices_by_site_id(site_id: str) -> list[DeviceListItem]:
         return device_list
 
 
-async def get_device_by_id(device_id: int) -> Optional[DeviceResponse]:
+async def get_device_by_id(device_id: int, site_id: str) -> Optional[DeviceResponse]:
     """
-    Get a device by ID.
+    Get a device by ID and site_id.
     
     Args:
-        device_id: Device ID
+        device_id: Device ID (database primary key)
+        site_id: Site ID (UUID) to validate that the device belongs to this site
+        
+    Returns:
+        Device if found and belongs to site, None otherwise
+        
+    Raises:
+        ValueError: If site doesn't exist
+    """
+    session_factory = get_async_session_factory()
+    async with session_factory() as session:
+        # Validate site exists
+        site_result = await session.execute(
+            select(Site).where(Site.id == site_id)
+        )
+        site = site_result.scalar_one_or_none()
+        if site is None:
+            raise ValueError(f"Site with id '{site_id}' not found")
+        
+        # Query by both device_id (primary key) and site_id
+        result = await session.execute(
+            select(Device).where(
+                Device.id == device_id,
+                Device.site_id == site_id
+            )
+        )
+        device = result.scalar_one_or_none()
+        
+        if device is None:
+            return None
+        
+        return DeviceResponse(
+            id=device.id,
+            name=device.name,
+            host=device.host,
+            port=device.port,
+            device_id=device.device_id,
+            description=device.description,
+            main_type=device.main_type,
+            sub_type=device.sub_type,
+            poll_address=device.poll_address,
+            poll_count=device.poll_count,
+            poll_kind=device.poll_kind,
+            poll_enabled=device.poll_enabled if device.poll_enabled is not None else True,
+            site_id=device.site_id,
+            created_at=device.created_at,
+            updated_at=device.updated_at
+        )
+
+
+async def get_device_by_id_internal(device_id: int) -> Optional[DeviceResponse]:
+    """
+    Internal helper to get a device by ID without requiring site_id.
+    
+    This is used for backward compatibility in routes that don't have site_id in the path.
+    The device must have a site_id (all devices belong to a site).
+    
+    Args:
+        device_id: Device ID (database primary key)
         
     Returns:
         Device if found, None otherwise
@@ -287,6 +329,11 @@ async def get_device_by_id(device_id: int) -> Optional[DeviceResponse]:
         device = result.scalar_one_or_none()
         
         if device is None:
+            return None
+        
+        # Ensure device has a site_id (all devices must belong to a site)
+        if device.site_id is None:
+            logger.warning(f"Device with id {device_id} has no site_id")
             return None
         
         return DeviceResponse(
@@ -365,9 +412,50 @@ async def get_device_by_device_id(device_id: int, site_id: str) -> Optional[Devi
         )
 
 
-async def get_device_id_by_name(device_name: str) -> Optional[int]:
+async def get_device_id_by_name(device_name: str, site_id: str) -> Optional[int]:
     """
-    Get device ID by device name.
+    Get device ID by device name and site_id.
+    
+    Since device names are unique per site, both name and site_id are required.
+    
+    Args:
+        device_name: Device name/identifier
+        site_id: Site ID (UUID) to scope the search to a specific site
+        
+    Returns:
+        Device ID if found in the specified site, None otherwise
+        
+    Raises:
+        ValueError: If site doesn't exist
+    """
+    session_factory = get_async_session_factory()
+    async with session_factory() as session:
+        # Validate site exists
+        site_result = await session.execute(
+            select(Site).where(Site.id == site_id)
+        )
+        site = site_result.scalar_one_or_none()
+        if site is None:
+            raise ValueError(f"Site with id '{site_id}' not found")
+        
+        # Query by both device name and site_id
+        result = await session.execute(
+            select(Device.id).where(
+                Device.name == device_name,
+                Device.site_id == site_id
+            )
+        )
+        device_id = result.scalar_one_or_none()
+        
+        return device_id
+
+
+async def get_device_id_by_name_internal(device_name: str) -> Optional[int]:
+    """
+    Internal helper to get device ID by device name without requiring site_id.
+    
+    This is used for backward compatibility. Since device names are unique per site,
+    this will return the first device found with that name. Use with caution.
     
     Args:
         device_name: Device name/identifier
@@ -377,6 +465,8 @@ async def get_device_id_by_name(device_name: str) -> Optional[int]:
     """
     session_factory = get_async_session_factory()
     async with session_factory() as session:
+        # Query by device name (will return first match)
+        # Note: This assumes device names are unique across all sites, which may not be true
         result = await session.execute(
             select(Device.id).where(Device.name == device_name)
         )
@@ -521,50 +611,47 @@ async def update_device(device_id: int, device_update: DeviceUpdate, site_id: st
             raise
 
 
-async def delete_device(device_id: int, site_id: Optional[str] = None) -> Optional[DeviceResponse]:
+async def delete_device(device_id: int, site_id: str) -> Optional[DeviceResponse]:
     """
     Delete a device from the database.
     
     Args:
         device_id: Modbus unit/slave ID (not the primary key)
-        site_id: Optional site ID to validate that the device belongs to this site
+        site_id: Site ID (UUID) to validate that the device belongs to this site (required)
         
     Returns:
         DeviceResponse with metadata of the deleted device if found, None if not found
         
     Raises:
-        ValueError: If site_id is provided and device doesn't belong to that site, or site doesn't exist
+        ValueError: If site doesn't exist or device doesn't belong to that site
         Exception: For database errors
     """
     session_factory = get_async_session_factory()
     async with session_factory() as session:
         try:
-            # Validate site_id if provided - site must exist
-            if site_id:
-                site_result = await session.execute(
-                    select(Site).where(Site.id == site_id)
-                )
-                site = site_result.scalar_one_or_none()
-                if site is None:
-                    raise ValueError(f"Site with id '{site_id}' not found")
+            # Validate site_id - site must exist (required)
+            site_result = await session.execute(
+                select(Site).where(Site.id == site_id)
+            )
+            site = site_result.scalar_one_or_none()
+            if site is None:
+                raise ValueError(f"Site with id '{site_id}' not found")
             
-            # Get the device to delete by device_id (Modbus unit/slave ID)
+            # Get the device to delete by device_id (Modbus unit/slave ID) and site_id
             # Load register_map relationship to ensure cascade delete works properly
             result = await session.execute(
                 select(Device)
-                .where(Device.device_id == device_id)
+                .where(
+                    Device.device_id == device_id,
+                    Device.site_id == site_id
+                )
                 .options(selectinload(Device.register_map))
             )
             device = result.scalar_one_or_none()
             
             if device is None:
-                logger.warning(f"Device with device_id {device_id} not found for deletion")
+                logger.warning(f"Device with device_id {device_id} not found in site '{site_id}' for deletion")
                 return None
-            
-            # Validate that device belongs to the specified site if site_id is provided
-            if site_id:
-                if device.site_id != site_id:
-                    raise ValueError(f"Device with device_id {device_id} does not belong to site '{site_id}'")
             
             # Store device data before deletion
             device_response = DeviceResponse(
@@ -574,6 +661,8 @@ async def delete_device(device_id: int, site_id: Optional[str] = None) -> Option
                 port=device.port,
                 device_id=device.device_id,
                 description=device.description,
+                main_type=device.main_type,
+                sub_type=device.sub_type,
                 poll_address=device.poll_address,
                 poll_count=device.poll_count,
                 poll_kind=device.poll_kind,
@@ -590,7 +679,7 @@ async def delete_device(device_id: int, site_id: Optional[str] = None) -> Option
             device_name_to_delete = device.name
             primary_key = device.id
             
-            # Decrement device_count in site if device is associated with a site
+            # Decrement device_count in site (device must have site_id)
             if device.site_id:
                 await session.execute(
                     update(Site)
@@ -614,33 +703,46 @@ async def delete_device(device_id: int, site_id: Optional[str] = None) -> Option
             raise
 
 
-async def delete_device_by_id(id: int) -> Optional[DeviceResponse]:
+async def delete_device_by_id(id: int, site_id: str) -> Optional[DeviceResponse]:
     """
-    Delete a device from the database by its primary key (id).
+    Delete a device from the database by its primary key (id) and site_id.
     
     Args:
         id: Database primary key (id)
+        site_id: Site ID (UUID) to validate that the device belongs to this site (required)
         
     Returns:
         DeviceResponse with metadata of the deleted device if found, None if not found
         
     Raises:
+        ValueError: If site doesn't exist or device doesn't belong to that site
         Exception: For database errors
     """
     session_factory = get_async_session_factory()
     async with session_factory() as session:
         try:
-            # Get the device to delete by primary key (id)
+            # Validate site_id - site must exist (required)
+            site_result = await session.execute(
+                select(Site).where(Site.id == site_id)
+            )
+            site = site_result.scalar_one_or_none()
+            if site is None:
+                raise ValueError(f"Site with id '{site_id}' not found")
+            
+            # Get the device to delete by primary key (id) and site_id
             # Load register_map relationship to ensure cascade delete works properly
             result = await session.execute(
                 select(Device)
-                .where(Device.id == id)
+                .where(
+                    Device.id == id,
+                    Device.site_id == site_id
+                )
                 .options(selectinload(Device.register_map))
             )
             device = result.scalar_one_or_none()
             
             if device is None:
-                logger.warning(f"Device with id {id} not found for deletion")
+                logger.warning(f"Device with id {id} not found in site '{site_id}' for deletion")
                 return None
             
             # Store device data before deletion
@@ -651,6 +753,8 @@ async def delete_device_by_id(id: int) -> Optional[DeviceResponse]:
                 port=device.port,
                 device_id=device.device_id,
                 description=device.description,
+                main_type=device.main_type,
+                sub_type=device.sub_type,
                 poll_address=device.poll_address,
                 poll_count=device.poll_count,
                 poll_kind=device.poll_kind,
@@ -665,7 +769,7 @@ async def delete_device_by_id(id: int) -> Optional[DeviceResponse]:
             device_name_to_delete = device.name
             primary_key = device.id
             
-            # Decrement device_count in site if device is associated with a site
+            # Decrement device_count in site (device must have site_id)
             if device.site_id:
                 await session.execute(
                     update(Site)

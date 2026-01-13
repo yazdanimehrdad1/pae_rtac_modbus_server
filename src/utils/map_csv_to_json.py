@@ -62,12 +62,24 @@ def map_csv_to_json(
     for _, row in df.iterrows():
         register = {}
         
-        # Required fields
-        if "address" in df.columns and pd.notna(row.get("address")):
-            register["address"] = int(row["address"])
+        # Required fields - support both CSV column names but standardize to register_address/register_name
+        address_value = None
+        if "register_address" in df.columns and pd.notna(row.get("register_address")):
+            address_value = int(row["register_address"])
+        elif "address" in df.columns and pd.notna(row.get("address")):
+            address_value = int(row["address"])
         
-        if "name" in df.columns and pd.notna(row.get("name")):
-            register["name"] = str(row["name"]).strip()
+        if address_value is not None:
+            register["register_address"] = address_value
+        
+        name_value = None
+        if "register_name" in df.columns and pd.notna(row.get("register_name")):
+            name_value = str(row["register_name"]).strip()
+        elif "name" in df.columns and pd.notna(row.get("name")):
+            name_value = str(row["name"]).strip()
+        
+        if name_value:
+            register["register_name"] = name_value
         
         if "kind" in df.columns and pd.notna(row.get("kind")):
             register["kind"] = str(row["kind"]).strip().lower()
@@ -124,11 +136,12 @@ def json_to_register_map(json_data: Dict[str, Any]) -> RegisterMap:
     points = []
     
     for reg in registers:
+        # Map from register_address/register_name (JSON format) to address/name (RegisterPoint format)
         point_data = {
-            "name": reg["name"],
-            "address": reg["address"],
-            "kind": reg["kind"],
-            "size": reg["size"],
+            "name": reg.get("register_name") or reg.get("name", ""),
+            "address": reg.get("register_address") or reg.get("address"),
+            "kind": reg.get("kind", "holding"),
+            "size": reg.get("size", 1),
         }
         
         # Optional fields

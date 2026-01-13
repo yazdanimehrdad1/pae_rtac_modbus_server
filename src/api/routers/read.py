@@ -8,8 +8,9 @@ from fastapi import APIRouter, HTTPException, status
 from schemas.api_models import ReadRequest, ReadResponse, RegisterData, SimpleReadResponse, RegisterValue
 from modbus.client import ModbusClient, translate_modbus_error
 from modbus.modbus_utills import ModbusUtils
-from utils.map_csv_to_json import json_to_register_map, get_register_map_for_device
-from db.devices import get_device_by_id, get_device_id_by_name
+from utils.map_csv_to_json import json_to_register_map
+from db.devices import get_device_by_id_internal, get_device_id_by_name_internal
+from db.device_register_map import get_register_map
 from cache.cache import CacheService
 from config import settings
 from logger import get_logger
@@ -134,13 +135,13 @@ async def read_main_sel_751_data():
         else:
             # Not in cache, query database
             logger.debug(f"Device '{device_name}' not in cache, querying database")
-            db_device_id = await get_device_id_by_name(device_name)
+            db_device_id = await get_device_id_by_name_internal(device_name)
             if db_device_id is None:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail=f"Device '{device_name}' not found in database"
                 )
-            device = await get_device_by_id(db_device_id)
+            device = await get_device_by_id_internal(db_device_id)
             if device is None:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
@@ -177,7 +178,14 @@ async def read_main_sel_751_data():
             )
         
         
-        json_data = await get_register_map_for_device(device.id, site_id=device.site_id if device.site_id else None)
+        # Get register map from database if device has a site_id
+        json_data = None
+        if device.site_id:
+            try:
+                json_data = await get_register_map(device.id, site_id=device.site_id)
+            except Exception as e:
+                logger.warning(f"Error getting register map for device {device.id}: {e}")
+                json_data = None
         
         response_data = {}
         
@@ -217,9 +225,9 @@ async def read_main_sel_751_data():
     except Exception as e:
         # Try to get device info for better error messages
         try:
-            db_device_id = await get_device_id_by_name(device_name)
+            db_device_id = await get_device_id_by_name_internal(device_name)
             if db_device_id:
-                device = await get_device_by_id(db_device_id)
+                device = await get_device_by_id_internal(db_device_id)
                 if device:
                     status_code, message = translate_modbus_error(e, host=device.host, port=device.port)
                 else:

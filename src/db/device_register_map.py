@@ -14,7 +14,7 @@ from logger import get_logger
 
 logger = get_logger(__name__)
 
-
+# TODO: add cache to this function
 async def get_register_map(device_id: int, site_id: str) -> Optional[Dict[str, Any]]:
     """
     Get register map for a device by device ID.
@@ -52,23 +52,8 @@ async def get_register_map(device_id: int, site_id: str) -> Optional[Dict[str, A
         result = await session.execute(statement)
         device_register_map = result.scalar_one_or_none()
         
-        if device_register_map is None:
-            # Check if device exists but doesn't belong to site, or device doesn't exist
-            device_result = await session.execute(
-                select(Device).where(Device.id == device_id)
-            )
-            device = device_result.scalar_one_or_none()
-            
-            if device is None:
-                raise ValueError(f"Device with id '{device_id}' not found")
-            
-            if device.site_id != site_id:
-                raise ValueError(f"Device with id '{device_id}' does not belong to site '{site_id}'")
-            
-            # Device exists and belongs to site, but register map doesn't exist
-            return None
-        
-        if device_register_map.register_map is None:
+        # Return None if register map not found or is empty
+        if not device_register_map or not device_register_map.register_map:
             return None
         
         # SQLAlchemy JSON type automatically handles dict conversion
