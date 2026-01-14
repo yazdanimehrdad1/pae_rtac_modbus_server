@@ -21,8 +21,8 @@ def register_map_to_dataframe(register_map: RegisterMap) -> pd.DataFrame:
     data = []
     for point in register_map.points:
         data.append({
-            "name": point.name,
-            "address": point.address,
+            "register_name": point.name,
+            "register_address": point.address,
             "kind": point.kind,
             "size": point.size,
             "device_id": point.device_id,

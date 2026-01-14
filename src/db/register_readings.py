@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert
 
 from db.session import get_session
-from schemas.db_models.orm_models import RegisterReading
+from schemas.db_models.orm_models import RegisterReading, Device
 from logger import get_logger
 
 logger = get_logger(__name__)
@@ -19,6 +19,7 @@ logger = get_logger(__name__)
 
 async def insert_register_reading(
     device_id: int,
+    site_id: str,
     register_address: int,
     value: float,
     timestamp: Optional[datetime] = None,
@@ -32,6 +33,7 @@ async def insert_register_reading(
     
     Args:
         device_id: Device ID
+        site_id: Site ID (UUID) to validate device belongs to site
         register_address: Modbus register address
         value: Register value (already converted to float/double)
         timestamp: Timestamp when reading was taken (defaults to now if None)
@@ -44,6 +46,7 @@ async def insert_register_reading(
         True if inserted successfully, False otherwise
         
     Raises:
+        ValueError: If site doesn't exist or device doesn't belong to site
         Exception: For database errors
     """
     if timestamp is None:
@@ -51,6 +54,23 @@ async def insert_register_reading(
     
     try:
         async with get_session() as session:
+            # Validate that device belongs to the specified site
+            device_result = await session.execute(
+                select(Device).where(
+                    Device.id == device_id,
+                    Device.site_id == site_id
+                )
+            )
+            device = device_result.scalar_one_or_none()
+            if device is None:
+                from schemas.db_models.orm_models import Site
+                site_result = await session.execute(
+                    select(Site).where(Site.id == site_id)
+                )
+                site = site_result.scalar_one_or_none()
+                if site is None:
+                    raise ValueError(f"Site with id '{site_id}' not found")
+                raise ValueError(f"Device with id '{device_id}' not found in site '{site_id}'")
             # Use PostgreSQL-specific INSERT ... ON CONFLICT via insert().on_conflict_do_update()
             statement = insert(RegisterReading).values(
                 timestamp=timestamp,
@@ -86,12 +106,14 @@ async def insert_register_reading(
 
 
 async def insert_register_readings_batch(
+    site_id: str,
     readings: List[Dict[str, Any]]
 ) -> int:
     """
     Insert multiple register readings in a single batch operation.
     
     Args:
+        site_id: Site ID (UUID) to validate all devices belong to site
         readings: List of reading dictionaries, each containing:
             - device_id (int)
             - register_address (int)
@@ -106,6 +128,7 @@ async def insert_register_readings_batch(
         Number of successfully inserted readings
         
     Raises:
+        ValueError: If site doesn't exist or any device doesn't belong to site
         Exception: For database errors
     """
     if not readings:
@@ -114,6 +137,31 @@ async def insert_register_readings_batch(
     
     try:
         async with get_session() as session:
+            # Validate site exists
+            from schemas.db_models.orm_models import Site
+            site_result = await session.execute(
+                select(Site).where(Site.id == site_id)
+            )
+            site = site_result.scalar_one_or_none()
+            if site is None:
+                raise ValueError(f"Site with id '{site_id}' not found")
+            
+            # Validate all devices belong to the site and get unique device_ids
+            device_ids = {reading['device_id'] for reading in readings}
+            devices_result = await session.execute(
+                select(Device).where(
+                    Device.id.in_(device_ids),
+                    Device.site_id == site_id
+                )
+            )
+            valid_devices = {device.id for device in devices_result.scalars().all()}
+            
+            # Check if all device_ids are valid
+            invalid_devices = device_ids - valid_devices
+            if invalid_devices:
+                raise ValueError(
+                    f"Device(s) {sorted(invalid_devices)} not found in site '{site_id}'"
+                )
             # Prepare values for batch insert
             values = []
             for reading in readings:
@@ -141,7 +189,8 @@ async def insert_register_readings_batch(
                     value=statement.excluded.value,
                     quality=statement.excluded.quality,
                     register_name=statement.excluded.register_name,
-                    unit=statement.excluded.unit
+                    unit=statement.excluded.unit,
+                    scale_factor=statement.excluded.scale_factor
                 )
             )
             
@@ -159,6 +208,7 @@ async def insert_register_readings_batch(
         return 0
 
 async def get_all_readings(
+    site_id: Optional[str] = None,
     device_id: Optional[int] = None,
     register_address: Optional[int] = None,
     start_time: Optional[datetime] = None,
@@ -170,7 +220,8 @@ async def get_all_readings(
     Get all register readings with optional filters.
     
     Args:
-        device_id: Optional filter by device ID
+        site_id: Optional Site ID (UUID) to filter by site. Required if device_id is provided.
+        device_id: Optional filter by device ID (requires site_id)
         register_address: Optional filter by register address
         start_time: Optional start of time range (inclusive)
         end_time: Optional end of time range (inclusive)
@@ -179,8 +230,34 @@ async def get_all_readings(
         
     Returns:
         List of reading dictionaries, ordered by timestamp descending (newest first)
+        
+    Raises:
+        ValueError: If device_id is provided but site_id is not, or device doesn't belong to site
     """
     async with get_session() as session:
+        # If device_id is provided, site_id is required for validation
+        if device_id is not None:
+            if site_id is None:
+                raise ValueError("site_id is required when device_id is provided")
+            
+            # Validate that device belongs to the specified site
+            device_result = await session.execute(
+                select(Device).where(
+                    Device.id == device_id,
+                    Device.site_id == site_id
+                )
+            )
+            device = device_result.scalar_one_or_none()
+            if device is None:
+                from schemas.db_models.orm_models import Site
+                site_result = await session.execute(
+                    select(Site).where(Site.id == site_id)
+                )
+                site = site_result.scalar_one_or_none()
+                if site is None:
+                    raise ValueError(f"Site with id '{site_id}' not found")
+                raise ValueError(f"Device with id '{device_id}' not found in site '{site_id}'")
+        
         # Build query with filters
         statement = select(RegisterReading)
         
@@ -225,6 +302,7 @@ async def get_all_readings(
 
 async def get_latest_reading(
     device_id: int,
+    site_id: str,
     register_address: int
 ) -> Optional[Dict[str, Any]]:
     """
@@ -232,12 +310,34 @@ async def get_latest_reading(
     
     Args:
         device_id: Device ID
+        site_id: Site ID (UUID) to validate device belongs to site
         register_address: Register address
         
     Returns:
         Dictionary with reading data if found, None otherwise
+        
+    Raises:
+        ValueError: If site doesn't exist or device doesn't belong to site
     """
     async with get_session() as session:
+        # Validate that device belongs to the specified site
+        device_result = await session.execute(
+            select(Device).where(
+                Device.id == device_id,
+                Device.site_id == site_id
+            )
+        )
+        device = device_result.scalar_one_or_none()
+        if device is None:
+            from schemas.db_models.orm_models import Site
+            site_result = await session.execute(
+                select(Site).where(Site.id == site_id)
+            )
+            site = site_result.scalar_one_or_none()
+            if site is None:
+                raise ValueError(f"Site with id '{site_id}' not found")
+            raise ValueError(f"Device with id '{device_id}' not found in site '{site_id}'")
+        
         statement = select(RegisterReading).where(
             and_(
                 RegisterReading.device_id == device_id,
@@ -264,6 +364,7 @@ async def get_latest_reading(
 
 async def get_latest_readings_for_device(
     device_id: int,
+    site_id: str,
     register_addresses: Optional[List[int]] = None
 ) -> List[Dict[str, Any]]:
     """
@@ -271,13 +372,36 @@ async def get_latest_readings_for_device(
     
     Args:
         device_id: Device ID
+        site_id: Site ID (UUID) to validate device belongs to site
         register_addresses: Optional list of specific register addresses.
                           If None, returns latest for all registers of the device.
         
     Returns:
         List of latest reading dictionaries, one per register
+        
+    Raises:
+        ValueError: If site doesn't exist or device doesn't belong to site
     """
     async with get_session() as session:
+        # Validate that device belongs to the specified site
+        device_result = await session.execute(
+            select(Device).where(
+                Device.id == device_id,
+                Device.site_id == site_id
+            )
+        )
+        device = device_result.scalar_one_or_none()
+        if device is None:
+            # Check if site exists
+            from schemas.db_models.orm_models import Site
+            site_result = await session.execute(
+                select(Site).where(Site.id == site_id)
+            )
+            site = site_result.scalar_one_or_none()
+            if site is None:
+                raise ValueError(f"Site with id '{site_id}' not found")
+            raise ValueError(f"Device with id '{device_id}' not found in site '{site_id}'")
+        
         # Use window function to get latest reading per register_address
         # This is equivalent to DISTINCT ON (register_address) ... ORDER BY register_address, timestamp DESC
         from sqlalchemy import func as sql_func
