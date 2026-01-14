@@ -78,8 +78,8 @@ class Settings(BaseSettings):
     # Pod identification (for Kubernetes)
     pod_name: str = Field(default="", alias="POD_NAME")  # Falls back to HOSTNAME if not set
     
-    # Sites Manager Configuration
-    sites_manager_base_url: str = Field(default="http://pae-sites-manager-app-test:8020", alias="SITES_MANAGER_BASE_URL")
+    # DAS API Configuration
+    das_api_base_url: str = Field(default="http://pae-das-api:8080", alias="DAS_API_BASE_URL")
 
 
 # Global settings instance

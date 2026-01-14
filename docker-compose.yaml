@@ -61,8 +61,8 @@ services:
       - POSTGRES_DB=${POSTGRES_DB:-rtac_modbus}
       - POSTGRES_USER=${POSTGRES_USER:-rtac_user}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-rtac_password}
-      # Sites Manager configuration
-      - SITES_MANAGER_BASE_URL=${SITES_MANAGER_BASE_URL:-http://pae-sites-manager-app-test:8020}
+      # DAS API configuration
+      - DAS_API_BASE_URL=${DAS_API_BASE_URL:-http://pae-das-api:8080}
     volumes:
       # Mount .env file if it exists (optional - environment variables take precedence)
       - ./.env:/app/.env:ro
