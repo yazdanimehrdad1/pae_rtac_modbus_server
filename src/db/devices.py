@@ -529,6 +529,14 @@ async def update_device(device_id: int, device_update: DeviceUpdate, site_id: st
                 device.main_type = device_update.main_type
             if device_update.sub_type is not None:
                 device.sub_type = device_update.sub_type
+            if device_update.poll_address is not None:
+                device.poll_address = device_update.poll_address
+            if device_update.poll_count is not None:
+                device.poll_count = device_update.poll_count
+            if device_update.poll_kind is not None:
+                device.poll_kind = device_update.poll_kind
+            if device_update.poll_enabled is not None:
+                device.poll_enabled = device_update.poll_enabled
             
             # Handle site_id changes and update device_count
             old_site_id = device.site_id

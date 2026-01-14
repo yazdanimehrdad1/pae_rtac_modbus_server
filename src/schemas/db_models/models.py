@@ -41,6 +41,10 @@ class DeviceUpdate(BaseModel):
     description: Optional[str] = Field(None, description="Device description")
     main_type: Optional[str] = Field(None, min_length=1, max_length=255, description="Device main type")
     sub_type: Optional[str] = Field(None, max_length=255, description="Device sub type")
+    poll_address: Optional[int] = Field(None, ge=0, le=65535, description="Start address for polling Modbus registers")
+    poll_count: Optional[int] = Field(None, ge=1, description="Number of registers to read during polling")
+    poll_kind: Optional[str] = Field(None, description="Register type: holding, input, coils, or discretes")
+    poll_enabled: Optional[bool] = Field(None, description="Whether polling is enabled for this device")
     site_id: Optional[str] = Field(None, description="Site ID (UUID) to associate this device with. Set to null to remove association.")
 
 

@@ -129,96 +129,6 @@ async def get_register_latest_reading(site_id: str, device_id: int, register_add
         )
 
 
-@router.get("/site/{site_id}/device/{device_id}/register/{register_address}")
-async def get_register_time_series(
-    site_id: str,
-    device_id: int,
-    register_address: int,
-    start_time: Optional[str] = Query(None, description="Start time in ISO format (e.g., '2025-01-18T08:00:00Z')"),
-    end_time: Optional[str] = Query(None, description="End time in ISO format (e.g., '2025-01-18T09:00:00Z')"),
-    limit: Optional[int] = Query(1000, ge=1, le=10000, description="Maximum number of readings to return")
-):
-    """
-    Get time-series data for a specific register.
-    
-    Args:
-        site_id: Site ID (UUID)
-        device_id: Device ID
-        register_address: Register address
-        start_time: Optional start time (ISO format)
-        end_time: Optional end time (ISO format)
-        limit: Maximum number of readings to return (default: 1000, max: 10000)
-        
-    Returns:
-        List of readings ordered by timestamp (ascending for time-series)
-        
-    Raises:
-        HTTPException: If device not found or invalid time format
-    """
-    try:
-        # Verify device exists (cache-first lookup)
-        device = await get_device_with_cache(device_id, site_id)
-        
-        # Parse time strings to datetime objects
-        start_dt = None
-        end_dt = None
-        
-        if start_time:
-            try:
-                start_dt = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
-            except ValueError:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Invalid start_time format. Expected ISO format (e.g., '2025-01-18T08:00:00Z')"
-                )
-        
-        if end_time:
-            try:
-                end_dt = datetime.fromisoformat(end_time.replace('Z', '+00:00'))
-            except ValueError:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Invalid end_time format. Expected ISO format (e.g., '2025-01-18T09:00:00Z')"
-                )
-        
-        # Get readings
-        try:
-            readings = await get_all_readings(
-                site_id=site_id,
-                device_id=device_id,
-                register_address=register_address,
-                start_time=start_dt,
-                end_time=end_dt,
-                limit=limit
-            )
-        except ValueError as e:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=str(e)
-            )
-        
-        # Reverse order for time-series (oldest first)
-        readings.reverse()
-        
-        return {
-            "site_id": site_id,
-            "device_id": device_id,
-            "device_name": device.name,
-            "register_address": register_address,
-            "readings": readings,
-            "count": len(readings)
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error getting time-series for device {device_id}, register {register_address}: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve time-series data"
-        )
-
-
 @router.get("/site/{site_id}/device/{device_id}/registers")
 async def get_multiple_registers_time_series(
     site_id: str,
@@ -322,25 +232,23 @@ async def get_multiple_registers_time_series(
 
 @router.get("")
 async def get_readings(
-    site_id: Optional[str] = Query(None, description="Filter by site ID (UUID)"),
-    device_id: Optional[int] = Query(None, description="Filter by device ID"),
+    site_id: str = Query(..., description="Site ID (UUID) - required"),
+    device_id: int = Query(..., description="Device ID - required"),
     register_address: Optional[int] = Query(None, description="Filter by register address"),
     start_time: Optional[str] = Query(None, description="Start time in ISO format (e.g., '2025-01-18T08:00:00Z')"),
     end_time: Optional[str] = Query(None, description="End time in ISO format (e.g., '2025-01-18T09:00:00Z')"),
-    limit: Optional[int] = Query(100, ge=1, le=10000, description="Maximum number of readings to return"),
-    offset: Optional[int] = Query(0, ge=0, description="Number of readings to skip (for pagination)")
+    limit: Optional[int] = Query(100, ge=1, le=10000, description="Maximum number of readings to return")
 ):
     """
     Get all register readings with optional filters.
     
     Args:
-        site_id: Optional filter by site ID (UUID)
-        device_id: Optional filter by device ID
+        site_id: Site ID (UUID) - required
+        device_id: Device ID - required
         register_address: Optional filter by register address
         start_time: Optional start time (ISO format)
         end_time: Optional end time (ISO format)
         limit: Maximum number of readings to return (default: 100, max: 10000)
-        offset: Number of readings to skip for pagination (default: 0)
         
     Returns:
         List of readings matching the filters
@@ -379,8 +287,7 @@ async def get_readings(
                 register_address=register_address,
                 start_time=start_dt,
                 end_time=end_dt,
-                limit=limit,
-                offset=offset
+                limit=limit
             )
         except ValueError as e:
             raise HTTPException(
@@ -392,8 +299,7 @@ async def get_readings(
             "site_id": site_id,
             "readings": readings,
             "count": len(readings),
-            "limit": limit,
-            "offset": offset
+            "limit": limit
         }
         
     except HTTPException:
