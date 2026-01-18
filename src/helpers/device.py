@@ -12,12 +12,13 @@ logger = get_logger(__name__)
 # Initialize cache service
 cache_service = CacheService()
 
-#TODO: lets try cache first and if not successful then db
-async def get_device_with_cache(device_id: int) -> DeviceResponse:
+# TODO: try cache first and if not successful then db
+async def get_device_with_cache(site_id: int, device_id: int) -> DeviceResponse:
     """
     Get device by ID with cache-first lookup.
     
     Args:
+        site_id: Site ID (4-digit number)
         device_id: Device ID (database primary key)
         
     Returns:
@@ -27,7 +28,7 @@ async def get_device_with_cache(device_id: int) -> DeviceResponse:
         HTTPException: If device not found
     """
     # First try cache
-    cache_key = f"device:id:{device_id}"
+    cache_key = f"device:site:{site_id}:id:{device_id}"
     cached_device = await cache_service.get(cache_key)
     
     if cached_device is not None:
@@ -36,11 +37,11 @@ async def get_device_with_cache(device_id: int) -> DeviceResponse:
     else:
         logger.debug(f"Device ID {device_id} not in cache, querying database")
         try:
-            device = await get_device_by_id(device_id)
+            device = await get_device_by_id(device_id, site_id)
             if device is None:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"Device with ID {device_id} not found"
+                    detail=f"Device with ID {device_id} not found in site {site_id}"
                 )
             return device
         except ValueError as e:

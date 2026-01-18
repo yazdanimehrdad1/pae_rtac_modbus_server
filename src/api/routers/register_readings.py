@@ -18,7 +18,7 @@ logger = get_logger(__name__)
 
 @router.get("/site/{site_id}/device/{device_id}/latest")
 async def get_device_latest_readings(
-    site_id: str,
+    site_id: int,
     device_id: int,
     register_addresses: Optional[str] = Query(None, description="Comma-separated list of register addresses (e.g., '100,101,102')")
 ):
@@ -26,7 +26,7 @@ async def get_device_latest_readings(
     Get latest readings for all registers (or specific registers) of a device.
     
     Args:
-        site_id: Site ID (UUID)
+        site_id: Site ID (4-digit number)
         device_id: Device ID
         register_addresses: Optional comma-separated list of register addresses to filter
         
@@ -38,7 +38,7 @@ async def get_device_latest_readings(
     """
     try:
         # Verify device exists (cache-first lookup)
-        device = await get_device_with_cache(device_id)
+        device = await get_device_with_cache(site_id, device_id)
         
         # Parse register_addresses if provided
         register_list = None
@@ -80,12 +80,12 @@ async def get_device_latest_readings(
 
 
 @router.get("/site/{site_id}/device/{device_id}/register/{register_address}/latest")
-async def get_register_latest_reading(site_id: str, device_id: int, register_address: int):
+async def get_register_latest_reading(site_id: int, device_id: int, register_address: int):
     """
     Get the latest reading for a specific register.
     
     Args:
-        site_id: Site ID (UUID)
+        site_id: Site ID (4-digit number)
         device_id: Device ID
         register_address: Register address
         
@@ -97,7 +97,7 @@ async def get_register_latest_reading(site_id: str, device_id: int, register_add
     """
     try:
         # Verify device exists (cache-first lookup)
-        device = await get_device_with_cache(device_id)
+        device = await get_device_with_cache(site_id, device_id)
         
         # Get latest reading
         try:
@@ -131,7 +131,7 @@ async def get_register_latest_reading(site_id: str, device_id: int, register_add
 
 @router.get("/site/{site_id}/device/{device_id}/registers")
 async def get_multiple_registers_time_series(
-    site_id: str,
+    site_id: int,
     device_id: int,
     register_addresses: str = Query(..., description="Comma-separated list of register addresses (e.g., '100,101,102')"),
     start_time: Optional[str] = Query(None, description="Start time in ISO format (e.g., '2025-01-18T08:00:00Z')"),
@@ -142,7 +142,7 @@ async def get_multiple_registers_time_series(
     Get time-series data for multiple registers.
     
     Args:
-        site_id: Site ID (UUID)
+        site_id: Site ID (4-digit number)
         device_id: Device ID
         register_addresses: Comma-separated list of register addresses (e.g., '100,101,102')
         start_time: Optional start time (ISO format)
@@ -157,7 +157,7 @@ async def get_multiple_registers_time_series(
     """
     try:
         # Verify device exists (cache-first lookup)
-        device = await get_device_with_cache(device_id)
+        device = await get_device_with_cache(site_id, device_id)
         
         # Parse register addresses
         try:
@@ -232,7 +232,7 @@ async def get_multiple_registers_time_series(
 
 @router.get("")
 async def get_readings(
-    site_id: str = Query(..., description="Site ID (UUID) - required"),
+    site_id: int = Query(..., description="Site ID (4-digit number) - required"),
     device_id: int = Query(..., description="Device ID - required"),
     register_address: Optional[int] = Query(None, description="Filter by register address"),
     start_time: Optional[str] = Query(None, description="Start time in ISO format (e.g., '2025-01-18T08:00:00Z')"),
