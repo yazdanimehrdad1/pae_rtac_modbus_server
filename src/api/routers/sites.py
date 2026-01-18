@@ -99,7 +99,7 @@ async def create_new_site(site: SiteCreate):
 
 
 @router.get("/{site_id}", response_model=SiteResponse)
-async def get_site(site_id: str):
+async def get_site(site_id: int):
     """
     Get a site by its ID (UUID).
     
@@ -137,7 +137,7 @@ async def get_site(site_id: str):
 
 
 @router.put("/{site_id}", response_model=SiteResponse)
-async def update_site_endpoint(site_id: str, site_update: SiteUpdate):
+async def update_site_endpoint(site_id: int, site_update: SiteUpdate):
     """
     Update a site.
     
@@ -181,7 +181,7 @@ async def update_site_endpoint(site_id: str, site_update: SiteUpdate):
 
 #TODO" lets make sure cascade delete is implemented and soft delete is implemented
 @router.delete("/{site_id}", response_model=SiteResponse)
-async def delete_site_endpoint(site_id: str):
+async def delete_site_endpoint(site_id: int):
     """
     Delete a site.
     

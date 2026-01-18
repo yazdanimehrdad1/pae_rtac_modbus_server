@@ -38,7 +38,7 @@ async def get_device_latest_readings(
     """
     try:
         # Verify device exists (cache-first lookup)
-        device = await get_device_with_cache(device_id, site_id)
+        device = await get_device_with_cache(device_id)
         
         # Parse register_addresses if provided
         register_list = None
@@ -97,7 +97,7 @@ async def get_register_latest_reading(site_id: str, device_id: int, register_add
     """
     try:
         # Verify device exists (cache-first lookup)
-        device = await get_device_with_cache(device_id, site_id)
+        device = await get_device_with_cache(device_id)
         
         # Get latest reading
         try:
@@ -157,7 +157,7 @@ async def get_multiple_registers_time_series(
     """
     try:
         # Verify device exists (cache-first lookup)
-        device = await get_device_with_cache(device_id, site_id)
+        device = await get_device_with_cache(device_id)
         
         # Parse register addresses
         try:

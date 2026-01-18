@@ -11,7 +11,6 @@ from datetime import datetime
 import pandas as pd
 
 from schemas.modbus_models import RegisterMap, RegisterPoint
-from db.device_register_map import get_register_map, create_register_map
 from db.connection import get_db_pool
 from logger import get_logger
 

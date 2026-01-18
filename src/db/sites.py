@@ -10,14 +10,27 @@ from typing import Optional, List
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import selectinload
 
 from db.connection import get_async_session_factory
-from schemas.db_models.models import SiteCreate, SiteUpdate, SiteResponse, DeviceListItem
-from schemas.db_models.orm_models import Site, Device
+from schemas.db_models.models import SiteCreate, SiteUpdate, SiteResponse
+from schemas.db_models.orm_models import Site
 from logger import get_logger
 
 logger = get_logger(__name__)
+
+
+SITE_ID_MIN = 1000
+SITE_ID_MAX = 9999
+SITE_ID_ATTEMPTS = 5
+
+
+async def _generate_site_id(session: AsyncSession) -> int:
+    result = await session.execute(select(Site.id))
+    used_ids = {row[0] for row in result.all() if row[0] is not None}
+    for candidate in range(SITE_ID_MIN, SITE_ID_MAX + 1):
+        if candidate not in used_ids:
+            return candidate
+    raise ValueError("No available site_id values")
 
 
 async def create_site(site: SiteCreate) -> SiteResponse:
@@ -49,50 +62,56 @@ async def create_site(site: SiteCreate) -> SiteResponse:
             if site.coordinates:
                 coordinates_dict = {"lat": site.coordinates.lat, "lng": site.coordinates.lng}
             
-            # Create new Site instance
-            new_site = Site(
-                owner=site.owner,
-                name=site.name,
-                location=site.location,
-                operator=site.operator,
-                capacity=site.capacity,
-                description=site.description,
-                coordinates=coordinates_dict,
-                device_count=0  # New sites start with 0 devices
-            )
+            for attempt in range(SITE_ID_ATTEMPTS):
+                site_id = await _generate_site_id(session)
+                new_site = Site(
+                    id=site_id,
+                    owner=site.owner,
+                    name=site.name,
+                    location=site.location,
+                    operator=site.operator,
+                    capacity=site.capacity,
+                    description=site.description,
+                    coordinates=coordinates_dict,
+                    device_count=0  # New sites start with 0 devices
+                )
+                
+                session.add(new_site)
+                try:
+                    await session.flush()
+                    logger.info(f"Created site: {site.name} (ID: {new_site.id})")
+                    
+                    await session.commit()
+                    
+                    # Convert coordinates back to Coordinates model if present
+                    coordinates = None
+                    if new_site.coordinates:
+                        from schemas.db_models.models import Coordinates
+                        coordinates = Coordinates(lat=new_site.coordinates["lat"], lng=new_site.coordinates["lng"])
+                    
+                    return SiteResponse(
+                        id=new_site.id,
+                        owner=new_site.owner,
+                        name=new_site.name,
+                        location=new_site.location,
+                        operator=new_site.operator,
+                        capacity=new_site.capacity,
+                        device_count=new_site.device_count,
+                        description=new_site.description,
+                        coordinates=coordinates,
+                        created_at=new_site.created_at,
+                        updated_at=new_site.updated_at,
+                        last_update=new_site.last_update
+                    )
+                except IntegrityError as e:
+                    await session.rollback()
+                    error_text = str(e).lower()
+                    if "site_pkey" in error_text and attempt < SITE_ID_ATTEMPTS - 1:
+                        session.expunge(new_site)
+                        continue
+                    raise
             
-            # Add to session and flush to get the ID
-            session.add(new_site)
-            await session.flush()  # Flush to get the ID without committing
-            
-            logger.info(f"Created site: {site.name} (ID: {new_site.id})")
-            
-            # Commit the transaction
-            await session.commit()
-            
-            # Note: We don't need to refresh since timestamps are set by database defaults
-            # and are already available in the object after flush/commit
-            
-            # Convert coordinates back to Coordinates model if present
-            coordinates = None
-            if new_site.coordinates:
-                from schemas.db_models.models import Coordinates
-                coordinates = Coordinates(lat=new_site.coordinates["lat"], lng=new_site.coordinates["lng"])
-            
-            return SiteResponse(
-                id=new_site.id,
-                owner=new_site.owner,
-                name=new_site.name,
-                location=new_site.location,
-                operator=new_site.operator,
-                capacity=new_site.capacity,
-                device_count=new_site.device_count,
-                description=new_site.description,
-                coordinates=coordinates,
-                created_at=new_site.created_at,
-                updated_at=new_site.updated_at,
-                last_update=new_site.last_update
-            )
+            raise RuntimeError("Unable to create site after multiple site_id attempts")
             
         except IntegrityError as e:
             await session.rollback()
@@ -150,7 +169,7 @@ async def get_all_sites() -> List[SiteResponse]:
         return site_responses
 
 
-async def get_site_by_id(site_id: str) -> Optional[SiteResponse]:
+async def get_site_by_id(site_id: int) -> Optional[SiteResponse]:
     """
     Get a site by its ID (UUID).
     
@@ -162,11 +181,8 @@ async def get_site_by_id(site_id: str) -> Optional[SiteResponse]:
     """
     session_factory = get_async_session_factory()
     async with session_factory() as session:
-        # Eagerly load devices relationship
         result = await session.execute(
-            select(Site)
-            .where(Site.id == site_id)
-            .options(selectinload(Site.devices))
+            select(Site).where(Site.id == site_id)
         )
         site = result.scalar_one_or_none()
         
@@ -179,28 +195,6 @@ async def get_site_by_id(site_id: str) -> Optional[SiteResponse]:
             from schemas.db_models.models import Coordinates
             coordinates = Coordinates(lat=site.coordinates["lat"], lng=site.coordinates["lng"])
         
-        # Convert devices to DeviceListItem models
-        devices = []
-        if site.devices:
-            for device in site.devices:
-                devices.append(DeviceListItem(
-                    id=device.id,
-                    name=device.name,
-                    host=device.host,
-                    port=device.port,
-                    device_id=device.device_id,
-                    description=device.description,
-                    main_type=device.main_type,
-                    sub_type=device.sub_type,
-                    poll_address=device.poll_address,
-                    poll_count=device.poll_count,
-                    poll_kind=device.poll_kind,
-                    poll_enabled=device.poll_enabled if device.poll_enabled is not None else True,
-                    site_id=device.site_id,
-                    created_at=device.created_at,
-                    updated_at=device.updated_at
-                ))
-        
         return SiteResponse(
             id=site.id,
             owner=site.owner,
@@ -211,14 +205,14 @@ async def get_site_by_id(site_id: str) -> Optional[SiteResponse]:
             device_count=site.device_count,
             description=site.description,
             coordinates=coordinates,
-            devices=devices,
+            devices=None,
             created_at=site.created_at,
             updated_at=site.updated_at,
             last_update=site.last_update
         )
 
 
-async def update_site(site_id: str, site_update: SiteUpdate) -> SiteResponse:
+async def update_site(site_id: int, site_update: SiteUpdate) -> SiteResponse:
     """
     Update a site in the database.
     
@@ -310,7 +304,7 @@ async def update_site(site_id: str, site_update: SiteUpdate) -> SiteResponse:
             raise
 
 
-async def delete_site(site_id: str) -> Optional[SiteResponse]:
+async def delete_site(site_id: int) -> Optional[SiteResponse]:
     """
     Delete a site from the database.
     
