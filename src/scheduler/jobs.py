@@ -112,6 +112,9 @@ async def read_device_registers(
         )
         modbus_utils = ModbusUtils(modbus_client)
 
+    if kind not in {"holding", "input", "coils", "discretes"}:
+        raise ValueError(f"Invalid register kind: {kind}. Must be 'holding', 'input', 'coils', or 'discretes'")
+
     if kind == "holding":
         modbus_data = modbus_utils.read_holding_registers(
             address,
@@ -136,7 +139,7 @@ async def read_device_registers(
             host,
             port
         )
-    elif kind == "discretes":
+    else:
         modbus_data = modbus_utils.read_discrete_inputs(
             address,
             count,
@@ -144,8 +147,6 @@ async def read_device_registers(
             host,
             port
         )
-    else:
-        raise ValueError(f"Invalid register kind: {kind}. Must be 'holding', 'input', 'coils', or 'discretes'")
     
     logger.info(f"Successfully read {len(modbus_data)} registers from device '{device.name}'")
     return modbus_data
