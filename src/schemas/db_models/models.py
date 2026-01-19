@@ -13,26 +13,30 @@ from pydantic import BaseModel, Field
 class DeviceCreate(BaseModel):
     """Request model for creating a new device."""
     name: str = Field(..., min_length=1, max_length=255, description="Unique device name/identifier")
-    host: str = Field(..., min_length=1, max_length=255, description="Modbus device hostname or IP address")
-    port: int = Field(default=502, ge=1, le=65535, description="Modbus TCP port (default: 502)")
-    server_id: str = Field(..., min_length=1, max_length=255, description="Server identifier")
+    modbus_host: str = Field(..., min_length=1, max_length=255, description="Modbus device hostname or IP address")
+    modbus_port: int = Field(default=502, ge=1, le=65535, description="Modbus TCP port (default: 502)")
+    modbus_timeout: Optional[float] = Field(default=None, ge=0, description="Optional Modbus timeout (seconds)")
+    modbus_server_id: int = Field(default=1, ge=1, description="Modbus server identifier (default: 1)")
     description: Optional[str] = Field(default=None, description="Optional device description")
     main_type: str = Field(..., min_length=1, max_length=255, description="Device main type (required)")
     sub_type: Optional[str] = Field(default=None, max_length=255, description="Device sub type (optional)")
     poll_enabled: bool = Field(True, description="Whether polling is enabled for this device")
+    read_from_aggregator: bool = Field(True, description="Whether to read from edge aggregator")
     configs: List[str] = Field(default_factory=list, description="Device config IDs")
 
 
 class DeviceUpdate(BaseModel):
     """Request model for updating a device."""
     name: Optional[str] = Field(None, min_length=1, max_length=255, description="Device name/identifier")
-    host: Optional[str] = Field(None, min_length=1, max_length=255, description="Modbus device hostname or IP address")
-    port: Optional[int] = Field(None, ge=1, le=65535, description="Modbus TCP port")
-    server_id: Optional[str] = Field(None, min_length=1, max_length=255, description="Server identifier")
+    modbus_host: Optional[str] = Field(None, min_length=1, max_length=255, description="Modbus device hostname or IP address")
+    modbus_port: Optional[int] = Field(None, ge=1, le=65535, description="Modbus TCP port")
+    modbus_timeout: Optional[float] = Field(default=None, ge=0, description="Optional Modbus timeout (seconds)")
+    modbus_server_id: Optional[int] = Field(None, ge=1, description="Modbus server identifier")
     description: Optional[str] = Field(None, description="Device description")
     main_type: Optional[str] = Field(None, min_length=1, max_length=255, description="Device main type")
     sub_type: Optional[str] = Field(None, max_length=255, description="Device sub type")
     poll_enabled: Optional[bool] = Field(None, description="Whether polling is enabled for this device")
+    read_from_aggregator: Optional[bool] = Field(None, description="Whether to read from edge aggregator")
     configs: Optional[List[str]] = Field(None, description="Device config IDs")
 
 
@@ -40,15 +44,16 @@ class DeviceListItem(BaseModel):
     """Response model for device data in list views."""
     id: int = Field(..., description="Device ID")
     name: str = Field(..., description="Device name")
-    host: str = Field(..., description="Device hostname or IP address")
-    port: int = Field(..., description="Modbus TCP port")
-    device_id: int = Field(..., description="Modbus unit/slave ID")
-    server_id: str = Field(..., description="Server identifier")
+    modbus_host: str = Field(..., description="Device hostname or IP address")
+    modbus_port: int = Field(..., description="Modbus TCP port")
+    modbus_timeout: Optional[float] = Field(default=None, description="Optional Modbus timeout (seconds)")
+    modbus_server_id: int = Field(..., description="Modbus server identifier")
     site_id: int = Field(..., description="Site ID (4-digit number)")
     description: Optional[str] = Field(None, description="Device description")
     main_type: str = Field(..., description="Device main type")
     sub_type: Optional[str] = Field(None, description="Device sub type")
     poll_enabled: bool = Field(True, description="Whether polling is enabled for this device")
+    read_from_aggregator: bool = Field(True, description="Whether to read from edge aggregator")
     configs: List[str] = Field(default_factory=list, description="Device config IDs")
     created_at: datetime = Field(..., description="Timestamp when device was created")
     updated_at: datetime = Field(..., description="Timestamp when device was last updated")

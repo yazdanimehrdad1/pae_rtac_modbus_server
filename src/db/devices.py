@@ -7,7 +7,6 @@ Uses SQLAlchemy 2.0+ async ORM.
 
 from typing import Optional, Dict, Any
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
 
 from db.connection import get_async_session_factory
@@ -16,20 +15,6 @@ from schemas.db_models.orm_models import Device, Site
 from logger import get_logger
 
 logger = get_logger(__name__)
-
-
-DEVICE_ID_MIN = 10
-DEVICE_ID_MAX = 99
-DEVICE_ID_ATTEMPTS = 5
-
-
-async def _generate_device_id(session: AsyncSession) -> int:
-    result = await session.execute(select(Device.device_id))
-    used_ids = {row[0] for row in result.all() if row[0] is not None}
-    for candidate in range(DEVICE_ID_MIN, DEVICE_ID_MAX + 1):
-        if candidate not in used_ids:
-            return candidate
-    raise ValueError("No available device_id values")
 
 
 async def create_device(device: DeviceCreate, site_id: int) -> DeviceResponse:
@@ -63,17 +48,17 @@ async def create_device(device: DeviceCreate, site_id: int) -> DeviceResponse:
             if site is None:
                 raise ValueError(f"Site with id '{site_id}' not found")
             
-            device_id = await _generate_device_id(session)
             new_device = Device(
-                device_id=device_id,
                 name=device.name,
-                host=device.host,
-                port=device.port,
-                server_id=device.server_id,
+                modbus_host=device.modbus_host,
+                modbus_port=device.modbus_port,
+                modbus_timeout=device.modbus_timeout,
+                modbus_server_id=device.modbus_server_id,
                 description=device.description,
                 main_type=device.main_type,
                 sub_type=device.sub_type,
                 poll_enabled=device.poll_enabled,
+                read_from_aggregator=device.read_from_aggregator,
                 configs=device.configs,
                 site_id=site_id
             )
@@ -97,15 +82,16 @@ async def create_device(device: DeviceCreate, site_id: int) -> DeviceResponse:
             return DeviceResponse(
                 id=created_device.id,
                 name=created_device.name,
-                host=created_device.host,
-                port=created_device.port,
-                device_id=created_device.device_id,
-                server_id=created_device.server_id,
+                modbus_host=created_device.modbus_host,
+                modbus_port=created_device.modbus_port,
+                modbus_timeout=created_device.modbus_timeout,
+                modbus_server_id=created_device.modbus_server_id,
                 site_id=created_device.site_id,
                 description=created_device.description,
                 main_type=created_device.main_type,
                 sub_type=created_device.sub_type,
                 poll_enabled=created_device.poll_enabled if created_device.poll_enabled is not None else True,
+                read_from_aggregator=created_device.read_from_aggregator if created_device.read_from_aggregator is not None else True,
                 configs=created_device.configs or [],
                 created_at=created_device.created_at,
                 updated_at=created_device.updated_at
@@ -116,9 +102,6 @@ async def create_device(device: DeviceCreate, site_id: int) -> DeviceResponse:
             # Check if it's a unique constraint violation
             error_text = str(e).lower()
             if "unique" in error_text or "duplicate" in error_text or "already exists" in error_text:
-                if "device_id" in error_text:
-                    logger.warning("Device device_id already exists")
-                    raise ValueError("Failed to allocate unique device_id") from e
                 logger.warning(f"Device name '{device.name}' already exists")
                 raise ValueError(f"Device with name '{device.name}' already exists") from e
             else:
@@ -151,15 +134,16 @@ async def get_all_devices(site_id: int) -> list[DeviceListItem]:
                 DeviceListItem(
                     id=device.id,
                     name=device.name,
-                    host=device.host,
-                    port=device.port,
-                    device_id=device.device_id,
-                    server_id=device.server_id,
+                    modbus_host=device.modbus_host,
+                    modbus_port=device.modbus_port,
+                    modbus_timeout=device.modbus_timeout,
+                    modbus_server_id=device.modbus_server_id,
                     site_id=device.site_id,
                     description=device.description,
                     main_type=device.main_type,
                     sub_type=device.sub_type,
                     poll_enabled=device.poll_enabled if device.poll_enabled is not None else True,
+                    read_from_aggregator=device.read_from_aggregator if device.read_from_aggregator is not None else True,
                     configs=device.configs or [],
                     created_at=device.created_at,
                     updated_at=device.updated_at
@@ -196,15 +180,16 @@ async def get_device_by_id(device_id: int, site_id: int) -> Optional[DeviceRespo
         return DeviceResponse(
             id=device.id,
             name=device.name,
-            host=device.host,
-            port=device.port,
-            device_id=device.device_id,
-            server_id=device.server_id,
+            modbus_host=device.modbus_host,
+            modbus_port=device.modbus_port,
+            modbus_timeout=device.modbus_timeout,
+            modbus_server_id=device.modbus_server_id,
             site_id=device.site_id,
             description=device.description,
             main_type=device.main_type,
             sub_type=device.sub_type,
             poll_enabled=device.poll_enabled if device.poll_enabled is not None else True,
+            read_from_aggregator=device.read_from_aggregator if device.read_from_aggregator is not None else True,
             configs=device.configs or [],
             created_at=device.created_at,
             updated_at=device.updated_at
@@ -224,52 +209,16 @@ async def get_device_by_id_internal(device_id: int) -> Optional[DeviceResponse]:
         return DeviceResponse(
             id=device.id,
             name=device.name,
-            host=device.host,
-            port=device.port,
-            device_id=device.device_id,
-            server_id=device.server_id,
+            modbus_host=device.modbus_host,
+            modbus_port=device.modbus_port,
+            modbus_timeout=device.modbus_timeout,
+            modbus_server_id=device.modbus_server_id,
             site_id=device.site_id,
             description=device.description,
             main_type=device.main_type,
             sub_type=device.sub_type,
             poll_enabled=device.poll_enabled if device.poll_enabled is not None else True,
-            configs=device.configs or [],
-            created_at=device.created_at,
-            updated_at=device.updated_at
-        )
-
-
-async def get_device_by_device_id(device_id: int) -> Optional[DeviceResponse]:
-    """
-    Get a device by device_id (Modbus unit/slave ID).
-    
-    Args:
-        device_id: Device ID (database primary key)
-        
-    Returns:
-        Device if found, None otherwise
-    """
-    session_factory = get_async_session_factory()
-    async with session_factory() as session:
-        result = await session.execute(
-            select(Device).where(Device.device_id == device_id)
-        )
-        device = result.scalar_one_or_none()
-        
-        if device is None:
-            return None
-        
-        return DeviceResponse(
-            id=device.id,
-            name=device.name,
-            host=device.host,
-            port=device.port,
-            device_id=device.device_id,
-            server_id=device.server_id,
-            description=device.description,
-            main_type=device.main_type,
-            sub_type=device.sub_type,
-            poll_enabled=device.poll_enabled if device.poll_enabled is not None else True,
+            read_from_aggregator=device.read_from_aggregator if device.read_from_aggregator is not None else True,
             configs=device.configs or [],
             created_at=device.created_at,
             updated_at=device.updated_at
@@ -330,12 +279,14 @@ async def update_device(device_id: int, device_update: DeviceUpdate, site_id: in
             # Update only provided fields
             if device_update.name is not None:
                 device.name = device_update.name
-            if device_update.host is not None:
-                device.host = device_update.host
-            if device_update.port is not None:
-                device.port = device_update.port
-            if device_update.server_id is not None:
-                device.server_id = device_update.server_id
+            if device_update.modbus_host is not None:
+                device.modbus_host = device_update.modbus_host
+            if device_update.modbus_port is not None:
+                device.modbus_port = device_update.modbus_port
+            if device_update.modbus_timeout is not None:
+                device.modbus_timeout = device_update.modbus_timeout
+            if device_update.modbus_server_id is not None:
+                device.modbus_server_id = device_update.modbus_server_id
             if device_update.description is not None:
                 device.description = device_update.description
             if device_update.main_type is not None:
@@ -344,6 +295,8 @@ async def update_device(device_id: int, device_update: DeviceUpdate, site_id: in
                 device.sub_type = device_update.sub_type
             if device_update.poll_enabled is not None:
                 device.poll_enabled = device_update.poll_enabled
+            if device_update.read_from_aggregator is not None:
+                device.read_from_aggregator = device_update.read_from_aggregator
             if device_update.configs is not None:
                 device.configs = device_update.configs
             
@@ -360,15 +313,16 @@ async def update_device(device_id: int, device_update: DeviceUpdate, site_id: in
             return DeviceResponse(
                 id=device.id,
                 name=device.name,
-                host=device.host,
-                port=device.port,
-                device_id=device.device_id,
-                server_id=device.server_id,
+                modbus_host=device.modbus_host,
+                modbus_port=device.modbus_port,
+                modbus_timeout=device.modbus_timeout,
+                modbus_server_id=device.modbus_server_id,
                 site_id=device.site_id,
                 description=device.description,
                 main_type=device.main_type,
                 sub_type=device.sub_type,
                 poll_enabled=device.poll_enabled if device.poll_enabled is not None else True,
+                read_from_aggregator=device.read_from_aggregator if device.read_from_aggregator is not None else True,
                 configs=device.configs or [],
                 created_at=device.created_at,
                 updated_at=device.updated_at
@@ -417,15 +371,16 @@ async def delete_device(device_id: int, site_id: int) -> Optional[DeviceResponse
             device_response = DeviceResponse(
                 id=device.id,
                 name=device.name,
-                host=device.host,
-                port=device.port,
-                device_id=device.device_id,
-                server_id=device.server_id,
+                modbus_host=device.modbus_host,
+                modbus_port=device.modbus_port,
+                modbus_timeout=device.modbus_timeout,
+                modbus_server_id=device.modbus_server_id,
                 site_id=device.site_id,
                 description=device.description,
                 main_type=device.main_type,
                 sub_type=device.sub_type,
                 poll_enabled=device.poll_enabled if device.poll_enabled is not None else True,
+                read_from_aggregator=device.read_from_aggregator if device.read_from_aggregator is not None else True,
                 configs=device.configs or [],
                 created_at=device.created_at,
                 updated_at=device.updated_at

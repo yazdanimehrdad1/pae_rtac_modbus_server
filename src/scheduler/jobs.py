@@ -11,7 +11,7 @@ from config import settings
 from logger import get_logger
 from db.device_configs import get_device_config
 from utils.modbus_mapper import map_modbus_data_to_registers, MappedRegisterData
-from db.devices import get_all_devices, get_devices_by_site_id
+from db.devices import get_devices_by_site_id
 from db.register_readings import insert_register_readings_batch
 from db.sites import get_site_by_id, get_all_sites
 from schemas.db_models.models import DeviceListItem
@@ -19,9 +19,9 @@ from schemas.db_models.models import DeviceListItem
 logger = get_logger(__name__)
 
 # Initialize services
-modbus_client = ModbusClient()
-cache_service = CacheService()
-modbus_utils = ModbusUtils(modbus_client)
+edge_aggregator_modbus_client = ModbusClient()
+edge_aggregator_cache_service = CacheService()
+edge_aggregator_modbus_utils = ModbusUtils(edge_aggregator_modbus_client)
 
 
 class PollResult(TypedDict, total=False):
@@ -35,36 +35,21 @@ class PollResult(TypedDict, total=False):
     error: Optional[str]
 
 # TODO: maybe consider getting it from the cache instead of the database
-async def get_devices_to_poll() -> List[DeviceListItem]:
+async def get_devices_to_poll(site_id: int) -> List[DeviceListItem]:
     """
     Get list of devices to poll from database, filtered by poll_enabled.
     
-    Since all devices must belong to a site, this function iterates through all sites
-    to get all devices across all sites.
+    This function only returns devices for a single site.
     
     Returns:
-        List of devices that have polling enabled across all sites
+        List of devices that have polling enabled for a site
     """
-    # Get all sites
-    all_sites = await get_all_sites()
-    logger.info(f"Retrieved {len(all_sites)} site(s) from database")
-    
-    # Collect devices from all sites
-    all_devices = []
-    for site in all_sites:
-        try:
-            site_devices = await get_devices_by_site_id(site.id)
-            all_devices.extend(site_devices)
-            logger.debug(f"Retrieved {len(site_devices)} device(s) from site '{site.name}' (ID: {site.id})")
-        except Exception as e:
-            logger.warning(f"Error retrieving devices for site '{site.name}' (ID: {site.id}): {e}")
-            continue
-    
-    logger.info(f"Retrieved {len(all_devices)} device(s) from database across all sites")
+    site_devices = await get_devices_by_site_id(site_id)
+    logger.info(f"Retrieved {len(site_devices)} device(s) for site ID {site_id}")
     
     # Filter devices by poll_enabled from database
     devices_to_poll = []
-    for device in all_devices:
+    for device in site_devices:
         # Check poll_enabled directly from device
         if device.poll_enabled:
             devices_to_poll.append(device)
@@ -73,7 +58,10 @@ async def get_devices_to_poll() -> List[DeviceListItem]:
             # Polling disabled
             logger.debug(f"Device '{device.name}' (ID: {device.id}) has polling disabled (poll_enabled={device.poll_enabled}), skipping")
     
-    logger.info(f"Found {len(devices_to_poll)} device(s) to poll out of {len(all_devices)} total device(s)")
+    logger.info(
+        f"Found {len(devices_to_poll)} device(s) to poll out of {len(site_devices)} total device(s) "
+        f"for site ID {site_id}"
+    )
     return devices_to_poll
 
 
@@ -97,23 +85,65 @@ async def read_device_registers(
     address = polling_config["poll_address"]
     count = polling_config["poll_count"]
     kind = polling_config["poll_kind"]
-    device_id = device.device_id  # Use device's Modbus device_id
+    server_id = device.modbus_server_id
+    host = device.modbus_host
+    port = device.modbus_port
     
     logger.debug(
         f"Reading Modbus registers for device '{device.name}': "
-        f"kind={kind}, address={address}, count={count}, device_id={device_id}"
+        f"kind={kind}, address={address}, count={count}, server_id={server_id}"
     )
     
     # Use appropriate ModbusUtils method based on register kind
     # Pass device-specific host and port for connection
+
+    # TODO: lets find a way so we don't have to keep creating a 
+    # modbus client and modbus utils object for devices that are not 
+    # reading from the edge aggregator, and somehow storing it in a global variable
+    if device.read_from_aggregator:
+        modbus_client = edge_aggregator_modbus_client
+        modbus_utils = edge_aggregator_modbus_utils
+    else:
+        modbus_client = ModbusClient(
+            host=device.modbus_host,
+            port=device.modbus_port,
+            server_id=device.modbus_server_id,
+            timeout=device.modbus_timeout
+        )
+        modbus_utils = ModbusUtils(modbus_client)
+
     if kind == "holding":
-        modbus_data = modbus_utils.read_holding_registers(address, count, device_id, host=device.host, port=device.port)
+        modbus_data = modbus_utils.read_holding_registers(
+            address,
+            count,
+            server_id,
+            host,
+            port
+        )
     elif kind == "input":
-        modbus_data = modbus_utils.read_input_registers(address, count, device_id, host=device.host, port=device.port)
+        modbus_data = modbus_utils.read_input_registers(
+            address,
+            count,
+            server_id,
+            host,
+            port
+        )
     elif kind == "coils":
-        modbus_data = modbus_utils.read_coils(address, count, device_id, host=device.host, port=device.port)
+        modbus_data = modbus_utils.read_coils(
+            address,
+            count,
+            server_id,
+            host,
+            port
+        )
     elif kind == "discretes":
-        modbus_data = modbus_utils.read_discrete_inputs(address, count, device_id, host=device.host, port=device.port)
+        modbus_data = modbus_utils.read_discrete_inputs(
+            address,
+            count,
+            server_id,
+            host,
+            port
+        )
     else:
         raise ValueError(f"Invalid register kind: {kind}. Must be 'holding', 'input', 'coils', or 'discretes'")
     
@@ -188,13 +218,13 @@ async def store_device_data_in_cache(
             cache_key_latest = f"poll:{device_name}:latest"
             cache_key_timestamped = f"poll:{device_name}:{timestamp}"
         
-        await cache_service.set(
+        await edge_aggregator_cache_service.set(
             key=cache_key_latest,
             value=cache_data,
             ttl=settings.poll_cache_ttl
         )
         
-        await cache_service.set(
+        await edge_aggregator_cache_service.set(
             key=cache_key_timestamped,
             value=cache_data,
             ttl=settings.poll_cache_ttl
@@ -273,11 +303,6 @@ async def poll_single_device(device: DeviceListItem) -> PollResult:
     
     try:
         # 1. Get polling configuration from device configs
-        if not device.poll_enabled:
-            result["error"] = f"Polling disabled for device '{device_name}'"
-            logger.debug(result["error"])
-            return result
-
         config_ids = list(device.configs or [])
         if not config_ids:
             result["error"] = f"No device configs associated with device '{device_name}'"
@@ -300,6 +325,8 @@ async def poll_single_device(device: DeviceListItem) -> PollResult:
         total_db_successful = 0
         total_db_failed = 0
         any_success = False
+
+        #TODO: lets write a function that get all site,device, and config information by one call. Also priorotize cache over db. 
 
         for config_id in config_ids:
             device_config = await get_device_config(config_id)
@@ -350,7 +377,7 @@ async def poll_single_device(device: DeviceListItem) -> PollResult:
             timestamp_dt = datetime.now(timezone.utc)
 
             # Add device_id (Modbus unit/slave ID) to polling_config for cache
-            polling_config["device_id"] = device.device_id  # Modbus device_id
+            polling_config["device_id"] = device.modbus_server_id  # Modbus device_id
 
             cache_successful, cache_failed = await store_device_data_in_cache(
                 device_name, mapped_registers, polling_config, timestamp, site_name
@@ -391,7 +418,11 @@ async def poll_single_device(device: DeviceListItem) -> PollResult:
         
     except Exception as e:
         # Pass device host/port for better error messages
-        status_code, error_message = translate_modbus_error(e, host=device.host, port=device.port)
+        status_code, error_message = translate_modbus_error(
+            e,
+            host=device.modbus_host,
+            port=device.modbus_port
+        )
         result["error"] = f"status_code={status_code}, error_message={error_message}"
         logger.error(
             f"Error polling device '{device_name}': {result['error']}",
@@ -418,8 +449,21 @@ async def cron_job_poll_modbus_registers() -> None:
     logger.info("Starting Modbus polling job")
     
     try:
-        # 1. Get devices to poll
-        devices_to_poll = await get_devices_to_poll()
+        # 1. Get devices to poll across all sites (site-scoped function)
+        devices_to_poll: List[DeviceListItem] = []
+        all_sites = await get_all_sites()
+        logger.info(f"Retrieved {len(all_sites)} site(s) from database")
+        for site in all_sites:
+            try:
+                site_devices = await get_devices_to_poll(site.id)
+                devices_to_poll.extend(site_devices)
+                logger.debug(
+                    f"Retrieved {len(site_devices)} device(s) to poll from site '{site.name}' (ID: {site.id})"
+                )
+            except Exception as e:
+                logger.warning(
+                    f"Error retrieving devices to poll for site '{site.name}' (ID: {site.id}): {e}"
+                )
         
         if not devices_to_poll:
             logger.warning("No devices to poll (all devices disabled or not found in config)")
