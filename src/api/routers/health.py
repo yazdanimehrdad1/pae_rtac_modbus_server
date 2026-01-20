@@ -30,7 +30,7 @@ async def health_check():
         ok=True,
         host=modbus_client.host,
         port=modbus_client.port,
-        device_id=modbus_client.default_device_id,
+        device_id=modbus_client.default_server_id,
         detail="API is healthy"
     )
 
@@ -47,7 +47,7 @@ async def health_modbus_client():
         ok=ok,
         host=modbus_client.host,
         port=modbus_client.port,
-        device_id=modbus_client.default_device_id,
+        device_id=modbus_client.default_server_id,
         detail=detail
     )
 
