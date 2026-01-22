@@ -9,7 +9,7 @@ from db.register_readings import (
     get_latest_reading,
     get_latest_readings_for_device
 )
-from helpers.device import get_device_with_cache
+from helpers.devices import get_device_cache_db
 from logger import get_logger
 
 router = APIRouter(prefix="/register_readings", tags=["register_readings"])
@@ -38,7 +38,7 @@ async def get_device_latest_readings(
     """
     try:
         # Verify device exists (cache-first lookup)
-        device = await get_device_with_cache(site_id, device_id)
+        device = await get_device_cache_db(site_id, device_id)
         
         # Parse register_addresses if provided
         register_list = None
@@ -97,7 +97,7 @@ async def get_register_latest_reading(site_id: int, device_id: int, register_add
     """
     try:
         # Verify device exists (cache-first lookup)
-        device = await get_device_with_cache(site_id, device_id)
+        device = await get_device_cache_db(site_id, device_id)
         
         # Get latest reading
         try:
@@ -157,7 +157,7 @@ async def get_multiple_registers_time_series(
     """
     try:
         # Verify device exists (cache-first lookup)
-        device = await get_device_with_cache(site_id, device_id)
+        device = await get_device_cache_db(site_id, device_id)
         
         # Parse register addresses
         try:

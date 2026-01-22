@@ -5,7 +5,13 @@ from typing import List
 from fastapi import APIRouter, HTTPException, status
 
 from schemas.db_models.models import DeviceCreate, DeviceUpdate, DeviceResponse, DeviceListItem
-from db.devices import create_device, get_all_devices, get_device_by_id, update_device, delete_device
+from db.devices import get_all_devices
+from helpers.devices import (
+    create_device_cache_db,
+    delete_device_cache_db,
+    get_device_cache_db,
+    update_device_cache_db,
+)
 from logger import get_logger
 
 router = APIRouter(prefix="/devices", tags=["devices"])
@@ -60,7 +66,7 @@ async def create_new_device(site_id: int, device: DeviceCreate):
         HTTPException: If device name already exists or database error occurs
     """
     try:
-        created_device = await create_device(device, site_id=site_id)
+        created_device = await create_device_cache_db(device, site_id=site_id)
         return created_device
     except ValueError as e:
         error_msg = str(e)
@@ -97,13 +103,7 @@ async def get_device(site_id: int, device_id: int):
         HTTPException: If device not found
     """
     try:
-        device = await get_device_by_id(device_id, site_id=site_id)
-        if device is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Device with id {device_id} not found in site '{site_id}'"
-            )
-        return device
+        return await get_device_cache_db(site_id, device_id)
     except HTTPException:
         raise
     except Exception as e:
@@ -130,7 +130,7 @@ async def update_existing_device(site_id: int, device_id: int, device_update: De
         HTTPException: If device not found, name already exists, or database error occurs
     """
     try:
-        updated_device = await update_device(device_id, device_update, site_id=site_id)
+        updated_device = await update_device_cache_db(device_id, device_update, site_id=site_id)
         return updated_device
     except ValueError as e:
         # Handle not found or unique constraint violation
@@ -167,7 +167,7 @@ async def delete_existing_device(site_id: int, device_id: int):
         HTTPException: If device not found or database error occurs
     """
     try:
-        deleted_device = await delete_device(device_id, site_id=site_id)
+        deleted_device = await delete_device_cache_db(device_id, site_id=site_id)
         if deleted_device is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
