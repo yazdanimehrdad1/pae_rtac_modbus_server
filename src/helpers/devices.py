@@ -3,12 +3,43 @@
 from fastapi import HTTPException, status
 
 from cache.cache import CacheService
-from db.devices import create_device, delete_device, get_device_by_id, update_device
+from db.devices import create_device, delete_device, get_all_devices, get_device_by_id, update_device
 from logger import get_logger
-from schemas.db_models.models import DeviceCreate, DeviceUpdate, DeviceResponse
+from schemas.db_models.models import DeviceCreate, DeviceListItem, DeviceUpdate, DeviceResponse
 
 logger = get_logger(__name__)
 cache_service = CacheService()
+
+
+async def get_devices_cache_db(site_id: int) -> list[DeviceListItem]:
+    """
+    Get all devices for a site with cache-first lookup.
+    
+    Args:
+        site_id: Site ID (4-digit number)
+    
+    Returns:
+        List of devices for the site
+    """
+    cache_key = f"device:site:{site_id}:devices"
+    cached_devices = await cache_service.get(cache_key)
+    
+    if cached_devices is not None:
+        logger.debug(f"Devices for site {site_id} found in cache")
+        return [DeviceListItem(**item) for item in cached_devices]
+    
+    logger.debug(f"Devices for site {site_id} not in cache, querying database")
+    devices = await get_all_devices(site_id)
+    if not devices:
+        return []
+    
+    cached = await cache_service.set(
+        key=cache_key,
+        value=[device.model_dump(mode="json") for device in devices]
+    )
+    if not cached:
+        logger.error(f"Failed to cache devices list for site {site_id}")
+    return devices
 
 
 async def get_device_cache_db(site_id: int, device_id: int) -> DeviceResponse:

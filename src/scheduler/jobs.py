@@ -12,7 +12,7 @@ from config import settings
 from logger import get_logger
 from db.device_configs import get_device_config
 from utils.modbus_mapper import map_modbus_data_to_registers, MappedRegisterData
-from db.devices import get_devices_by_site_id
+from helpers.devices import get_devices_cache_db
 from db.register_readings import insert_register_readings_batch
 from db.sites import get_site_by_id, get_all_sites
 from schemas.db_models.models import DeviceListItem
@@ -21,9 +21,8 @@ logger = get_logger(__name__)
 
 # Initialize services
 edge_aggregator_modbus_client = ModbusClient()
-edge_aggregator_cache_service = CacheService()
 edge_aggregator_modbus_utils = ModbusUtils(edge_aggregator_modbus_client)
-
+cache_service = CacheService()
 
 class PollResult(TypedDict, total=False):
     """Result of polling a single device."""
@@ -35,7 +34,6 @@ class PollResult(TypedDict, total=False):
     db_failed: int
     error: Optional[str]
 
-# TODO: maybe consider getting it from the cache instead of the database
 async def get_devices_to_poll(site_id: int) -> List[DeviceListItem]:
     """
     Get list of devices to poll from database, filtered by poll_enabled.
@@ -45,7 +43,8 @@ async def get_devices_to_poll(site_id: int) -> List[DeviceListItem]:
     Returns:
         List of devices that have polling enabled for a site
     """
-    site_devices = await get_devices_by_site_id(site_id)
+    
+    site_devices = await get_devices_cache_db(site_id)
     logger.info(f"Retrieved {len(site_devices)} device(s) for site ID {site_id}")
     
     # Filter devices by poll_enabled from database
@@ -106,10 +105,9 @@ async def read_device_registers(
         modbus_utils = edge_aggregator_modbus_utils
     else:
         modbus_client = ModbusClient(
-            host=device.modbus_host,
-            port=device.modbus_port,
-            server_id=device.modbus_server_id,
-            timeout=device.modbus_timeout
+            host,
+            port,
+            server_id,
         )
         modbus_utils = ModbusUtils(modbus_client)
 
@@ -220,13 +218,13 @@ async def store_device_data_in_cache(
             cache_key_latest = f"poll:{device_name}:latest"
             cache_key_timestamped = f"poll:{device_name}:{timestamp}"
         
-        await edge_aggregator_cache_service.set(
+        await cache_service.set(
             key=cache_key_latest,
             value=cache_data,
             ttl=settings.poll_cache_ttl
         )
         
-        await edge_aggregator_cache_service.set(
+        await cache_service.set(
             key=cache_key_timestamped,
             value=cache_data,
             ttl=settings.poll_cache_ttl

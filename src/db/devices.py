@@ -152,11 +152,6 @@ async def get_all_devices(site_id: int) -> list[DeviceListItem]:
         return device_list
 
 
-async def get_devices_by_site_id(site_id: int) -> list[DeviceListItem]:
-    """Backward-compatible helper for scheduler jobs."""
-    return await get_all_devices(site_id)
-
-
 async def get_device_by_id(device_id: int, site_id: int) -> Optional[DeviceResponse]:
     """
     Get a device by primary key ID.
