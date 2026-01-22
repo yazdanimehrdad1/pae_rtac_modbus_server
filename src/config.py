@@ -18,9 +18,9 @@ class Settings(BaseSettings):
     )
     
     # Modbus Configuration
-    modbus_host: str = Field(default="localhost", alias="MODBUS_HOST")
-    modbus_port: int = Field(default=502, alias="MODBUS_PORT")
-    modbus_device_id: int = Field(default=1, alias="MODBUS_DEVICE_ID")
+    modbus_host: str = Field(default="localhost", alias="AGGREGATOR_MODBUS_HOST")
+    modbus_port: int = Field(default=502, alias="AGGREGATOR_MODBUS_PORT")
+    modbus_device_id: int = Field(default=1, alias="AGGREGATOR_SERVER_ID")
     modbus_timeout_s: float = Field(default=5.0, alias="MODBUS_TIMEOUT_S")
     modbus_retries: int = Field(default=3, alias="MODBUS_RETRIES")
     

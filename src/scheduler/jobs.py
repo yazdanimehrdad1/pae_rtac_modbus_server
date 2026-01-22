@@ -23,6 +23,16 @@ logger = get_logger(__name__)
 edge_aggregator_modbus_client = ModbusClient()
 edge_aggregator_modbus_utils = ModbusUtils(edge_aggregator_modbus_client)
 cache_service = CacheService()
+direct_modbus_utils_by_endpoint: dict[tuple[str, int], ModbusUtils] = {}
+
+
+def get_direct_modbus_utils(host: str, port: int) -> ModbusUtils:
+    endpoint = (host, port)
+    modbus_utils = direct_modbus_utils_by_endpoint.get(endpoint)
+    if modbus_utils is None:
+        modbus_utils = ModbusUtils(ModbusClient())
+        direct_modbus_utils_by_endpoint[endpoint] = modbus_utils
+    return modbus_utils
 
 class PollResult(TypedDict, total=False):
     """Result of polling a single device."""
@@ -97,19 +107,10 @@ async def read_device_registers(
     # Use appropriate ModbusUtils method based on register kind
     # Pass device-specific host and port for connection
 
-    # TODO: lets find a way so we don't have to keep creating a 
-    # modbus client and modbus utils object for devices that are not 
-    # reading from the edge aggregator, and somehow storing it in a global variable
     if device.read_from_aggregator:
-        modbus_client = edge_aggregator_modbus_client
         modbus_utils = edge_aggregator_modbus_utils
     else:
-        modbus_client = ModbusClient(
-            host,
-            port,
-            server_id,
-        )
-        modbus_utils = ModbusUtils(modbus_client)
+        modbus_utils = get_direct_modbus_utils(host, port)
 
     if kind not in {"holding", "input", "coils", "discretes"}:
         raise ValueError(f"Invalid register kind: {kind}. Must be 'holding', 'input', 'coils', or 'discretes'")

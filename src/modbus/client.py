@@ -19,9 +19,9 @@ from helpers.modbus import translate_modbus_error
 load_dotenv()
 
 # Configuration from environment variables
-MODBUS_HOST = os.getenv("MODBUS_HOST", "localhost")
-MODBUS_PORT = int(os.getenv("MODBUS_PORT", "502"))
-MODBUS_DEVICE_ID = int(os.getenv("MODBUS_DEVICE_ID", "1"))
+AGGREGATOR_MODBUS_HOST = os.getenv("AGGREGATOR_MODBUS_HOST", "localhost")
+AGGREGATOR_MODBUS_PORT = int(os.getenv("AGGREGATOR_MODBUS_PORT", "502"))
+AGGREGATOR_SERVER_ID = int(os.getenv("AGGREGATOR_SERVER_ID", "1"))
 MODBUS_TIMEOUT_S = float(os.getenv("MODBUS_TIMEOUT_S", "5.0"))
 MODBUS_RETRIES = int(os.getenv("MODBUS_RETRIES", "3"))
 
@@ -35,8 +35,8 @@ def modbus_client(host: Optional[str] = None, port: Optional[int] = None):
     Ensures proper cleanup of sockets after use.
     
     Args:
-        host: Modbus server hostname or IP address (defaults to MODBUS_HOST env var)
-        port: Modbus server port (defaults to MODBUS_PORT env var)
+        host: Modbus server hostname or IP address (defaults to AGGREGATOR_MODBUS_HOST env var)
+        port: Modbus server port (defaults to AGGREGATOR_MODBUS_PORT env var)
     
     TODO: Replace with persistent pooled client for better performance
     in high-throughput scenarios. Consider using connection pooling
@@ -46,8 +46,8 @@ def modbus_client(host: Optional[str] = None, port: Optional[int] = None):
         ModbusTcpClient: Configured Modbus TCP client instance
     """
     client = ModbusTcpClient(
-        host=host or MODBUS_HOST,
-        port=port or MODBUS_PORT,
+        host=host or AGGREGATOR_MODBUS_HOST,
+        port=port or AGGREGATOR_MODBUS_PORT,
         timeout=MODBUS_TIMEOUT_S,
         retries=MODBUS_RETRIES
     )
@@ -61,9 +61,9 @@ class ModbusClient:
     """Wrapper class for Modbus TCP operations."""
     
     def __init__(self):
-        self.host = MODBUS_HOST
-        self.port = MODBUS_PORT
-        self.default_server_id = MODBUS_DEVICE_ID
+        self.host = AGGREGATOR_MODBUS_HOST
+        self.port = AGGREGATOR_MODBUS_PORT
+        self.default_server_id = AGGREGATOR_SERVER_ID
         self.timeout = MODBUS_TIMEOUT_S
     
     def read_registers(

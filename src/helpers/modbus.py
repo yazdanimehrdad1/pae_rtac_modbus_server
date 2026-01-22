@@ -15,8 +15,8 @@ from pymodbus.pdu import ExceptionResponse
 load_dotenv()
 
 # Configuration from environment variables
-MODBUS_HOST = os.getenv("MODBUS_HOST", "localhost")
-MODBUS_PORT = int(os.getenv("MODBUS_PORT", "502"))
+AGGREGATOR_MODBUS_HOST = os.getenv("AGGREGATOR_MODBUS_HOST", "localhost")
+AGGREGATOR_MODBUS_PORT = int(os.getenv("AGGREGATOR_MODBUS_PORT", "502"))
 MODBUS_TIMEOUT_S = float(os.getenv("MODBUS_TIMEOUT_S", "5.0"))
 
 
@@ -37,8 +37,8 @@ def translate_modbus_error(
         Tuple of (HTTP status code, error message)
     """
     if isinstance(error, ConnectionException):
-        error_host = host or MODBUS_HOST
-        error_port = port or MODBUS_PORT
+        error_host = host or AGGREGATOR_MODBUS_HOST
+        error_port = port or AGGREGATOR_MODBUS_PORT
         return (
             503,  # HTTP_503_SERVICE_UNAVAILABLE
             f"Failed to connect to Modbus server at {error_host}:{error_port}"
