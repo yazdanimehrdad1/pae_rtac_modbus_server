@@ -6,7 +6,8 @@ from typing import List
 from fastapi import APIRouter, HTTPException, status
 
 from schemas.api_models import ReadRequest, ReadResponse, RegisterData, SimpleReadResponse, RegisterValue
-from modbus.client import ModbusClient, translate_modbus_error
+from helpers.modbus import translate_modbus_error
+from modbus.client import ModbusClient
 from modbus.modbus_utills import ModbusUtils
 from utils.map_csv_to_json import json_to_register_map
 from db.devices import get_device_by_id_internal, get_device_id_by_name_internal

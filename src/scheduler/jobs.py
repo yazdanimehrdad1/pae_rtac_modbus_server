@@ -4,7 +4,8 @@ import asyncio
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional, TypedDict
 
-from modbus.client import ModbusClient, translate_modbus_error
+from helpers.modbus import translate_modbus_error
+from modbus.client import ModbusClient
 from modbus.modbus_utills import ModbusUtils
 from cache.cache import CacheService
 from config import settings

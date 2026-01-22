@@ -173,7 +173,7 @@ class ModbusClient:
             else:
                 raise ValueError(f"Invalid kind: {kind}")
     
-    def health_check(self) -> Tuple[bool, str]:
+    def modbus_server_health_check(self) -> Tuple[bool, str]:
         """
         Perform a health check by connecting and reading a single holding register.
         

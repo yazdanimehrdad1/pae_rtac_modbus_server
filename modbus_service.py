@@ -61,7 +61,7 @@ async def health_check():
     Attempts to connect to the Modbus server and reads a single holding register
     at address 0 to confirm end-to-end communication is working.
     """
-    ok, detail = modbus.health_check()
+    ok, detail = modbus.modbus_server_health_check()
     
     return HealthResponse(
         ok=ok,
