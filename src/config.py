@@ -4,17 +4,23 @@ Application configuration using Pydantic Settings.
 Environment-driven configuration with validation and type safety.
 """
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
 
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
     
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False
+    )
+    
     # Modbus Configuration
-    modbus_host: str = Field(default="localhost", alias="MODBUS_HOST")
-    modbus_port: int = Field(default=502, alias="MODBUS_PORT")
-    modbus_device_id: int = Field(default=1, alias="MODBUS_DEVICE_ID")
+    modbus_host: str = Field(default="localhost", alias="AGGREGATOR_MODBUS_HOST")
+    modbus_port: int = Field(default=502, alias="AGGREGATOR_MODBUS_PORT")
+    modbus_device_id: int = Field(default=1, alias="AGGREGATOR_SERVER_ID")
     modbus_timeout_s: float = Field(default=5.0, alias="MODBUS_TIMEOUT_S")
     modbus_retries: int = Field(default=3, alias="MODBUS_RETRIES")
     
@@ -61,7 +67,6 @@ class Settings(BaseSettings):
     
     # Polling Job Configuration
     poll_interval_seconds: int = Field(default=60, alias="POLL_INTERVAL_SECONDS")
-    poll_register_map_path: str = Field(default="config/main_sel_751_register_map.csv", alias="POLL_REGISTER_MAP_PATH")
     poll_cache_ttl: int = Field(default=3600, alias="POLL_CACHE_TTL")  # 1 hour default
     poll_device_name: str = Field(default="main-sel-751", alias="POLL_DEVICE_NAME")  # Device name for polling and database storage
     
@@ -73,13 +78,8 @@ class Settings(BaseSettings):
     # Pod identification (for Kubernetes)
     pod_name: str = Field(default="", alias="POD_NAME")  # Falls back to HOSTNAME if not set
     
-    # Sites Manager Configuration
-    sites_manager_base_url: str = Field(default="http://pae-sites-manager-app-test:8020", alias="SITES_MANAGER_BASE_URL")
-    
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = False
+    # DAS API Configuration
+    das_api_base_url: str = Field(default="http://pae-das-api:8080", alias="DAS_API_BASE_URL")
 
 
 # Global settings instance

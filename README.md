@@ -30,9 +30,9 @@ The service uses environment variables for configuration. You can set them in tw
 
 Create or edit `.env` file in the project root with your Modbus server settings:
 ```env
-MODBUS_HOST=192.168.1.100
-MODBUS_PORT=502
-MODBUS_DEVICE_ID=1
+AGGREGATOR_MODBUS_HOST=192.168.1.100
+AGGREGATOR_MODBUS_PORT=502
+AGGREGATOR_SERVER_ID=1
 MODBUS_TIMEOUT_S=5.0
 MODBUS_RETRIES=3
 ```
@@ -45,18 +45,18 @@ Set the following environment variables:
 
 **Linux/Mac:**
 ```bash
-export MODBUS_HOST="192.168.1.100"      # Default: localhost
-export MODBUS_PORT="502"                 # Default: 502
-export MODBUS_DEVICE_ID="1"              # Default: 1
+export AGGREGATOR_MODBUS_HOST="192.168.1.100"      # Default: localhost
+export AGGREGATOR_MODBUS_PORT="502"                 # Default: 502
+export AGGREGATOR_SERVER_ID="1"              # Default: 1
 export MODBUS_TIMEOUT_S="5.0"            # Default: 5.0
 export MODBUS_RETRIES="3"                # Default: 3
 ```
 
 **Windows PowerShell:**
 ```powershell
-$env:MODBUS_HOST="192.168.1.100"
-$env:MODBUS_PORT="502"
-$env:MODBUS_DEVICE_ID="1"
+$env:AGGREGATOR_MODBUS_HOST="192.168.1.100"
+$env:AGGREGATOR_MODBUS_PORT="502"
+$env:AGGREGATOR_SERVER_ID="1"
 $env:MODBUS_TIMEOUT_S="5.0"
 $env:MODBUS_RETRIES="3"
 ```
@@ -110,9 +110,9 @@ The API will be available at `http://localhost:8000`
 
 **Configure your external Modbus server in `.env` file:**
 ```bash
-MODBUS_HOST=192.168.1.100  # Your external Modbus server IP
-MODBUS_PORT=502
-MODBUS_DEVICE_ID=1
+AGGREGATOR_MODBUS_HOST=192.168.1.100  # Your external Modbus server IP
+AGGREGATOR_MODBUS_PORT=502
+AGGREGATOR_SERVER_ID=1
 ```
 
 **Then start the service:**
@@ -122,7 +122,7 @@ docker-compose up --build
 
 **Or set environment variables directly:**
 ```bash
-MODBUS_HOST=192.168.1.100 docker-compose up --build
+AGGREGATOR_MODBUS_HOST=192.168.1.100 docker-compose up --build
 ```
 
 ### Option 3: Direct Python Execution
@@ -163,14 +163,14 @@ docker build -t pae-rtac-server .
 **Run the container:**
 ```bash
 docker run -p 8000:8000 \
-  -e MODBUS_HOST=192.168.1.100 \
-  -e MODBUS_PORT=502 \
+  -e AGGREGATOR_MODBUS_HOST=192.168.1.100 \
+  -e AGGREGATOR_MODBUS_PORT=502 \
   pae-rtac-server
 ```
 
 **Run with docker-compose (connects to external Modbus server):**
 ```bash
-# Make sure MODBUS_HOST is set in .env or as environment variable
+# Make sure AGGREGATOR_MODBUS_HOST is set in .env or as environment variable
 docker-compose up --build
 ```
 

@@ -12,8 +12,7 @@ from logger import setup_logging, get_logger
 from scheduler.engine import start_scheduler, stop_scheduler
 
 # Router imports
-from api.routers import health, read, cache, devices, register_readings
-from api.routers.cross_service import sites
+from api.routers import health, read, cache, devices, register_readings, sites, csv_exports, device_configs
 
 # Cache connection imports
 from cache.connection import (
@@ -30,8 +29,8 @@ from db.connection import (
     close_all_db_connections
 )
 
-# Register map loader import
-from utils.config_loader import load_device_configs
+# Register map loader import (disabled - devices must be created via API)
+# from utils.config_loader import load_device_configs
 
 # Setup logging
 setup_logging(log_level=settings.log_level)
@@ -57,7 +56,9 @@ def create_app() -> FastAPI:
     app.include_router(cache.router, prefix="/api", tags=["cache"])
     app.include_router(devices.router, prefix="/api", tags=["devices"])
     app.include_router(register_readings.router, prefix="/api", tags=["register_readings"])
-    app.include_router(sites.router, prefix="/api", tags=["cross-service"])
+    app.include_router(sites.router, prefix="/api", tags=["sites"])
+    app.include_router(csv_exports.router, prefix="/api", tags=["csv-exports"])
+    app.include_router(device_configs.router, prefix="/api", tags=["device-configs"])
     
     # TODO: Add other routers when implemented
     # from api.routers import points, metrics
@@ -103,14 +104,17 @@ def create_app() -> FastAPI:
             # Continue startup even if database fails (graceful degradation)
         
         # Load device configurations from file
-        try:
-            results = await load_device_configs()
-            if results:
-                successful = sum(1 for v in results.values() if v.get("success", False))
-                logger.info(f"Register map loading completed: {successful}/{len(results)} successful")
-        except Exception as e:
-            logger.error(f"Failed to load register maps from CSV files: {e}", exc_info=True)
-            # Continue startup even if register map loading fails (graceful degradation)
+        # NOTE: Device creation is disabled - devices must be created via API endpoints
+        # Register maps can be loaded separately if needed
+        # try:
+        #     results = await load_device_configs()
+        #     if results:
+        #         successful = sum(1 for v in results.values() if v.get("success", False))
+        #         logger.info(f"Register map loading completed: {successful}/{len(results)} successful")
+        # except Exception as e:
+        #     logger.error(f"Failed to load register maps from CSV files: {e}", exc_info=True)
+        #     # Continue startup even if register map loading fails (graceful degradation)
+        logger.info("Device auto-creation disabled - devices must be created via API endpoints")
         
         # Start scheduler
         await start_scheduler()

@@ -30,7 +30,7 @@ async def health_check():
         ok=True,
         host=modbus_client.host,
         port=modbus_client.port,
-        device_id=modbus_client.default_device_id,
+        device_id=modbus_client.default_server_id,
         detail="API is healthy"
     )
 
@@ -42,12 +42,12 @@ async def health_modbus_client():
     Attempts to connect to the Modbus server and reads a single holding register
     at address 0 to confirm end-to-end communication is working.
     """
-    ok, detail = modbus_client.health_check()
+    ok, detail = modbus_client.modbus_server_health_check()
     return HealthResponse(
         ok=ok,
         host=modbus_client.host,
         port=modbus_client.port,
-        device_id=modbus_client.default_device_id,
+        device_id=modbus_client.default_server_id,
         detail=detail
     )
 

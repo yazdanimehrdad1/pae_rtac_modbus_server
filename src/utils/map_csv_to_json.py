@@ -11,7 +11,6 @@ from datetime import datetime
 import pandas as pd
 
 from schemas.modbus_models import RegisterMap, RegisterPoint
-from db.device_register_map import get_register_map_by_device_name, create_register_map
 from db.connection import get_db_pool
 from logger import get_logger
 
@@ -19,36 +18,8 @@ logger = get_logger(__name__)
 
 
 
-def get_register_map_csv_path(device_name: str) -> Path:
-    """
-    Map device name to register map CSV file path.
-    
-    Args:
-        device_name: Device identifier (e.g., "sel_751")
-        
-    Returns:
-        Path to the CSV file
-        
-    Raises:
-        ValueError: If device name is not recognized
-    """
-    # Map device names to CSV files
-    device_map = {
-        "main-sel-751": "main_sel_751_register_map.csv",
-        # Add more device mappings here as needed
-        # "sel_750": "sel_750_register_map.csv",
-    }
-    
-    if device_name not in device_map:
-        available = ", ".join(device_map.keys())
-        raise ValueError(f"Device '{device_name}' not found. Available devices: {available}")
-    
-    csv_filename = device_map[device_name]
-    csv_path = Path("config") / csv_filename
-    
-    return csv_path
 
-
+# TODO: adjust this when creating the route for importing register maps via csv
 def map_csv_to_json(
     csv_path: Path
 ) -> Dict[str, Any]:
@@ -90,12 +61,24 @@ def map_csv_to_json(
     for _, row in df.iterrows():
         register = {}
         
-        # Required fields
-        if "address" in df.columns and pd.notna(row.get("address")):
-            register["address"] = int(row["address"])
+        # Required fields - support both CSV column names but standardize to register_address/register_name
+        address_value = None
+        if "register_address" in df.columns and pd.notna(row.get("register_address")):
+            address_value = int(row["register_address"])
+        elif "address" in df.columns and pd.notna(row.get("address")):
+            address_value = int(row["address"])
         
-        if "name" in df.columns and pd.notna(row.get("name")):
-            register["name"] = str(row["name"]).strip()
+        if address_value is not None:
+            register["register_address"] = address_value
+        
+        name_value = None
+        if "register_name" in df.columns and pd.notna(row.get("register_name")):
+            name_value = str(row["register_name"]).strip()
+        elif "name" in df.columns and pd.notna(row.get("name")):
+            name_value = str(row["name"]).strip()
+        
+        if name_value:
+            register["register_name"] = name_value
         
         if "kind" in df.columns and pd.notna(row.get("kind")):
             register["kind"] = str(row["kind"]).strip().lower()
@@ -152,11 +135,12 @@ def json_to_register_map(json_data: Dict[str, Any]) -> RegisterMap:
     points = []
     
     for reg in registers:
+        # Map from register_address/register_name (JSON format) to address/name (RegisterPoint format)
         point_data = {
-            "name": reg["name"],
-            "address": reg["address"],
-            "kind": reg["kind"],
-            "size": reg["size"],
+            "name": reg.get("register_name") or reg.get("name", ""),
+            "address": reg.get("register_address") or reg.get("address"),
+            "kind": reg.get("kind", "holding"),
+            "size": reg.get("size", 1),
         }
         
         # Optional fields
@@ -179,86 +163,32 @@ def json_to_register_map(json_data: Dict[str, Any]) -> RegisterMap:
     
     return RegisterMap(points=points)
 
-
-async def get_register_map_for_device(device_name: str) -> Optional[Dict[str, Any]]:
-    """
-    Get register map for a device with lazy loading from DB/CSV.
-    
-    This function implements lazy loading:
-    1. First checks if register map exists in DB
-    2. If found, returns it from DB
-    3. If not found, reads from CSV file, saves to DB, and returns it
-    4. If CSV file doesn't exist or device name is not mapped, logs warning and returns None
-    
-    Args:
-        device_name: Device name/identifier (e.g., "main-sel-751")
+#TODO: adjust this function to get register map for a device if it exist in cache and if not from db , and if none exists then return none
+# async def get_register_map_for_device(device_id: int, site_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+#     """
+# lets make this function to obtain register map for a device if it exist in cache and if not from db , and if none exists then return none
+#     """
+#     try:
+#         # If site_id is not provided, get it from the device
+#         if site_id is None:
+#             from db.devices import get_device_by_id
+#             device = await get_device_by_id(device_id)
+#             if device and device.site_id:
+#                 site_id = device.site_id
+#             else:
+#                 # Device has no site_id, can't query register map (site_id is required)
+#                 logger.warning(f"Device ID {device_id} has no site_id. Cannot retrieve register map without site_id.")
+#                 return None
         
-    Returns:
-        Register map dictionary if found/loaded, None otherwise
-    """
-    # Step 1: Check DB first
-    try:
-        register_map = await get_register_map_by_device_name(device_name)
-        if register_map is not None:
-            logger.info(f"Register map found in DB for device: {device_name}")
-            return register_map
-    except Exception as e:
-        # Log database error but continue to try CSV fallback
-        logger.warning(f"Error querying DB for register map for device '{device_name}': {e}")
-        # Continue to CSV fallback below
-    
-    # Step 2: Not in DB, try to load from CSV
-    logger.info(f"Register map not found in DB for device '{device_name}', attempting to load from CSV")
-    
-    try:
-        # Get CSV file path (may raise ValueError if device name not mapped)
-        csv_path = get_register_map_csv_path(device_name)
-    except ValueError as e:
-        logger.warning(f"Device '{device_name}' is not mapped to a CSV file: {e}")
-        return None
-    
-    # Check if CSV file exists
-    if not csv_path.exists():
-        logger.warning(f"CSV file not found for device '{device_name}': {csv_path}")
-        return None
-    
-    try:
-        # Read and convert CSV to JSON
-        json_data = map_csv_to_json(csv_path)
-        
-        # Get device_id to save register map to DB
-        pool = await get_db_pool()
-        async with pool.acquire() as conn:
-            row = await conn.fetchrow("""
-                SELECT id
-                FROM devices
-                WHERE name = $1
-            """, device_name)
-            
-            if row is None:
-                logger.warning(f"Device '{device_name}' not found in devices table, cannot save register map to DB")
-                return json_data  # Still return the JSON data even if we can't save it
-            
-            device_id = row['id']
-        
-        # Save to DB (may raise ValueError if already exists, but we checked DB first, so this shouldn't happen)
-        try:
-            await create_register_map(device_id, json_data)
-            logger.info(f"Successfully loaded and saved register map to DB for device: {device_name}")
-        except ValueError as e:
-            # This shouldn't happen since we checked DB first, but handle gracefully
-            logger.warning(f"Could not save register map to DB for device '{device_name}': {e}")
-            # Still return the JSON data
-        
-        return json_data
-        
-    except FileNotFoundError as e:
-        logger.warning(f"CSV file not found for device '{device_name}': {e}")
-        return None
-    except ValueError as e:
-        logger.warning(f"Failed to process CSV file for device '{device_name}': {e}")
-        return None
-    except Exception as e:
-        logger.error(f"Unexpected error loading register map for device '{device_name}': {e}", exc_info=True)
-        return None
+#         # Use the validated function with site_id
+#         register_map = await get_register_map(device_id, site_id=site_id)
+#         if register_map is not None:
+#             logger.info(f"Register map found in DB for device ID: {device_id}")
+#             return register_map
+#         else:
+#             logger.warning(f"Register map not found in DB for device ID: {device_id}")
+#             return None
+#     except Exception as e:
+#         logger.warning(f"Error querying DB for register map for device ID '{device_id}': {e}")
+#         return None
 

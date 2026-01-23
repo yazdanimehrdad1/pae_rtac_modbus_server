@@ -46,9 +46,9 @@ services:
     environment:
       # Set these to your external Modbus server
       # Values can come from .env file or environment variables
-      - MODBUS_HOST=${MODBUS_HOST}
-      - MODBUS_PORT=${MODBUS_PORT:-502}
-      - MODBUS_DEVICE_ID=${MODBUS_DEVICE_ID:-1}
+      - AGGREGATOR_MODBUS_HOST=${AGGREGATOR_MODBUS_HOST}
+      - AGGREGATOR_MODBUS_PORT=${AGGREGATOR_MODBUS_PORT:-502}
+      - AGGREGATOR_SERVER_ID=${AGGREGATOR_SERVER_ID:-1}
       - MODBUS_TIMEOUT_S=${MODBUS_TIMEOUT_S:-5.0}
       - MODBUS_RETRIES=${MODBUS_RETRIES:-3}
       # Redis configuration
@@ -61,8 +61,8 @@ services:
       - POSTGRES_DB=${POSTGRES_DB:-rtac_modbus}
       - POSTGRES_USER=${POSTGRES_USER:-rtac_user}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-rtac_password}
-      # Sites Manager configuration
-      - SITES_MANAGER_BASE_URL=${SITES_MANAGER_BASE_URL:-http://pae-sites-manager-app-test:8020}
+      # DAS API configuration
+      - DAS_API_BASE_URL=${DAS_API_BASE_URL:-http://pae-das-api:8080}
     volumes:
       # Mount .env file if it exists (optional - environment variables take precedence)
       - ./.env:/app/.env:ro
@@ -84,6 +84,6 @@ networks:
   rtac-server-network:
     driver: bridge
   shared-network:
-    external: true
     name: pae-shared-network
+    driver: bridge
 

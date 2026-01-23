@@ -5,7 +5,7 @@ These models represent the database schema and are used for ORM operations.
 """
 
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, TypedDict
 from sqlalchemy import String, Integer, Text, DateTime, func, Float, ForeignKey, JSON, Boolean
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -13,6 +13,110 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 class Base(DeclarativeBase):
     """Base class for all SQLAlchemy models."""
     pass
+
+
+class RegisterConfig(TypedDict, total=False):
+    register_address: int
+    register_name: str
+    data_type: str
+    size: int
+    scale_factor: float
+    unit: str
+    bitfield_detail: Dict[str, str]
+    enum_detail: Dict[str, str]
+
+
+class Site(Base):
+    """
+    SQLAlchemy model for the sites table.
+    
+    Represents a site/location where devices are deployed.
+    """
+    __tablename__ = "sites"
+    
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+        comment="Primary key, 4-digit site ID"
+    )
+    
+    owner: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        index=True,
+        comment="Site owner"
+    )
+    
+    name: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        unique=True,
+        index=True,
+        comment="Site name (must be unique)"
+    )
+    
+    location: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        comment="Site location"
+    )
+    
+    operator: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        comment="Site operator"
+    )
+    
+    capacity: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        comment="Site capacity"
+    )
+    
+    device_count: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        comment="Number of devices at this site (denormalized for performance)"
+    )
+    
+    description: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Optional site description"
+    )
+    
+    coordinates: Mapped[Optional[Dict[str, float]]] = mapped_column(
+        JSON,
+        nullable=True,
+        comment="Geographic coordinates as JSON: {lat: float, lng: float}"
+    )
+    
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        comment="Timestamp when site record was created"
+    )
+    
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+        comment="Timestamp when site record was last updated"
+    )
+    
+    last_update: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+        comment="Timestamp of last update (synced from external source)"
+    )
+    
+    def __repr__(self) -> str:
+        return f"<Site(id={self.id}, name='{self.name}', location='{self.location}')>"
 
 
 class Device(Base):
@@ -38,26 +142,38 @@ class Device(Base):
         comment="Unique device name/identifier"
     )
     
-    host: Mapped[str] = mapped_column(
+    modbus_host: Mapped[str] = mapped_column(
         String(255),
         nullable=False,
         comment="Modbus device hostname or IP address"
     )
     
-    port: Mapped[int] = mapped_column(
+    modbus_port: Mapped[int] = mapped_column(
         Integer,
         nullable=False,
         default=502,
         comment="Modbus TCP port (default: 502)"
     )
     
-    device_id: Mapped[int] = mapped_column(
+    modbus_timeout: Mapped[Optional[float]] = mapped_column(
+        Float,
+        nullable=True,
+        comment="Optional Modbus timeout (seconds)"
+    )
+    
+    site_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("sites.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+        comment="Site ID (required)"
+    )
+    
+    modbus_server_id: Mapped[int] = mapped_column(
         Integer,
         nullable=False,
-        unique=True,
-        index=True,
         default=1,
-        comment="Modbus unit/slave ID (unique)"
+        comment="Modbus server identifier"
     )
     
     description: Mapped[Optional[str]] = mapped_column(
@@ -66,31 +182,38 @@ class Device(Base):
         comment="Optional device description"
     )
     
+    main_type: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        comment="Device main type (required)"
+    )
+    
+    sub_type: Mapped[Optional[str]] = mapped_column(
+        String(255),
+        nullable=True,
+        comment="Device sub type (optional)"
+    )
+    
     # Polling configuration
-    poll_address: Mapped[Optional[int]] = mapped_column(
-        Integer,
-        nullable=True,
-        comment="Start address for polling Modbus registers"
-    )
-    
-    poll_count: Mapped[Optional[int]] = mapped_column(
-        Integer,
-        nullable=True,
-        comment="Number of registers to read during polling"
-    )
-    
-    poll_kind: Mapped[Optional[str]] = mapped_column(
-        String(20),
-        nullable=True,
-        default="holding",
-        comment="Register type: holding, input, coils, or discretes"
-    )
-    
     poll_enabled: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,
         default=True,
         comment="Whether polling is enabled for this device"
+    )
+
+    read_from_aggregator: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        comment="Whether this device reads data from the edge aggregator"
+    )
+    
+    configs: Mapped[list[str]] = mapped_column(
+        JSON,
+        nullable=False,
+        default=list,
+        comment="Device-specific configuration entries"
     )
     
     created_at: Mapped[datetime] = mapped_column(
@@ -115,16 +238,79 @@ class Device(Base):
         cascade="all, delete-orphan"
     )
     
-    # Relationship to DeviceRegisterMap (one-to-one)
-    register_map: Mapped[Optional["DeviceRegisterMap"]] = relationship(
-        "DeviceRegisterMap",
-        back_populates="device",
-        uselist=False,
-        cascade="all, delete-orphan"
+    
+    
+    def __repr__(self) -> str:
+        return f"<Device(id={self.id}, name='{self.name}', host='{self.modbus_host}:{self.modbus_port}')>"
+
+
+class DeviceConfig(Base):
+    """
+    SQLAlchemy model for the device_configs table.
+    
+    Stores device configuration payloads keyed by a config ID string.
+    """
+    __tablename__ = "device_configs"
+    
+    id: Mapped[str] = mapped_column(
+        String(255),
+        primary_key=True,
+        comment="Device config ID (e.g., siteID-deviceID-1)"
+    )
+    
+    site_id: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        comment="Site ID (4-digit number)"
+    )
+    
+    device_id: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        comment="Device ID (database primary key)"
+    )
+    
+    poll_address: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        comment="Start address for polling Modbus registers"
+    )
+    
+    poll_count: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        comment="Number of registers to read during polling"
+    )
+    
+    poll_kind: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        comment="Register type: holding, input, coils, or discretes"
+    )
+    
+    registers: Mapped[list[RegisterConfig]] = mapped_column(
+        JSON,
+        nullable=False,
+        comment="Register definitions"
+    )
+    
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        comment="Timestamp when config record was created"
+    )
+    
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+        comment="Timestamp when config record was last updated"
     )
     
     def __repr__(self) -> str:
-        return f"<Device(id={self.id}, name='{self.name}', host='{self.host}:{self.port}')>"
+        return f"<DeviceConfig(id='{self.id}')>"
 
 
 class RegisterReading(Base):
@@ -196,55 +382,4 @@ class RegisterReading(Base):
         return f"<RegisterReading(timestamp={self.timestamp}, device_id={self.device_id}, register_address={self.register_address}, value={self.value})>"
 
 
-class DeviceRegisterMap(Base):
-    """
-    SQLAlchemy model for the device_register_map table.
-    
-    Represents a device register map configuration stored as JSONB.
-    One-to-one relationship with Device.
-    """
-    __tablename__ = "device_register_map"
-    
-    id: Mapped[int] = mapped_column(
-        Integer,
-        primary_key=True,
-        autoincrement=True,
-        comment="Primary key, auto-incrementing"
-    )
-    
-    device_id: Mapped[int] = mapped_column(
-        Integer,
-        ForeignKey("devices.id", ondelete="CASCADE"),
-        unique=True,
-        nullable=False,
-        index=True,
-        comment="Foreign key to devices table (one-to-one relationship)"
-    )
-    
-    register_map: Mapped[Dict[str, Any]] = mapped_column(
-        JSON,
-        nullable=False,
-        comment="Device register map configuration stored as JSONB"
-    )
-    
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        server_default=func.now(),
-        comment="Timestamp when register map was created"
-    )
-    
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        server_default=func.now(),
-        onupdate=func.now(),
-        comment="Timestamp when register map was last updated"
-    )
-    
-    # Relationship to Device
-    device: Mapped["Device"] = relationship("Device", back_populates="register_map")
-    
-    def __repr__(self) -> str:
-        return f"<DeviceRegisterMap(id={self.id}, device_id={self.device_id})>"
 

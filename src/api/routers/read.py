@@ -6,10 +6,12 @@ from typing import List
 from fastapi import APIRouter, HTTPException, status
 
 from schemas.api_models import ReadRequest, ReadResponse, RegisterData, SimpleReadResponse, RegisterValue
-from modbus.client import ModbusClient, translate_modbus_error
+from helpers.modbus import translate_modbus_error
+from modbus.client import ModbusClient
 from modbus.modbus_utills import ModbusUtils
-from utils.map_csv_to_json import json_to_register_map, get_register_map_for_device
-from db.devices import get_device_by_id, get_device_id_by_name
+from utils.map_csv_to_json import json_to_register_map
+from db.devices import get_device_by_id_internal, get_device_id_by_name_internal
+from db.device_register_map import get_register_map
 from cache.cache import CacheService
 from config import settings
 from logger import get_logger
@@ -46,37 +48,40 @@ async def read_registers(request: ReadRequest):
         # Use standardized functions based on register type
         device_id = request.device_id or settings.modbus_device_id
         
+        host = request.host or settings.modbus_host
+        port = request.port or settings.modbus_port
+
         if request.kind == "holding":
             data = modbus_utils.read_holding_registers(
                 address=request.address,
                 count=request.count,
-                device_id=device_id,
-                host=request.host,
-                port=request.port
+                server_id=device_id,
+                host=host,
+                port=port
             )
         elif request.kind == "input":
             data = modbus_utils.read_input_registers(
                 address=request.address,
                 count=request.count,
-                device_id=device_id,
-                host=request.host,
-                port=request.port
+                server_id=device_id,
+                host=host,
+                port=port
             )
         elif request.kind == "coils":
             data = modbus_utils.read_coils(
                 address=request.address,
                 count=request.count,
-                device_id=device_id,
-                host=request.host,
-                port=request.port
+                server_id=device_id,
+                host=host,
+                port=port
             )
         elif request.kind == "discretes":
             data = modbus_utils.read_discrete_inputs(
                 address=request.address,
                 count=request.count,
-                device_id=device_id,
-                host=request.host,
-                port=request.port
+                server_id=device_id,
+                host=host,
+                port=port
             )
         else:
             raise ValueError(f"Invalid kind: {request.kind}")
@@ -134,13 +139,13 @@ async def read_main_sel_751_data():
         else:
             # Not in cache, query database
             logger.debug(f"Device '{device_name}' not in cache, querying database")
-            db_device_id = await get_device_id_by_name(device_name)
+            db_device_id = await get_device_id_by_name_internal(device_name)
             if db_device_id is None:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail=f"Device '{device_name}' not found in database"
                 )
-            device = await get_device_by_id(db_device_id)
+            device = await get_device_by_id_internal(db_device_id)
             if device is None:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
@@ -151,24 +156,24 @@ async def read_main_sel_751_data():
         poll_address = device.poll_address or settings.main_sel_751_poll_address
         poll_count = device.poll_count or settings.main_sel_751_poll_count
         poll_kind = device.poll_kind or settings.main_sel_751_poll_kind
-        modbus_device_id = device.device_id
+        modbus_device_id = settings.modbus_device_id
         
         # Read Modbus registers using device-specific host/port
         if poll_kind == "holding":
             data = modbus_utils.read_holding_registers(
                 address=poll_address,
                 count=poll_count,
-                device_id=modbus_device_id,
-                host=device.host,
-                port=device.port
+                server_id=modbus_device_id,
+                host=device.modbus_host,
+                port=device.modbus_port
             )
         elif poll_kind == "input":
             data = modbus_utils.read_input_registers(
                 address=poll_address,
                 count=poll_count,
-                device_id=modbus_device_id,
-                host=device.host,
-                port=device.port
+                server_id=modbus_device_id,
+                host=device.modbus_host,
+                port=device.modbus_port
             )
         else:
             raise HTTPException(
@@ -176,8 +181,15 @@ async def read_main_sel_751_data():
                 detail=f"Unsupported register kind '{poll_kind}' for device '{device_name}'"
             )
         
-        # Get register map from database (with CSV fallback if not in DB)
-        json_data = await get_register_map_for_device(device_name)
+        
+        # Get register map from database if device has a site_id
+        json_data = None
+        if device.site_id:
+            try:
+                json_data = await get_register_map(device.id, site_id=device.site_id)
+            except Exception as e:
+                logger.warning(f"Error getting register map for device {device.id}: {e}")
+                json_data = None
         
         response_data = {}
         
@@ -217,11 +229,15 @@ async def read_main_sel_751_data():
     except Exception as e:
         # Try to get device info for better error messages
         try:
-            db_device_id = await get_device_id_by_name(device_name)
+            db_device_id = await get_device_id_by_name_internal(device_name)
             if db_device_id:
-                device = await get_device_by_id(db_device_id)
+                device = await get_device_by_id_internal(db_device_id)
                 if device:
-                    status_code, message = translate_modbus_error(e, host=device.host, port=device.port)
+                    status_code, message = translate_modbus_error(
+                        e,
+                        host=device.modbus_host,
+                        port=device.modbus_port
+                    )
                 else:
                     status_code, message = translate_modbus_error(e)
             else:
