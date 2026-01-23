@@ -195,10 +195,10 @@ def _register_modbus_polling_job() -> None:
     
     Polls Modbus registers at configured interval and stores data in Redis cache.
     """
-    from scheduler.jobs import cron_job_poll_modbus_registers
+    from scheduler.jobs import cron_job_poll_modbus_registers_per_site
     
     add_job(
-        job_func=cron_job_poll_modbus_registers,
+        job_func=cron_job_poll_modbus_registers_per_site,
         trigger=IntervalTrigger(seconds=settings.poll_interval_seconds),
         job_id="modbus_poll",
         name="Modbus Register Polling"

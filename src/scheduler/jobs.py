@@ -109,6 +109,8 @@ async def read_device_registers(
 
     if device.read_from_aggregator:
         modbus_utils = edge_aggregator_modbus_utils
+        host = None
+        port = None
     else:
         modbus_utils = get_direct_modbus_utils(host, port)
 
@@ -301,7 +303,7 @@ async def poll_single_device(device: DeviceListItem) -> PollResult:
         "db_failed": 0,
         "error": None
     }
-    
+    #TODO: consider using a single DB call to get sites and its devices and the device's configs
     try:
         # 1. Get polling configuration from device configs
         config_ids = list(device.configs or [])
@@ -314,6 +316,7 @@ async def poll_single_device(device: DeviceListItem) -> PollResult:
         site_name = None
         if device.site_id:
             try:
+                #TODO: maybe we can get the site name from the cache instead of the database
                 site = await get_site_by_id(device.site_id)
                 if site:
                     site_name = site.name
@@ -433,7 +436,7 @@ async def poll_single_device(device: DeviceListItem) -> PollResult:
     return result
 
 # TODO: eventually this function also needs to be called by another function to grab all the devices for multiple sites
-async def cron_job_poll_modbus_registers() -> None:
+async def cron_job_poll_modbus_registers_per_site() -> None:
     """
     Scheduled job to poll Modbus registers for all enabled devices.
     
