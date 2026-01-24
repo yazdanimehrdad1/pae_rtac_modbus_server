@@ -67,6 +67,12 @@ class DeviceResponse(DeviceListItem):
     """Response model for device data."""
 
 
+class DeviceDeleteResponse(BaseModel):
+    """Response model for a deleted device."""
+    device_id: int = Field(..., description="Deleted device ID")
+    site_id: int = Field(..., description="Site ID for the deleted device")
+
+
 class DeviceWithConfigs(DeviceListItem):
     """Device response with expanded device configs."""
     device_configs: List["DeviceConfigResponse"] = Field(
@@ -123,6 +129,11 @@ class SiteResponse(BaseModel):
         "from_attributes": True,
         "populate_by_name": True,  # Allow both field name and alias
     }
+
+
+class SiteDeleteResponse(BaseModel):
+    """Response model for a deleted site."""
+    site_id: int = Field(..., description="Deleted site ID")
 
 
 class SiteComprehensiveResponse(BaseModel):
@@ -201,8 +212,13 @@ class DeviceConfigResponse(BaseModel):
     }
 
 
+class DeviceConfigDeleteResponse(BaseModel):
+    """Response model for a deleted device config."""
+    device_config_id: str = Field(..., description="Deleted device config ID")
+
+
 __all__ = ["DeviceCreate", "DeviceUpdate", "DeviceListItem", "DeviceResponse",
-           "DeviceWithConfigs", "SiteComprehensiveResponse",
-           "Coordinates", "SiteCreate", "SiteUpdate", "SiteResponse",
+           "DeviceDeleteResponse", "DeviceWithConfigs", "SiteComprehensiveResponse",
+           "Coordinates", "SiteCreate", "SiteUpdate", "SiteResponse", "SiteDeleteResponse",
            "DeviceConfigRegister", "DeviceConfigData",
-           "DeviceConfigUpdate", "DeviceConfigResponse"]
+           "DeviceConfigUpdate", "DeviceConfigResponse", "DeviceConfigDeleteResponse"]

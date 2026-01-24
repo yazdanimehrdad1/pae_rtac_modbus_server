@@ -4,7 +4,13 @@ from typing import List
 
 from fastapi import APIRouter, HTTPException, status
 
-from schemas.db_models.models import DeviceCreate, DeviceUpdate, DeviceResponse, DeviceListItem
+from schemas.db_models.models import (
+    DeviceCreate,
+    DeviceUpdate,
+    DeviceResponse,
+    DeviceListItem,
+    DeviceDeleteResponse,
+)
 from db.devices import get_all_devices
 from helpers.devices import (
     create_device_cache_db,
@@ -152,7 +158,7 @@ async def update_existing_device(site_id: int, device_id: int, device_update: De
         )
 
 # TODO: lets make sure cascade delete is implemented and soft delete is implemented
-@router.delete("/site/{site_id}/devices/{device_id}", response_model=DeviceResponse)
+@router.delete("/site/{site_id}/devices/{device_id}", response_model=DeviceDeleteResponse)
 async def delete_existing_device(site_id: int, device_id: int):
     """
     Delete a Modbus device.
@@ -173,7 +179,7 @@ async def delete_existing_device(site_id: int, device_id: int):
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Device with id {device_id} not found in site '{site_id}'"
             )
-        return deleted_device
+        return {"device_id": deleted_device.id, "site_id": deleted_device.site_id}
     except ValueError as e:
         error_msg = str(e)
         raise HTTPException(

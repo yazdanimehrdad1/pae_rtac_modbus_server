@@ -3,7 +3,13 @@
 from typing import List
 from fastapi import APIRouter, HTTPException, status
 
-from schemas.db_models.models import SiteComprehensiveResponse, SiteCreate, SiteUpdate, SiteResponse
+from schemas.db_models.models import (
+    SiteComprehensiveResponse,
+    SiteCreate,
+    SiteUpdate,
+    SiteResponse,
+    SiteDeleteResponse,
+)
 from helpers.sites import get_complete_site_data
 from db.sites import create_site, get_all_sites, get_site_by_id, update_site, delete_site
 from logger import get_logger
@@ -181,7 +187,7 @@ async def update_site_endpoint(site_id: int, site_update: SiteUpdate):
         )
 
 #TODO" lets make sure cascade delete is implemented and soft delete is implemented
-@router.delete("/{site_id}", response_model=SiteResponse)
+@router.delete("/{site_id}", response_model=SiteDeleteResponse)
 async def delete_site_endpoint(site_id: int):
     """
     Delete a site.
@@ -202,7 +208,7 @@ async def delete_site_endpoint(site_id: int):
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Site with id {site_id} not found"
             )
-        return deleted_site
+        return {"site_id": deleted_site.id}
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

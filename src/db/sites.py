@@ -364,7 +364,7 @@ async def delete_site(site_id: int) -> Optional[SiteResponse]:
             
             # Delete the site
             site_name_to_delete = site.name
-            session.delete(site)
+            await session.delete(site)
             await session.flush()  # Flush to check for constraint violations before commit
             
             await session.commit()

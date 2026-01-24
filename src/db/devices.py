@@ -368,7 +368,7 @@ async def delete_device(device_id: int, site_id: int) -> Optional[DeviceResponse
             )
             config_ids = [row[0] for row in config_result.all()]
             if config_ids:
-                joined_ids = ", ".join(config_ids)
+                joined_ids = ", ".join(str(config_id) for config_id in config_ids)
                 raise ValueError(
                     f"Device with id {device_id} has associated device configs: {joined_ids}"
                 )
@@ -394,7 +394,7 @@ async def delete_device(device_id: int, site_id: int) -> Optional[DeviceResponse
             device_name_to_delete = device.name
             primary_key = device.id
             
-            session.delete(device)
+            await session.delete(device)
             await session.flush()
             await session.commit()
             

@@ -8,7 +8,11 @@ from db.device_configs import (
     update_device_config,
     delete_device_config
 )
-from schemas.db_models.models import DeviceConfigData, DeviceConfigResponse
+from schemas.db_models.models import (
+    DeviceConfigData,
+    DeviceConfigResponse,
+    DeviceConfigDeleteResponse,
+)
 from logger import get_logger
 
 router = APIRouter(prefix="/device-configs", tags=["device-configs"])
@@ -75,7 +79,7 @@ async def update_device_config_endpoint(config_id: str, update: DeviceConfigData
         )
 
 
-@router.delete("/{config_id}", status_code=status.HTTP_200_OK)
+@router.delete("/{config_id}", response_model=DeviceConfigDeleteResponse, status_code=status.HTTP_200_OK)
 async def delete_device_config_endpoint(config_id: str):
     """Delete a device config by ID."""
     try:
@@ -85,7 +89,7 @@ async def delete_device_config_endpoint(config_id: str):
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Device config with id '{config_id}' not found"
             )
-        return {"message": f"Device config '{config_id}' deleted"}
+        return {"device_config_id": config_id}
     except HTTPException:
         raise
     except Exception as e:
