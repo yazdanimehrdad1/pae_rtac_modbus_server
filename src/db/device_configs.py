@@ -56,9 +56,6 @@ async def create_device_config_for_device(
     """
     async with get_session() as session:
         try:
-            if config.site_id != site_id or config.device_id != device_id:
-                raise ValueError("Path site_id/device_id must match body")
-            
             config_id = await _generate_config_id(session, site_id, device_id)
             # convert DeviceConfigData to dict
             payload = config.model_dump(by_alias=True)

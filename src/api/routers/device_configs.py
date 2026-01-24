@@ -3,11 +3,11 @@
 from fastapi import APIRouter, HTTPException, status
 
 from db.device_configs import (
-    create_device_config_for_device,
     get_device_config,
     update_device_config,
     delete_device_config
 )
+from helpers.device_configs import create_device_config_cache_db
 from schemas.db_models.models import (
     DeviceConfigData,
     DeviceConfigResponse,
@@ -23,7 +23,7 @@ logger = get_logger(__name__)
 async def create_new_device_config(site_id: int, device_id: int, config: DeviceConfigData):
     """Create a new device config."""
     try:
-        return await create_device_config_for_device(site_id, device_id, config)
+        return await create_device_config_cache_db(site_id, device_id, config)
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
