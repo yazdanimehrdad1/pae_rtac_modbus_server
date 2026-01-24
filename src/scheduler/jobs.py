@@ -323,6 +323,7 @@ async def poll_single_device(site_name: str, device: DeviceWithConfigs) -> PollR
         total_db_failed = 0
         any_success = False
         combined_mapped_registers_list_all_configs_per_device = []
+        last_polling_config = None
 
 
         for config in device.device_configs:
@@ -362,32 +363,38 @@ async def poll_single_device(site_name: str, device: DeviceWithConfigs) -> PollR
                 continue
 
             combined_mapped_registers_list_all_configs_per_device.extend(mapped_registers)
+            last_polling_config = polling_config
 
 
         timestamp = datetime.now(timezone.utc).isoformat()
         timestamp_dt = datetime.now(timezone.utc)
 
 
+        if not combined_mapped_registers_list_all_configs_per_device or last_polling_config is None:
+            result["error"] = f"No device configs were successfully polled for '{device_name}'"
+            logger.warning(result["error"])
+            return result
+
         cache_successful, cache_failed = await store_device_data_in_cache(
-            device_name, combined_mapped_registers_list_all_configs_per_device, polling_config, timestamp, site_name
+            device_name,
+            combined_mapped_registers_list_all_configs_per_device,
+            last_polling_config,
+            timestamp,
+            site_name
         )
         total_cache_successful += cache_successful
         total_cache_failed += cache_failed
 
         
         db_successful, db_failed = await store_device_data_in_db(
-                device.id, device.site_id, mapped_registers, timestamp_dt
+                device.id,
+                device.site_id,
+                combined_mapped_registers_list_all_configs_per_device,
+                timestamp_dt
         )
 
         total_db_successful += db_successful
         total_db_failed += db_failed
-        any_success = True
-
-        if not any_success:
-            result["error"] = f"No device configs were successfully polled for '{device_name}'"
-            logger.warning(result["error"])
-            return result
-  
 
         result["success"] = True
         result["cache_successful"] = total_cache_successful
