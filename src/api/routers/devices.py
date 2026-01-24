@@ -177,7 +177,7 @@ async def delete_existing_device(site_id: int, device_id: int):
     except ValueError as e:
         error_msg = str(e)
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=status.HTTP_409_CONFLICT,
             detail=error_msg
         )
     except HTTPException:

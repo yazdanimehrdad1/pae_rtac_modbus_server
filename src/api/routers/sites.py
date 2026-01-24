@@ -203,6 +203,11 @@ async def delete_site_endpoint(site_id: int):
                 detail=f"Site with id {site_id} not found"
             )
         return deleted_site
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(e)
+        )
     except HTTPException:
         raise
     except Exception as e:
