@@ -346,7 +346,25 @@ async def poll_single_device(site_name: str, device: DeviceWithConfigs) -> PollR
                 continue
 
       
-            modbus_data = await read_device_registers(device_without_configs, polling_config)
+            try:
+                modbus_data = await read_device_registers(device_without_configs, polling_config)
+            except Exception as e:
+                if device.read_from_aggregator:
+                    error_host = settings.modbus_host
+                    error_port = settings.modbus_port
+                else:
+                    error_host = device.modbus_host
+                    error_port = device.modbus_port
+                status_code, error_message = translate_modbus_error(
+                    e,
+                    host=error_host,
+                    port=error_port
+                )
+                result["error"] = f"status_code={status_code}, error_message={error_message}"
+                logger.warning(
+                    f"Error polling device '{device_name}': {result['error']}"
+                )
+                continue
 
     
             register_map = {"registers": registers}

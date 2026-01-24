@@ -17,14 +17,17 @@ def validate_register_addresses(poll_address: int, registers: list) -> None:
     Validate register addresses are within allowed poll range.
     """
     max_address = poll_address + MAX_MODBUS_POLL_REGISTER_COUNT
+    invalid_addresses: list[int] = []
     for register in registers:
         register_address = getattr(register, "register_address", None)
         if register_address is None:
             register_address = register.get("register_address")
         if register_address is None or register_address < poll_address or register_address > max_address:
-            raise ValueError(
-                f"Register address {register_address} is out of range for poll_address {poll_address}"
-            )
+            invalid_addresses.append(register_address)
+    if invalid_addresses:
+        raise ValueError(
+            f"Register address(es) {invalid_addresses} are out of range for poll_address {poll_address}"
+        )
 
 
 async def create_device_config_cache_db(
