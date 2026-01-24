@@ -17,7 +17,7 @@ from schemas.db_models.orm_models import Device, DeviceConfig, Site
 logger = get_logger(__name__)
 
 
-async def get_comprehensive_site_db(site_id: int) -> Optional[SiteComprehensiveResponse]:
+async def get_complete_site_data(site_id: int) -> Optional[SiteComprehensiveResponse]:
     """
     Get a site with devices and device configs from the database only.
     

@@ -4,7 +4,7 @@ from typing import List
 from fastapi import APIRouter, HTTPException, status
 
 from schemas.db_models.models import SiteComprehensiveResponse, SiteCreate, SiteUpdate, SiteResponse
-from helpers.sites import get_comprehensive_site_db
+from helpers.sites import get_complete_site_data
 from db.sites import create_site, get_all_sites, get_site_by_id, update_site, delete_site
 from logger import get_logger
 
@@ -230,7 +230,7 @@ async def get_comprehensive_site_endpoint(site_id: int):
         Comprehensive site data with devices and configs
     """
     try:
-        site = await get_comprehensive_site_db(site_id)
+        site = await get_complete_site_data(site_id)
         if site is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
