@@ -67,6 +67,14 @@ class DeviceResponse(DeviceListItem):
     """Response model for device data."""
 
 
+class DeviceWithConfigs(DeviceListItem):
+    """Device response with expanded device configs."""
+    device_configs: List["DeviceConfigResponse"] = Field(
+        default_factory=list,
+        description="Expanded device configs"
+    )
+
+
 class Coordinates(BaseModel):
     """Coordinates model for site location."""
     lat: float = Field(..., description="Latitude")
@@ -114,6 +122,28 @@ class SiteResponse(BaseModel):
     model_config = {
         "from_attributes": True,
         "populate_by_name": True,  # Allow both field name and alias
+    }
+
+
+class SiteComprehensiveResponse(BaseModel):
+    """Comprehensive site response with devices and configs."""
+    id: int = Field(..., description="Site ID (4-digit number)")
+    owner: str = Field(..., description="Site owner")
+    name: str = Field(..., description="Site name")
+    location: str = Field(..., description="Site location")
+    operator: str = Field(..., description="Site operator")
+    capacity: str = Field(..., description="Site capacity")
+    deviceCount: int = Field(..., alias="device_count", description="Number of devices at this site")
+    description: Optional[str] = Field(None, description="Site description")
+    coordinates: Optional[Coordinates] = Field(None, description="Geographic coordinates")
+    devices: List[DeviceWithConfigs] = Field(default_factory=list, description="Devices with configs")
+    createdAt: datetime = Field(..., alias="created_at", description="Timestamp when site was created")
+    updatedAt: datetime = Field(..., alias="updated_at", description="Timestamp when site was last updated")
+    lastUpdate: datetime = Field(..., alias="last_update", description="Timestamp of last update")
+    
+    model_config = {
+        "from_attributes": True,
+        "populate_by_name": True,
     }
 
 
@@ -172,6 +202,7 @@ class DeviceConfigResponse(BaseModel):
 
 
 __all__ = ["DeviceCreate", "DeviceUpdate", "DeviceListItem", "DeviceResponse",
+           "DeviceWithConfigs", "SiteComprehensiveResponse",
            "Coordinates", "SiteCreate", "SiteUpdate", "SiteResponse",
            "DeviceConfigRegister", "DeviceConfigData",
            "DeviceConfigUpdate", "DeviceConfigResponse"]

@@ -3,7 +3,8 @@
 from typing import List
 from fastapi import APIRouter, HTTPException, status
 
-from schemas.db_models.models import SiteCreate, SiteUpdate, SiteResponse
+from schemas.db_models.models import SiteComprehensiveResponse, SiteCreate, SiteUpdate, SiteResponse
+from helpers.sites import get_comprehensive_site_db
 from db.sites import create_site, get_all_sites, get_site_by_id, update_site, delete_site
 from logger import get_logger
 
@@ -217,3 +218,36 @@ async def delete_site_endpoint(site_id: int):
             detail=error_detail
         )
 
+@router.get("/comprehensive/{site_id}", response_model=SiteComprehensiveResponse)
+async def get_comprehensive_site_endpoint(site_id: int):
+    """
+    Get a comprehensive site.
+    
+    Args:
+        site_id: Site UUID
+        
+    Returns:
+        Comprehensive site data with devices and configs
+    """
+    try:
+        site = await get_comprehensive_site_db(site_id)
+        if site is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Site with id {site_id} not found"
+            )
+        return site
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting comprehensive site: {e}", exc_info=True)
+        error_detail = {
+            "error": "Failed to retrieve comprehensive site",
+            "error_type": type(e).__name__,
+            "message": str(e),
+            "site_id": site_id
+        }
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=error_detail
+        )
