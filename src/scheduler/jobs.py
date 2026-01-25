@@ -26,13 +26,6 @@ cache_service = CacheService()
 direct_modbus_utils_by_endpoint: dict[tuple[str, int], ModbusUtils] = {}
 
 
-def get_direct_modbus_utils(host: str, port: int) -> ModbusUtils:
-    endpoint = (host, port)
-    modbus_utils = direct_modbus_utils_by_endpoint.get(endpoint)
-    if modbus_utils is None:
-        modbus_utils = ModbusUtils(ModbusClient())
-        direct_modbus_utils_by_endpoint[endpoint] = modbus_utils
-    return modbus_utils
 
 class PollResult(TypedDict, total=False):
     """Result of polling a single device."""
@@ -43,6 +36,14 @@ class PollResult(TypedDict, total=False):
     db_successful: int
     db_failed: int
     error: Optional[str]
+
+def get_direct_modbus_utils(host: str, port: int) -> ModbusUtils:
+    endpoint = (host, port)
+    modbus_utils = direct_modbus_utils_by_endpoint.get(endpoint)
+    if modbus_utils is None:
+        modbus_utils = ModbusUtils(ModbusClient())
+        direct_modbus_utils_by_endpoint[endpoint] = modbus_utils
+    return modbus_utils
 
 async def get_enabled_devices_to_poll(site_devices: List[DeviceListItem]) -> List[DeviceListItem]:
     """
@@ -321,7 +322,6 @@ async def poll_single_device(site_name: str, device: DeviceWithConfigs) -> PollR
         total_cache_failed = 0
         total_db_successful = 0
         total_db_failed = 0
-        any_success = False
         combined_mapped_registers_list_all_configs_per_device = []
         last_polling_config = None
 
@@ -331,7 +331,6 @@ async def poll_single_device(site_name: str, device: DeviceWithConfigs) -> PollR
                 "poll_address": config.poll_address,
                 "poll_count": config.poll_count,
                 "poll_kind": config.poll_kind, 
-                "poll_enabled": device.poll_enabled
             }
             registers = config.registers or []
             logger.info(
