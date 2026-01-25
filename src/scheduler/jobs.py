@@ -86,6 +86,10 @@ async def read_device_registers(
     Raises:
         Exception: If Modbus read fails
     """
+    #TODO: it is very important, when the device_config is created, there is a validation to autmatically calculate the count or default to 125
+    # Why/how count is dominated by 
+    # 1: last register - first rgister address + 1
+    # 2: If last register has a size of 2,4 then the count is the last register address + size - first register address
     address = polling_config["poll_address"]
     count = polling_config["poll_count"]
     kind = polling_config["poll_kind"]
@@ -366,9 +370,8 @@ async def poll_single_device(site_name: str, device: DeviceWithConfigs) -> PollR
                 continue
 
     
-            register_map = {"registers": registers}
             mapped_registers = map_modbus_data_to_registers(
-                register_map=register_map,
+                registers=registers,
                 modbus_read_data=modbus_data,
                 poll_start_address=polling_config["poll_address"]
             )
