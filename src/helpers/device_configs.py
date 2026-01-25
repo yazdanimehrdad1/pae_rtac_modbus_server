@@ -14,10 +14,52 @@ cache_service = CacheService()
 MAX_MODBUS_POLL_REGISTER_COUNT = 125
 
 
+def validate_duplicate_registers(registers: list) -> None:
+    """
+    Validate no duplicate register addresses exist.
+    """
+    seen_addresses: dict[int, list[int]] = {}
+    duplicates: list[dict[str, int | list[int]]] = []
+    duplicate_register_addresses: list[int] = []
+    for idx, register in enumerate(registers):
+        if isinstance(register, dict):
+            register_data = register
+        elif hasattr(register, "model_dump"):
+            register_data = register.model_dump()
+        else:
+            register_data = vars(register)
+        register_address = register_data.get("register_address")
+        if register_address is None:
+            continue
+        seen_addresses.setdefault(register_address, []).append(idx)
+
+    for address, indices in seen_addresses.items():
+        if len(indices) > 1:
+            duplicate_register_addresses.append(address)
+            duplicates.append(
+                {
+                    "register_address": address,
+                    "indices": indices,
+                }
+            )
+
+    if duplicates:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "Duplicate register addresses",
+                "message": "One or more registers share the same register_address",
+                "duplicate_register_addresses": duplicate_register_addresses,
+                "duplicates": duplicates,
+            },
+        )
+
+
 def validate_register_addresses(poll_address: int, registers: list) -> None:
     """
     Validate register addresses are within allowed poll range.
     """
+    validate_duplicate_registers(registers)
     max_address = poll_address + MAX_MODBUS_POLL_REGISTER_COUNT
     missing_fields: list[dict[str, str]] = []
     invalid_registers: list[dict[str, int | str]] = []
