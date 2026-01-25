@@ -1,5 +1,7 @@
 """Device config helper functions for DB/cache coordination."""
 
+from fastapi import HTTPException, status
+
 from cache.cache import CacheService
 from db.device_configs import create_device_config_for_device
 from db.devices import get_device_by_id
@@ -17,16 +19,105 @@ def validate_register_addresses(poll_address: int, registers: list) -> None:
     Validate register addresses are within allowed poll range.
     """
     max_address = poll_address + MAX_MODBUS_POLL_REGISTER_COUNT
-    invalid_addresses: list[int] = []
-    for register in registers:
-        register_address = getattr(register, "register_address", None)
+    missing_fields: list[dict[str, str]] = []
+    invalid_registers: list[dict[str, int | str]] = []
+    for idx, register in enumerate(registers):
+        if isinstance(register, dict):
+            register_data = register
+        elif hasattr(register, "model_dump"):
+            register_data = register.model_dump()
+        else:
+            register_data = vars(register)
+
+        register_address = register_data.get("register_address")
+        register_size = register_data.get("size")
+
         if register_address is None:
-            register_address = register.get("register_address")
-        if register_address is None or register_address < poll_address or register_address > max_address:
-            invalid_addresses.append(register_address)
-    if invalid_addresses:
-        raise ValueError(
-            f"Register address(es) {invalid_addresses} are out of range for poll_address {poll_address}"
+            missing_fields.append(
+                {
+                    "index": idx,
+                    "field": "register_address",
+                    "message": f"The 'registers[{idx}].register_address' field is required",
+                }
+            )
+            continue
+        if register_size is None:
+            missing_fields.append(
+                {
+                    "index": idx,
+                    "field": "size",
+                    "message": f"The 'registers[{idx}].size' field is required",
+                }
+            )
+            continue
+        if not register_data.get("register_name"):
+            missing_fields.append(
+                {
+                    "index": idx,
+                    "field": "register_name",
+                    "message": f"The 'registers[{idx}].register_name' field is required",
+                }
+            )
+            continue
+        if not register_data.get("data_type"):
+            missing_fields.append(
+                {
+                    "index": idx,
+                    "field": "data_type",
+                    "message": f"The 'registers[{idx}].data_type' field is required",
+                }
+            )
+            continue
+
+        if register_address < poll_address:
+            invalid_registers.append(
+                {
+                    "index": idx,
+                    "register_address": register_address,
+                    "error": (
+                        f"register_address ({register_address}) is less than poll_address "
+                        f"({poll_address})"
+                    ),
+                }
+            )
+            continue
+
+        max_register_address = register_address + register_size - 1
+        if max_register_address > max_address:
+            invalid_registers.append(
+                {
+                    "index": idx,
+                    "register_address": register_address,
+                    "size": register_size,
+                    "max_address": max_register_address,
+                    "error": (
+                        f"register_address ({register_address}) + size ({register_size}) - 1 = "
+                        f"{max_register_address} exceeds poll_address + {MAX_MODBUS_POLL_REGISTER_COUNT} "
+                        f"({max_address})"
+                    ),
+                }
+            )
+
+    if missing_fields:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": "Missing required field",
+                "message": "One or more registers are missing required fields",
+                "missing_fields": missing_fields,
+            },
+        )
+
+    if invalid_registers:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "Invalid register addresses",
+                "message": "One or more registers have addresses outside the poll range",
+                "invalid_registers": invalid_registers,
+                "poll_address": poll_address,
+                "max_address": max_address,
+            },
         )
 
 
@@ -43,6 +134,13 @@ async def create_device_config_cache_db(
         raise ValueError("Path site_id/device_id must match body")
 
     validate_register_addresses(config.poll_address, config.registers)
+
+
+    for register in config.registers:
+        if register.scale_factor is None:
+            register.scale_factor = 1.0
+        if register.unit is None:
+            register.unit = None
 
     created_config = await create_device_config_for_device(site_id, device_id, config)
 
