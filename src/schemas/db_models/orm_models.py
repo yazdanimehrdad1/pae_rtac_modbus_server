@@ -231,9 +231,9 @@ class Device(Base):
         comment="Timestamp when device record was last updated"
     )
     
-    # Relationship to RegisterReading
-    register_readings: Mapped[list["RegisterReading"]] = relationship(
-        "RegisterReading",
+    # Relationship to RegisterReadingRaw
+    register_readings: Mapped[list["RegisterReadingRaw"]] = relationship(
+        "RegisterReadingRaw",
         back_populates="device",
         cascade="all, delete-orphan"
     )
@@ -313,14 +313,14 @@ class DeviceConfig(Base):
         return f"<DeviceConfig(id='{self.id}')>"
 
 
-class RegisterReading(Base):
+class RegisterReadingRaw(Base):
     """
-    SQLAlchemy model for the register_readings table.
+    SQLAlchemy model for the register_readings_raw table.
     
     Represents a time-series data point for a Modbus register reading.
     Uses composite primary key (timestamp, device_id, register_address).
     """
-    __tablename__ = "register_readings"
+    __tablename__ = "register_readings_raw"
     
     timestamp: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -379,7 +379,7 @@ class RegisterReading(Base):
     device: Mapped["Device"] = relationship("Device", back_populates="register_readings")
     
     def __repr__(self) -> str:
-        return f"<RegisterReading(timestamp={self.timestamp}, device_id={self.device_id}, register_address={self.register_address}, value={self.value})>"
+        return f"<RegisterReadingRaw(timestamp={self.timestamp}, device_id={self.device_id}, register_address={self.register_address}, value={self.value})>"
 
 
 
