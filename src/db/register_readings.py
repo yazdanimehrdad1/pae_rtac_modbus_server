@@ -169,6 +169,14 @@ async def insert_register_readings_batch(
                 })
             
             # Build batch INSERT query with ON CONFLICT
+            # TODO: critical: we need to insert the readings into the correct table, based on the site_id
+            # we need to create a new table for each site, and then insert the readings into the correct table
+            # the table name should be register_readings_raw_site_id_device_id
+            # the table should have the following columns: timestamp, register_address, value, quality, register_name, unit, scale_factor
+            # the table should have the following primary key: timestamp, register_address
+            # the table should have the following foreign key: device_id
+            # the table should have the following index: timestamp, register_address
+            # the table should have the following constraint: device_id must be unique for each site
             statement = insert(RegisterReadingRaw).values(values)
             
             statement = statement.on_conflict_do_update(
