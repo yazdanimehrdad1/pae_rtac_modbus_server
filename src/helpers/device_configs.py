@@ -14,6 +14,36 @@ cache_service = CacheService()
 MAX_MODBUS_POLL_REGISTER_COUNT = 125
 
 
+def set_register_defaults(registers: list) -> None:
+    """
+    Set default values for register fields in-place.
+    """
+    for register in registers:
+        if isinstance(register, dict):
+            if register.get("scale_factor") is None:
+                register["scale_factor"] = 1.0
+            if register.get("unit") is None:
+                register["unit"] = "unit"
+        else:
+            if getattr(register, "scale_factor", None) is None:
+                register.scale_factor = 1.0
+            if getattr(register, "unit", None) is None:
+                register.unit = "unit"
+
+
+def compute_poll_range(registers: list) -> tuple[int, int, int]:
+    """
+    Compute min register number, max register end, and poll count.
+    """
+    min_register_number = min(register.register_address for register in registers)
+    max_register_end = max(
+        register.register_address + register.size - 1
+        for register in registers
+    )
+    poll_count = max_register_end - min_register_number + 1
+    return min_register_number, max_register_end, poll_count
+
+
 def validate_duplicate_registers(registers: list) -> None:
     """
     Validate no duplicate register addresses exist.
@@ -64,9 +94,9 @@ def validate_register_addresses(poll_address: int, registers: list) -> None:
     missing_fields: list[dict[str, str]] = []
     invalid_registers: list[dict[str, int | str]] = []
     for idx, register in enumerate(registers):
-        if isinstance(register, dict):
+        if isinstance(register, dict):#this is a dictionary, we are using the dictionary directly
             register_data = register
-        elif hasattr(register, "model_dump"):
+        elif hasattr(register, "model_dump"):#this is a pydantic model, we are using the model_dump method to convert the pydantic model to a dictionary
             register_data = register.model_dump()
         else:
             register_data = vars(register)
@@ -177,14 +207,46 @@ async def create_device_config_cache_db(
 
     validate_register_addresses(config.poll_address, config.registers)
 
+    set_register_defaults(config.registers)
 
-    for register in config.registers:
-        if register.scale_factor is None:
-            register.scale_factor = 1.0
-        if register.unit is None:
-            register.unit = None
+   
+    min_register_number, max_register_end, poll_count = compute_poll_range(
+        config.registers
+    )
+
+    if poll_count > MAX_MODBUS_POLL_REGISTER_COUNT:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "Poll count exceeds maximum allowed",
+                "message": "The number of registers to poll exceeds the maximum allowed, consider adding multiple device configs",
+                "max_poll_count": MAX_MODBUS_POLL_REGISTER_COUNT,
+                "poll_count": poll_count,
+                "min_register_number": min_register_number,
+                "max_register_end": max_register_end,
+                "registers": config.registers,
+            },
+        )
+
+
+    warning_detail = None
+    if min_register_number != config.poll_address or poll_count != config.poll_count:
+        warning_detail = {
+            "message": "Poll range computed from registers differs from payload",
+            "min_register_number": min_register_number,
+            "max_register_end": max_register_end,
+            "computed_poll_count": poll_count,
+            "payload_poll_address": config.poll_address,
+            "payload_poll_count": config.poll_count,
+        }
+        logger.warning(
+            "Min register number or poll count does not match the config; continuing with payload values",
+            extra=warning_detail,
+        )
 
     created_config = await create_device_config_for_device(site_id, device_id, config)
+    if warning_detail:
+        created_config = created_config.model_copy(update={"warnings": warning_detail})
 
     updated_device = await get_device_by_id(device_id, site_id)
     if updated_device is None:

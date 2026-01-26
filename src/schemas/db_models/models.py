@@ -206,6 +206,10 @@ class DeviceConfigResponse(BaseModel):
     registers: List[DeviceConfigRegister] = Field(..., min_length=1, description="Register definitions")
     created_at: datetime = Field(..., description="Timestamp when config was created")
     updated_at: datetime = Field(..., description="Timestamp when config was last updated")
+    warnings: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Optional warnings about the config payload"
+    )
 
     model_config = {
         "populate_by_name": True,
