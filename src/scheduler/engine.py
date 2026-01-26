@@ -10,6 +10,7 @@ from apscheduler.triggers.cron import CronTrigger
 
 from config import settings
 from logger import get_logger
+from scheduler.jobs import cron_job_poll_modbus_registers_all_sites
 from scheduler.locks import lock_manager
 
 logger = get_logger(__name__)
@@ -195,10 +196,8 @@ def _register_modbus_polling_job() -> None:
     
     Polls Modbus registers at configured interval and stores data in Redis cache.
     """
-    from scheduler.jobs import cron_job_poll_modbus_registers_per_site
-    
     add_job(
-        job_func=cron_job_poll_modbus_registers_per_site,
+        job_func=cron_job_poll_modbus_registers_all_sites,
         trigger=IntervalTrigger(seconds=settings.poll_interval_seconds),
         job_id="modbus_poll",
         name="Modbus Register Polling"

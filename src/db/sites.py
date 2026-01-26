@@ -13,7 +13,7 @@ from sqlalchemy.exc import IntegrityError
 
 from db.connection import get_async_session_factory
 from schemas.db_models.models import SiteCreate, SiteUpdate, SiteResponse
-from schemas.db_models.orm_models import Site
+from schemas.db_models.orm_models import Device, Site
 from logger import get_logger
 
 logger = get_logger(__name__)
@@ -330,6 +330,16 @@ async def delete_site(site_id: int) -> Optional[SiteResponse]:
                 logger.warning(f"Site with id {site_id} not found for deletion")
                 return None
             
+            device_result = await session.execute(
+                select(Device.id).where(Device.site_id == site_id)
+            )
+            device_ids = [row[0] for row in device_result.all()]
+            if device_ids:
+                joined_ids = ", ".join(str(device_id) for device_id in device_ids)
+                raise ValueError(
+                    f"Site with id {site_id} has associated devices: {joined_ids}"
+                )
+
             # Convert coordinates to Coordinates model if present
             coordinates = None
             if site.coordinates:
@@ -354,7 +364,7 @@ async def delete_site(site_id: int) -> Optional[SiteResponse]:
             
             # Delete the site
             site_name_to_delete = site.name
-            session.delete(site)
+            await session.delete(site)
             await session.flush()  # Flush to check for constraint violations before commit
             
             await session.commit()

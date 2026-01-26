@@ -14,6 +14,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # Copy project configuration and source code
 COPY pyproject.toml ./
 COPY src/ ./src/
+COPY tests/ ./tests/
 COPY config/ ./config/
 COPY scripts/ ./scripts/
 COPY docker/entrypoint.sh /app/docker/entrypoint.sh

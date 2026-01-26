@@ -66,7 +66,7 @@ class Settings(BaseSettings):
     scheduler_leader_retry_interval: int = Field(default=5, alias="SCHEDULER_LEADER_RETRY_INTERVAL")
     
     # Polling Job Configuration
-    poll_interval_seconds: int = Field(default=60, alias="POLL_INTERVAL_SECONDS")
+    poll_interval_seconds: int = Field(default=10, alias="POLL_INTERVAL_SECONDS")
     poll_cache_ttl: int = Field(default=3600, alias="POLL_CACHE_TTL")  # 1 hour default
     poll_device_name: str = Field(default="main-sel-751", alias="POLL_DEVICE_NAME")  # Device name for polling and database storage
     

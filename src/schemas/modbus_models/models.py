@@ -1,6 +1,6 @@
 """Modbus register configuration models."""
 
-from typing import Literal, Optional
+from typing import Literal, Optional, Dict
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -10,23 +10,30 @@ class RegisterPoint(BaseModel):
     
     Represents one register or group of registers to read from a Modbus device.
     """
-    name: str = Field(..., description="Human-readable name/label for this register")
-    address: int = Field(..., ge=0, le=65535, description="Modbus register address")
-    kind: Literal["holding", "input", "coils", "discretes"] = Field(
-        ..., description="Type of register: holding, input, coils, or discretes"
-    )
+    register_address: int = Field(..., ge=0, le=65535, description="Modbus register address")
+    register_name: str = Field(..., description="Human-readable name/label for this register")
+    data_type: Literal[
+        "int16",
+        "uint16",
+        "int32",
+        "uint32",
+        "float32",
+        "int64",
+        "uint64",
+        "float64",
+        "bool",
+    ] = Field(default="uint16", description="Data type interpretation")
     size: int = Field(..., ge=1, le=2000, description="Number of registers/bits to read")
-    device_id: Optional[int] = Field(None, ge=1, le=255, description="Modbus unit/slave ID (optional, uses default if not specified)")
-    
-    # Optional fields for data processing
-    data_type: Optional[Literal["int16", "uint16", "int32", "uint32", "float32", "int64", "uint64", "float64", "bool"]] = Field(
-        default="uint16", description="Data type interpretation"
-    )
     scale_factor: Optional[float] = Field(
         default=1.0, description="Scale factor to apply to raw value"
     )
     unit: Optional[str] = Field(None, description="Physical unit (e.g., 'V', 'A', 'kW')")
-    tags: Optional[str] = Field(default="", description="Tags for categorization/filtering")
+    bitfield_detail: Optional[Dict[str, str]] = Field(
+        default=None, description="Bitfield detail mapping (optional)"
+    )
+    enum_detail: Optional[Dict[str, str]] = Field(
+        default=None, description="Enum detail mapping (optional)"
+    )
     
     @field_validator("size")
     @classmethod
@@ -42,23 +49,15 @@ class RegisterPoint(BaseModel):
                 raise ValueError(f"Data type {data_type} requires at least 4 registers")
         return v
 
-
+#TODO: remove this
 class RegisterMap(BaseModel):
     """Container for a collection of register points."""
     points: list[RegisterPoint] = Field(..., description="List of register points to read")
-    
-    def get_points_by_kind(self, kind: Literal["holding", "input", "coils", "discretes"]) -> list[RegisterPoint]:
-        """Filter points by register kind."""
-        return [p for p in self.points if p.kind == kind]
-    
-    def get_points_by_device_id(self, device_id: int) -> list[RegisterPoint]:
-        """Filter points by device ID."""
-        return [p for p in self.points if p.device_id == device_id]
-    
+
     def get_point_by_name(self, name: str) -> Optional[RegisterPoint]:
-        """Get a point by its name."""
+        """Get a point by its register_name."""
         for p in self.points:
-            if p.name == name:
+            if p.register_name == name:
                 return p
         return None
 

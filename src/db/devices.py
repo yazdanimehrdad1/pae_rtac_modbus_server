@@ -11,7 +11,7 @@ from sqlalchemy.exc import IntegrityError
 
 from db.connection import get_async_session_factory
 from schemas.db_models.models import DeviceCreate, DeviceUpdate, DeviceResponse, DeviceListItem
-from schemas.db_models.orm_models import Device, Site
+from schemas.db_models.orm_models import Device, DeviceConfig, Site
 from logger import get_logger
 
 logger = get_logger(__name__)
@@ -362,6 +362,16 @@ async def delete_device(device_id: int, site_id: int) -> Optional[DeviceResponse
             if device is None:
                 logger.warning(f"Device with id {device_id} not found for deletion")
                 return None
+
+            config_result = await session.execute(
+                select(DeviceConfig.id).where(DeviceConfig.device_id == device_id)
+            )
+            config_ids = [row[0] for row in config_result.all()]
+            if config_ids:
+                joined_ids = ", ".join(str(config_id) for config_id in config_ids)
+                raise ValueError(
+                    f"Device with id {device_id} has associated device configs: {joined_ids}"
+                )
             
             device_response = DeviceResponse(
                 id=device.id,
@@ -384,7 +394,7 @@ async def delete_device(device_id: int, site_id: int) -> Optional[DeviceResponse
             device_name_to_delete = device.name
             primary_key = device.id
             
-            session.delete(device)
+            await session.delete(device)
             await session.flush()
             await session.commit()
             
