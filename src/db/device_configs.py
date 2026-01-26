@@ -192,3 +192,34 @@ async def delete_device_config(config_id: str) -> bool:
         await session.commit()
         return delete_result.rowcount > 0
 
+
+async def get_device_configs_for_device(
+    device_id: int,
+    site_id: Optional[int] = None,
+) -> list[DeviceConfigResponse]:
+    """
+    Get all device configs for a device, optionally scoped by site_id.
+    """
+    async with get_session() as session:
+        query = select(DeviceConfig).where(DeviceConfig.device_id == device_id)
+        if site_id is not None:
+            query = query.where(DeviceConfig.site_id == site_id)
+        result = await session.execute(query.order_by(DeviceConfig.poll_address))
+        configs = result.scalars().all()
+        responses: list[DeviceConfigResponse] = []
+        for config in configs:
+            responses.append(
+                DeviceConfigResponse(
+                    config_id=config.id,
+                    created_at=config.created_at,
+                    updated_at=config.updated_at,
+                    Site_id=config.site_id,
+                    device_id=config.device_id,
+                    poll_address=config.poll_address,
+                    poll_count=config.poll_count,
+                    poll_kind=config.poll_kind,
+                    registers=config.registers,
+                )
+            )
+        return responses
+

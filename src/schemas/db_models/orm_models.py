@@ -237,6 +237,13 @@ class Device(Base):
         back_populates="device",
         cascade="all, delete-orphan"
     )
+
+    # Relationship to RegisterReadingTranslated
+    register_readings_translated: Mapped[list["RegisterReadingTranslated"]] = relationship(
+        "RegisterReadingTranslated",
+        back_populates="device",
+        cascade="all, delete-orphan"
+    )
     
     
     
@@ -463,7 +470,7 @@ class RegisterReadingTranslated(Base):
     )
 
     # Relationship to Device
-    device: Mapped["Device"] = relationship("Device", back_populates="register_readings")
+    device: Mapped["Device"] = relationship("Device", back_populates="register_readings_translated")
     
     def __repr__(self) -> str:
         return (

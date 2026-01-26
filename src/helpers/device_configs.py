@@ -232,7 +232,7 @@ async def create_device_config_cache_db(
     warning_detail = None
     if min_register_number != config.poll_address or poll_count != config.poll_count:
         warning_detail = {
-            "message": "Poll range computed from registers differs from payload",
+            "warning": "Poll range computed from registers differs from payload",
             "min_register_number": min_register_number,
             "max_register_end": max_register_end,
             "computed_poll_count": poll_count,
