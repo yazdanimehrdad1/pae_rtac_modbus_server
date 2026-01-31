@@ -127,7 +127,7 @@ class Device(Base):
     """
     __tablename__ = "devices"
     
-    id: Mapped[int] = mapped_column(
+    device_id: Mapped[int] = mapped_column(
         Integer,
         primary_key=True,
         autoincrement=True,
@@ -142,23 +142,23 @@ class Device(Base):
         comment="Unique device name/identifier"
     )
     
-    modbus_host: Mapped[str] = mapped_column(
+    host: Mapped[str] = mapped_column(
         String(255),
         nullable=False,
-        comment="Modbus device hostname or IP address"
+        comment="Device hostname or IP address"
     )
     
-    modbus_port: Mapped[int] = mapped_column(
+    port: Mapped[int] = mapped_column(
         Integer,
         nullable=False,
         default=502,
-        comment="Modbus TCP port (default: 502)"
+        comment="Device port (default: 502)"
     )
     
-    modbus_timeout: Mapped[Optional[float]] = mapped_column(
+    timeout: Mapped[Optional[float]] = mapped_column(
         Float,
         nullable=True,
-        comment="Optional Modbus timeout (seconds)"
+        comment="Optional timeout (seconds)"
     )
     
     site_id: Mapped[int] = mapped_column(
@@ -169,11 +169,11 @@ class Device(Base):
         comment="Site ID (required)"
     )
     
-    modbus_server_id: Mapped[int] = mapped_column(
+    server_address: Mapped[int] = mapped_column(
         Integer,
         nullable=False,
         default=1,
-        comment="Modbus server identifier"
+        comment="Server address"
     )
     
     description: Mapped[Optional[str]] = mapped_column(
@@ -182,16 +182,22 @@ class Device(Base):
         comment="Optional device description"
     )
     
-    main_type: Mapped[str] = mapped_column(
-        String(255),
+    type: Mapped[str] = mapped_column(
+        String(50),
         nullable=False,
-        comment="Device main type (required)"
+        comment="Device type"
     )
     
-    sub_type: Mapped[Optional[str]] = mapped_column(
+    vendor: Mapped[Optional[str]] = mapped_column(
         String(255),
         nullable=True,
-        comment="Device sub type (optional)"
+        comment="Device vendor"
+    )
+    
+    model: Mapped[Optional[str]] = mapped_column(
+        String(255),
+        nullable=True,
+        comment="Device model"
     )
     
     # Polling configuration
@@ -209,12 +215,7 @@ class Device(Base):
         comment="Whether this device reads data from the edge aggregator"
     )
     
-    configs: Mapped[list[str]] = mapped_column(
-        JSON,
-        nullable=False,
-        default=list,
-        comment="Device-specific configuration entries"
-    )
+    # configs moved to device_configs table
     
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -248,7 +249,7 @@ class Device(Base):
     
     
     def __repr__(self) -> str:
-        return f"<Device(id={self.id}, name='{self.name}', host='{self.modbus_host}:{self.modbus_port}')>"
+        return f"<Device(device_id={self.device_id}, name='{self.name}', host='{self.host}:{self.port}')>"
 
 
 class DeviceConfig(Base):
@@ -338,7 +339,7 @@ class RegisterReadingRaw(Base):
     
     device_id: Mapped[int] = mapped_column(
         Integer,
-        ForeignKey("devices.id", ondelete="CASCADE"),
+        ForeignKey("devices.device_id", ondelete="CASCADE"),
         primary_key=True,
         nullable=False,
         comment="Foreign key to devices table"
@@ -407,7 +408,7 @@ class RegisterReadingTranslated(Base):
     
     device_id: Mapped[int] = mapped_column(
         Integer,
-        ForeignKey("devices.id", ondelete="CASCADE"),
+        ForeignKey("devices.device_id", ondelete="CASCADE"),
         primary_key=True,
         nullable=False,
         comment="Foreign key to devices table"

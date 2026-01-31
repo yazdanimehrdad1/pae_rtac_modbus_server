@@ -179,7 +179,7 @@ async def delete_existing_device(site_id: int, device_id: int):
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Device with id {device_id} not found in site '{site_id}'"
             )
-        return {"device_id": deleted_device.id, "site_id": deleted_device.site_id}
+        return {"device_id": deleted_device.device_id, "site_id": deleted_device.site_id}
     except ValueError as e:
         error_msg = str(e)
         raise HTTPException(

@@ -60,10 +60,13 @@ async def get_enabled_devices_to_poll(site_devices: List[DeviceListItem]) -> Lis
         # Check poll_enabled directly from device
         if device.poll_enabled:
             devices_to_poll.append(device)
-            logger.debug(f"Device '{device.name}' (ID: {device.id}) has polling enabled")
+            logger.debug(f"Device '{device.name}' (ID: {device.device_id}) has polling enabled")
         else:
             # Polling disabled
-            logger.debug(f"Device '{device.name}' (ID: {device.id}) has polling disabled (poll_enabled={device.poll_enabled}), skipping")
+            logger.debug(
+                f"Device '{device.name}' (ID: {device.device_id}) has polling disabled "
+                f"(poll_enabled={device.poll_enabled}), skipping"
+            )
     
     logger.info(
         f"Found {len(devices_to_poll)} device(s) to poll out of {len(site_devices)} total device(s) "
@@ -95,13 +98,13 @@ async def read_device_registers(
     address = polling_config["poll_address"]
     count = polling_config["poll_count"]
     kind = polling_config["poll_kind"]
-    server_id = device.modbus_server_id
-    host = device.modbus_host
-    port = device.modbus_port
+    server_id = device.server_address
+    host = device.host
+    port = device.port
     
     logger.debug(
         f"Reading Modbus registers for device '{device.name}': "
-        f"kind={kind}, address={address}, count={count}, server_id={server_id}"
+        f"kind={kind}, address={address}, count={count}, server_address={server_id}"
     )
     
     # Use appropriate ModbusUtils method based on register kind
@@ -176,19 +179,19 @@ async def poll_single_device(site_name: str, device: DeviceWithConfigs) -> PollR
     }
 
     device_without_configs = DeviceListItem(
-        id=device.id,
-        name=device.name,
-        modbus_host=device.modbus_host,
-        modbus_port=device.modbus_port,
-        modbus_timeout=device.modbus_timeout,
-        modbus_server_id=device.modbus_server_id,
+        device_id=device.device_id,
         site_id=device.site_id,
+        name=device.name,
+        type=device.type,
+        vendor=device.vendor,
+        model=device.model,
+        host=device.host,
+        port=device.port,
+        timeout=device.timeout,
+        server_address=device.server_address,
         description=device.description,
-        main_type=device.main_type,
-        sub_type=device.sub_type,
         poll_enabled=device.poll_enabled,
         read_from_aggregator=device.read_from_aggregator,
-        configs=device.configs,
         created_at=device.created_at,
         updated_at=device.updated_at
     )
@@ -229,8 +232,8 @@ async def poll_single_device(site_name: str, device: DeviceWithConfigs) -> PollR
                     error_host = settings.modbus_host
                     error_port = settings.modbus_port
                 else:
-                    error_host = device.modbus_host
-                    error_port = device.modbus_port
+                    error_host = device.host
+                    error_port = device.port
                 status_code, error_message = translate_modbus_error(
                     e,
                     host=error_host,
@@ -280,7 +283,7 @@ async def poll_single_device(site_name: str, device: DeviceWithConfigs) -> PollR
 
         
         db_successful, db_failed = await store_device_data_in_db(
-                device.id,
+                device.device_id,
                 device.site_id,
                 combined_mapped_registers_list_all_configs_per_device,
                 timestamp_dt
@@ -292,7 +295,7 @@ async def poll_single_device(site_name: str, device: DeviceWithConfigs) -> PollR
         ###################################################################################
 
         await store_device_data_in_db_translated(
-            device.id,
+            device.device_id,
             device.site_id,
             combined_mapped_registers_list_all_configs_per_device,
             timestamp_dt
@@ -318,8 +321,8 @@ async def poll_single_device(site_name: str, device: DeviceWithConfigs) -> PollR
             error_host = settings.modbus_host
             error_port = settings.modbus_port
         else:
-            error_host = device.modbus_host
-            error_port = device.modbus_port
+            error_host = device.host
+            error_port = device.port
         status_code, error_message = translate_modbus_error(
             e,
             host=error_host,

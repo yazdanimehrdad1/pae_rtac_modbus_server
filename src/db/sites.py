@@ -348,7 +348,7 @@ async def delete_site(site_id: int) -> Optional[SiteResponse]:
                 return None
             
             device_result = await session.execute(
-                select(Device.id).where(Device.site_id == site_id)
+                select(Device.device_id).where(Device.site_id == site_id)
             )
             device_ids = [row[0] for row in device_result.all()]
             if device_ids:

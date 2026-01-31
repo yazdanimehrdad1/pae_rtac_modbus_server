@@ -102,14 +102,14 @@ async def create_device_cache_db(device: DeviceCreate, site_id: int) -> DeviceRe
         RuntimeError: If caching fails after DB creation
     """
     created_device = await create_device(device, site_id=site_id)
-    cache_key = f"device:site:{site_id}:device_id:{created_device.id}"
+    cache_key = f"device:site:{site_id}:device_id:{created_device.device_id}"
     cached = await cache_service.set(
         key=cache_key,
         value=created_device.model_dump(mode="json")
     )
     if not cached:
         logger.error(
-            f"Failed to cache created device {created_device.id} for site {site_id}"
+            f"Failed to cache created device {created_device.device_id} for site {site_id}"
         )
         raise RuntimeError("Failed to cache created device")
     return created_device
@@ -135,14 +135,14 @@ async def update_device_cache_db(
         RuntimeError: If caching fails after DB update
     """
     updated_device = await update_device(device_id, device_update, site_id=site_id)
-    cache_key = f"device:site:{site_id}:device_id:{updated_device.id}"
+    cache_key = f"device:site:{site_id}:device_id:{updated_device.device_id}"
     cached = await cache_service.set(
         key=cache_key,
         value=updated_device.model_dump(mode="json")
     )
     if not cached:
         logger.error(
-            f"Failed to cache updated device {updated_device.id} for site {site_id}"
+            f"Failed to cache updated device {updated_device.device_id} for site {site_id}"
         )
         raise RuntimeError("Failed to cache updated device")
     return updated_device
@@ -168,13 +168,13 @@ async def delete_device_cache_db(
     deleted_device = await delete_device(device_id, site_id=site_id)
     if deleted_device is None:
         return None
-    cache_key = f"device:site:{site_id}:device_id:{deleted_device.id}"
+    cache_key = f"device:site:{site_id}:device_id:{deleted_device.device_id}"
     cache_deleted = await cache_service.delete(cache_key)
     if not cache_deleted:
         cache_exists = await cache_service.exists(cache_key)
         if cache_exists:
             logger.error(
-                f"Failed to delete cached device {deleted_device.id} for site {site_id}"
+                f"Failed to delete cached device {deleted_device.device_id} for site {site_id}"
             )
             raise RuntimeError("Failed to delete cached device")
     return deleted_device

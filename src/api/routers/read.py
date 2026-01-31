@@ -152,10 +152,10 @@ async def read_main_sel_751_data():
                     detail=f"Device '{device_name}' not found in database"
                 )
         
-        # Use device's polling configuration
-        poll_address = device.poll_address or settings.main_sel_751_poll_address
-        poll_count = device.poll_count or settings.main_sel_751_poll_count
-        poll_kind = device.poll_kind or settings.main_sel_751_poll_kind
+        # Use main SEL 751 polling configuration
+        poll_address = settings.main_sel_751_poll_address
+        poll_count = settings.main_sel_751_poll_count
+        poll_kind = settings.main_sel_751_poll_kind
         modbus_device_id = settings.modbus_device_id
         
         # Read Modbus registers using device-specific host/port
@@ -164,16 +164,16 @@ async def read_main_sel_751_data():
                 address=poll_address,
                 count=poll_count,
                 server_id=modbus_device_id,
-                host=device.modbus_host,
-                port=device.modbus_port
+                host=device.host,
+                port=device.port
             )
         elif poll_kind == "input":
             data = modbus_utils.read_input_registers(
                 address=poll_address,
                 count=poll_count,
                 server_id=modbus_device_id,
-                host=device.modbus_host,
-                port=device.modbus_port
+                host=device.host,
+                port=device.port
             )
         else:
             raise HTTPException(
@@ -186,11 +186,11 @@ async def read_main_sel_751_data():
         json_data = None
         if device.site_id:
             try:
-                configs = await get_device_configs_for_device(device.id, site_id=device.site_id)
+                configs = await get_device_configs_for_device(device.device_id, site_id=device.site_id)
                 if configs:
                     json_data = {"registers": configs[0].registers}
             except Exception as e:
-                logger.warning(f"Error getting device configs for device {device.id}: {e}")
+                logger.warning(f"Error getting device configs for device {device.device_id}: {e}")
                 json_data = None
         
         response_data = {}
@@ -237,8 +237,8 @@ async def read_main_sel_751_data():
                 if device:
                     status_code, message = translate_modbus_error(
                         e,
-                        host=device.modbus_host,
-                        port=device.modbus_port
+                        host=device.host,
+                        port=device.port
                     )
                 else:
                     status_code, message = translate_modbus_error(e)

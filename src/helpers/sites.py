@@ -38,32 +38,33 @@ async def get_complete_site_data(site_id: int) -> Optional[SiteComprehensiveResp
             return None
 
         device_result = await session.execute(
-            select(Device).where(Device.site_id == site_id).order_by(Device.id)
+            select(Device).where(Device.site_id == site_id).order_by(Device.device_id)
         )
         devices = device_result.scalars().all()
 
-        config_ids = [
-            config_id
-            for device in devices
-            for config_id in (device.configs or [])
-        ]
+        device_ids = [device.device_id for device in devices]
 
-        configs_by_id: dict[str, DeviceConfigResponse] = {}
-        if config_ids:
+        configs_by_device: dict[int, list[DeviceConfigResponse]] = {}
+        if device_ids:
             configs_result = await session.execute(
-                select(DeviceConfig).where(DeviceConfig.id.in_(config_ids))
+                select(DeviceConfig).where(
+                    DeviceConfig.device_id.in_(device_ids),
+                    DeviceConfig.site_id == site_id
+                )
             )
             for config in configs_result.scalars().all():
-                configs_by_id[config.id] = DeviceConfigResponse(
-                    config_id=config.id,
-                    site_id=config.site_id,
-                    device_id=config.device_id,
-                    poll_address=config.poll_address,
-                    poll_count=config.poll_count,
-                    poll_kind=config.poll_kind,
-                    registers=config.registers,
-                    created_at=config.created_at,
-                    updated_at=config.updated_at,
+                configs_by_device.setdefault(config.device_id, []).append(
+                    DeviceConfigResponse(
+                        config_id=config.id,
+                        site_id=config.site_id,
+                        device_id=config.device_id,
+                        poll_address=config.poll_address,
+                        poll_count=config.poll_count,
+                        poll_kind=config.poll_kind,
+                        registers=config.registers,
+                        created_at=config.created_at,
+                        updated_at=config.updated_at,
+                    )
                 )
 
         coordinates = None
@@ -78,26 +79,22 @@ async def get_complete_site_data(site_id: int) -> Optional[SiteComprehensiveResp
 
         device_items: list[DeviceWithConfigs] = []
         for device in devices:
-            device_configs = [
-                configs_by_id[config_id]
-                for config_id in (device.configs or [])
-                if config_id in configs_by_id
-            ]
+            device_configs = configs_by_device.get(device.device_id, [])
             device_items.append(
                 DeviceWithConfigs(
-                    id=device.id,
-                    name=device.name,
-                    modbus_host=device.modbus_host,
-                    modbus_port=device.modbus_port,
-                    modbus_timeout=device.modbus_timeout,
-                    modbus_server_id=device.modbus_server_id,
+                    device_id=device.device_id,
                     site_id=device.site_id,
+                    name=device.name,
+                    type=device.type,
+                    vendor=device.vendor,
+                    model=device.model,
+                    host=device.host,
+                    port=device.port,
+                    timeout=device.timeout,
+                    server_address=device.server_address,
                     description=device.description,
-                    main_type=device.main_type,
-                    sub_type=device.sub_type,
                     poll_enabled=device.poll_enabled if device.poll_enabled is not None else True,
                     read_from_aggregator=device.read_from_aggregator if device.read_from_aggregator is not None else True,
-                    configs=device.configs or [],
                     created_at=device.created_at,
                     updated_at=device.updated_at,
                     device_configs=device_configs,

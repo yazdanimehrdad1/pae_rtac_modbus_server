@@ -56,7 +56,7 @@ async def insert_register_reading(
         async with get_session() as session:
             # Validate that device exists
             device_result = await session.execute(
-                select(Device).where(Device.id == device_id)
+                select(Device).where(Device.device_id == device_id)
             )
             device = device_result.scalar_one_or_none()
             if device is None:
@@ -140,9 +140,9 @@ async def insert_register_readings_batch(
             # Validate all devices exist and get unique device_ids
             device_ids = {reading['device_id'] for reading in readings}
             devices_result = await session.execute(
-                select(Device).where(Device.id.in_(device_ids))
+                select(Device).where(Device.device_id.in_(device_ids))
             )
-            valid_devices = {device.id for device in devices_result.scalars().all()}
+            valid_devices = {device.device_id for device in devices_result.scalars().all()}
             
             # Check if all device_ids are valid
             invalid_devices = device_ids - valid_devices
@@ -233,7 +233,7 @@ async def get_all_readings(
     async with get_session() as session:
         if device_id is not None:
             device_result = await session.execute(
-                select(Device).where(Device.id == device_id)
+                select(Device).where(Device.device_id == device_id)
             )
             device = device_result.scalar_one_or_none()
             if device is None:
@@ -302,7 +302,7 @@ async def get_latest_reading(
     """
     async with get_session() as session:
         device_result = await session.execute(
-            select(Device).where(Device.id == device_id)
+            select(Device).where(Device.device_id == device_id)
         )
         device = device_result.scalar_one_or_none()
         if device is None:
@@ -354,7 +354,7 @@ async def get_latest_readings_for_device(
     """
     async with get_session() as session:
         device_result = await session.execute(
-            select(Device).where(Device.id == device_id)
+            select(Device).where(Device.device_id == device_id)
         )
         device = device_result.scalar_one_or_none()
         if device is None:

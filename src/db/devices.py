@@ -5,7 +5,7 @@ Handles CRUD operations for devices table.
 Uses SQLAlchemy 2.0+ async ORM.
 """
 
-from typing import Optional, Dict, Any
+from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
@@ -50,29 +50,29 @@ async def create_device(device: DeviceCreate, site_id: int) -> DeviceResponse:
             
             new_device = Device(
                 name=device.name,
-                modbus_host=device.modbus_host,
-                modbus_port=device.modbus_port,
-                modbus_timeout=device.modbus_timeout,
-                modbus_server_id=device.modbus_server_id,
+                type=device.type,
+                vendor=device.vendor,
+                model=device.model,
+                host=device.host,
+                port=device.port,
+                timeout=device.timeout,
+                server_address=device.server_address,
                 description=device.description,
-                main_type=device.main_type,
-                sub_type=device.sub_type,
                 poll_enabled=device.poll_enabled,
                 read_from_aggregator=device.read_from_aggregator,
-                configs=device.configs,
                 site_id=site_id
             )
             
             # Add to session and flush to get the ID
             session.add(new_device)
             await session.flush()
-            device_primary_key = new_device.id
+            device_primary_key = new_device.device_id
             logger.info(f"Created device: {device.name} (ID: {device_primary_key})")
             
             await session.commit()
             
             result = await session.execute(
-                select(Device).where(Device.id == device_primary_key)
+                select(Device).where(Device.device_id == device_primary_key)
             )
             created_device = result.scalar_one_or_none()
             
@@ -80,19 +80,19 @@ async def create_device(device: DeviceCreate, site_id: int) -> DeviceResponse:
                 raise RuntimeError(f"Device with id {device_primary_key} not found after creation")
             
             return DeviceResponse(
-                id=created_device.id,
-                name=created_device.name,
-                modbus_host=created_device.modbus_host,
-                modbus_port=created_device.modbus_port,
-                modbus_timeout=created_device.modbus_timeout,
-                modbus_server_id=created_device.modbus_server_id,
+                device_id=created_device.device_id,
                 site_id=created_device.site_id,
+                name=created_device.name,
+                type=created_device.type,
+                vendor=created_device.vendor,
+                model=created_device.model,
+                host=created_device.host,
+                port=created_device.port,
+                timeout=created_device.timeout,
+                server_address=created_device.server_address,
                 description=created_device.description,
-                main_type=created_device.main_type,
-                sub_type=created_device.sub_type,
                 poll_enabled=created_device.poll_enabled if created_device.poll_enabled is not None else True,
                 read_from_aggregator=created_device.read_from_aggregator if created_device.read_from_aggregator is not None else True,
-                configs=created_device.configs or [],
                 created_at=created_device.created_at,
                 updated_at=created_device.updated_at
             )
@@ -123,7 +123,7 @@ async def get_all_devices(site_id: int) -> list[DeviceListItem]:
     session_factory = get_async_session_factory()
     async with session_factory() as session:
         result = await session.execute(
-            select(Device).where(Device.site_id == site_id).order_by(Device.id)
+            select(Device).where(Device.site_id == site_id).order_by(Device.device_id)
         )
         devices = result.scalars().all()
         
@@ -132,19 +132,19 @@ async def get_all_devices(site_id: int) -> list[DeviceListItem]:
         for device in devices:
             device_list.append(
                 DeviceListItem(
-                    id=device.id,
-                    name=device.name,
-                    modbus_host=device.modbus_host,
-                    modbus_port=device.modbus_port,
-                    modbus_timeout=device.modbus_timeout,
-                    modbus_server_id=device.modbus_server_id,
+                    device_id=device.device_id,
                     site_id=device.site_id,
+                    name=device.name,
+                    type=device.type,
+                    vendor=device.vendor,
+                    model=device.model,
+                    host=device.host,
+                    port=device.port,
+                    timeout=device.timeout,
+                    server_address=device.server_address,
                     description=device.description,
-                    main_type=device.main_type,
-                    sub_type=device.sub_type,
                     poll_enabled=device.poll_enabled if device.poll_enabled is not None else True,
                     read_from_aggregator=device.read_from_aggregator if device.read_from_aggregator is not None else True,
-                    configs=device.configs or [],
                     created_at=device.created_at,
                     updated_at=device.updated_at
                 )
@@ -165,7 +165,7 @@ async def get_device_by_id(device_id: int, site_id: int) -> Optional[DeviceRespo
     session_factory = get_async_session_factory()
     async with session_factory() as session:
         result = await session.execute(
-            select(Device).where(Device.id == device_id, Device.site_id == site_id)
+            select(Device).where(Device.device_id == device_id, Device.site_id == site_id)
         )
         device = result.scalar_one_or_none()
         
@@ -173,19 +173,19 @@ async def get_device_by_id(device_id: int, site_id: int) -> Optional[DeviceRespo
             return None
         
         return DeviceResponse(
-            id=device.id,
-            name=device.name,
-            modbus_host=device.modbus_host,
-            modbus_port=device.modbus_port,
-            modbus_timeout=device.modbus_timeout,
-            modbus_server_id=device.modbus_server_id,
+            device_id=device.device_id,
             site_id=device.site_id,
+            name=device.name,
+            type=device.type,
+            vendor=device.vendor,
+            model=device.model,
+            host=device.host,
+            port=device.port,
+            timeout=device.timeout,
+            server_address=device.server_address,
             description=device.description,
-            main_type=device.main_type,
-            sub_type=device.sub_type,
             poll_enabled=device.poll_enabled if device.poll_enabled is not None else True,
             read_from_aggregator=device.read_from_aggregator if device.read_from_aggregator is not None else True,
-            configs=device.configs or [],
             created_at=device.created_at,
             updated_at=device.updated_at
         )
@@ -196,25 +196,25 @@ async def get_device_by_id_internal(device_id: int) -> Optional[DeviceResponse]:
     session_factory = get_async_session_factory()
     async with session_factory() as session:
         result = await session.execute(
-            select(Device).where(Device.id == device_id)
+            select(Device).where(Device.device_id == device_id)
         )
         device = result.scalar_one_or_none()
         if device is None:
             return None
         return DeviceResponse(
-            id=device.id,
-            name=device.name,
-            modbus_host=device.modbus_host,
-            modbus_port=device.modbus_port,
-            modbus_timeout=device.modbus_timeout,
-            modbus_server_id=device.modbus_server_id,
+            device_id=device.device_id,
             site_id=device.site_id,
+            name=device.name,
+            type=device.type,
+            vendor=device.vendor,
+            model=device.model,
+            host=device.host,
+            port=device.port,
+            timeout=device.timeout,
+            server_address=device.server_address,
             description=device.description,
-            main_type=device.main_type,
-            sub_type=device.sub_type,
             poll_enabled=device.poll_enabled if device.poll_enabled is not None else True,
             read_from_aggregator=device.read_from_aggregator if device.read_from_aggregator is not None else True,
-            configs=device.configs or [],
             created_at=device.created_at,
             updated_at=device.updated_at
         )
@@ -233,7 +233,7 @@ async def get_device_id_by_name(device_name: str) -> Optional[int]:
     session_factory = get_async_session_factory()
     async with session_factory() as session:
         result = await session.execute(
-            select(Device.id).where(Device.name == device_name)
+            select(Device.device_id).where(Device.name == device_name)
         )
         device_id = result.scalar_one_or_none()
         
@@ -264,7 +264,7 @@ async def update_device(device_id: int, device_update: DeviceUpdate, site_id: in
         try:
             # Get existing device by primary key
             result = await session.execute(
-                select(Device).where(Device.id == device_id, Device.site_id == site_id)
+                select(Device).where(Device.device_id == device_id, Device.site_id == site_id)
             )
             device = result.scalar_one_or_none()
             
@@ -274,26 +274,26 @@ async def update_device(device_id: int, device_update: DeviceUpdate, site_id: in
             # Update only provided fields
             if device_update.name is not None:
                 device.name = device_update.name
-            if device_update.modbus_host is not None:
-                device.modbus_host = device_update.modbus_host
-            if device_update.modbus_port is not None:
-                device.modbus_port = device_update.modbus_port
-            if device_update.modbus_timeout is not None:
-                device.modbus_timeout = device_update.modbus_timeout
-            if device_update.modbus_server_id is not None:
-                device.modbus_server_id = device_update.modbus_server_id
+            if device_update.type is not None:
+                device.type = device_update.type
+            if device_update.vendor is not None:
+                device.vendor = device_update.vendor
+            if device_update.model is not None:
+                device.model = device_update.model
+            if device_update.host is not None:
+                device.host = device_update.host
+            if device_update.port is not None:
+                device.port = device_update.port
+            if device_update.timeout is not None:
+                device.timeout = device_update.timeout
+            if device_update.server_address is not None:
+                device.server_address = device_update.server_address
             if device_update.description is not None:
                 device.description = device_update.description
-            if device_update.main_type is not None:
-                device.main_type = device_update.main_type
-            if device_update.sub_type is not None:
-                device.sub_type = device_update.sub_type
             if device_update.poll_enabled is not None:
                 device.poll_enabled = device_update.poll_enabled
             if device_update.read_from_aggregator is not None:
                 device.read_from_aggregator = device_update.read_from_aggregator
-            if device_update.configs is not None:
-                device.configs = device_update.configs
             
             # updated_at is automatically updated by the ORM (onupdate=func.now())
             
@@ -303,22 +303,22 @@ async def update_device(device_id: int, device_update: DeviceUpdate, site_id: in
             # Refresh to get the latest data (including updated_at)
             await session.refresh(device)
             
-            logger.info(f"Updated device with id {device.id}")
+            logger.info(f"Updated device with id {device.device_id}")
             
             return DeviceResponse(
-                id=device.id,
-                name=device.name,
-                modbus_host=device.modbus_host,
-                modbus_port=device.modbus_port,
-                modbus_timeout=device.modbus_timeout,
-                modbus_server_id=device.modbus_server_id,
+                device_id=device.device_id,
                 site_id=device.site_id,
+                name=device.name,
+                type=device.type,
+                vendor=device.vendor,
+                model=device.model,
+                host=device.host,
+                port=device.port,
+                timeout=device.timeout,
+                server_address=device.server_address,
                 description=device.description,
-                main_type=device.main_type,
-                sub_type=device.sub_type,
                 poll_enabled=device.poll_enabled if device.poll_enabled is not None else True,
                 read_from_aggregator=device.read_from_aggregator if device.read_from_aggregator is not None else True,
-                configs=device.configs or [],
                 created_at=device.created_at,
                 updated_at=device.updated_at
             )
@@ -355,7 +355,7 @@ async def delete_device(device_id: int, site_id: int) -> Optional[DeviceResponse
     async with session_factory() as session:
         try:
             result = await session.execute(
-                select(Device).where(Device.id == device_id, Device.site_id == site_id)
+                select(Device).where(Device.device_id == device_id, Device.site_id == site_id)
             )
             device = result.scalar_one_or_none()
             
@@ -374,25 +374,25 @@ async def delete_device(device_id: int, site_id: int) -> Optional[DeviceResponse
                 )
             
             device_response = DeviceResponse(
-                id=device.id,
-                name=device.name,
-                modbus_host=device.modbus_host,
-                modbus_port=device.modbus_port,
-                modbus_timeout=device.modbus_timeout,
-                modbus_server_id=device.modbus_server_id,
+                device_id=device.device_id,
                 site_id=device.site_id,
+                name=device.name,
+                type=device.type,
+                vendor=device.vendor,
+                model=device.model,
+                host=device.host,
+                port=device.port,
+                timeout=device.timeout,
+                server_address=device.server_address,
                 description=device.description,
-                main_type=device.main_type,
-                sub_type=device.sub_type,
                 poll_enabled=device.poll_enabled if device.poll_enabled is not None else True,
                 read_from_aggregator=device.read_from_aggregator if device.read_from_aggregator is not None else True,
-                configs=device.configs or [],
                 created_at=device.created_at,
                 updated_at=device.updated_at
             )
             
             device_name_to_delete = device.name
-            primary_key = device.id
+            primary_key = device.device_id
             
             await session.delete(device)
             await session.flush()
@@ -412,12 +412,12 @@ async def delete_device_by_id(id: int) -> Optional[DeviceResponse]:
     session_factory = get_async_session_factory()
     async with session_factory() as session:
         result = await session.execute(
-            select(Device).where(Device.id == id)
+            select(Device).where(Device.device_id == id)
         )
         device = result.scalar_one_or_none()
         if device is None:
             return None
-        return await delete_device(device.id, site_id=device.site_id)
+        return await delete_device(device.device_id, site_id=device.site_id)
 
 
 
