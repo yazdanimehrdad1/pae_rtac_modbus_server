@@ -15,15 +15,15 @@ class Base(DeclarativeBase):
     pass
 
 
-class RegisterConfig(TypedDict, total=False):
-    register_address: int
-    register_name: str
-    data_type: str
-    size: int
-    scale_factor: float
-    unit: str
-    bitfield_detail: Dict[str, str]
-    enum_detail: Dict[str, str]
+class ConfigPointDefinition(TypedDict, total=False):
+    point_address: int
+    point_name: str
+    point_data_type: str
+    point_size: int
+    point_scale_factor: float
+    point_unit: str
+    point_bitfield_detail: Dict[str, str]
+    point_enum_detail: Dict[str, str]
 
 
 class Site(Base):
@@ -215,7 +215,7 @@ class Device(Base):
         comment="Whether this device reads data from the edge aggregator"
     )
     
-    # configs moved to device_configs table
+    # configs stored in configs table
     
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -252,18 +252,18 @@ class Device(Base):
         return f"<Device(device_id={self.device_id}, name='{self.name}', host='{self.host}:{self.port}')>"
 
 
-class DeviceConfig(Base):
+class Config(Base):
     """
-    SQLAlchemy model for the device_configs table.
+    SQLAlchemy model for the configs table.
     
-    Stores device configuration payloads keyed by a config ID string.
+    Stores versioned polling configuration payloads keyed by config ID.
     """
-    __tablename__ = "device_configs"
+    __tablename__ = "configs"
     
-    id: Mapped[str] = mapped_column(
+    config_id: Mapped[str] = mapped_column(
         String(255),
         primary_key=True,
-        comment="Device config ID (e.g., siteID-deviceID-1)"
+        comment="Config ID (e.g., siteID-deviceID-1)"
     )
     
     site_id: Mapped[int] = mapped_column(
@@ -274,14 +274,21 @@ class DeviceConfig(Base):
     
     device_id: Mapped[int] = mapped_column(
         Integer,
+        ForeignKey("devices.device_id", ondelete="CASCADE"),
         nullable=False,
         comment="Device ID (database primary key)"
     )
     
-    poll_address: Mapped[int] = mapped_column(
+    poll_kind: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        comment="Register type: holding, input, or coils"
+    )
+    
+    poll_start_index: Mapped[int] = mapped_column(
         Integer,
         nullable=False,
-        comment="Start address for polling Modbus registers"
+        comment="Start index for polling Modbus registers"
     )
     
     poll_count: Mapped[int] = mapped_column(
@@ -290,16 +297,23 @@ class DeviceConfig(Base):
         comment="Number of registers to read during polling"
     )
     
-    poll_kind: Mapped[str] = mapped_column(
-        String(20),
-        nullable=False,
-        comment="Register type: holding, input, coils, or discretes"
-    )
-    
-    registers: Mapped[list[RegisterConfig]] = mapped_column(
+    points: Mapped[list[ConfigPointDefinition]] = mapped_column(
         JSON,
         nullable=False,
-        comment="Register definitions"
+        comment="Point definitions"
+    )
+    
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        comment="Whether this config is active"
+    )
+    
+    created_by: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        comment="Config creator identifier"
     )
     
     created_at: Mapped[datetime] = mapped_column(
@@ -318,7 +332,7 @@ class DeviceConfig(Base):
     )
     
     def __repr__(self) -> str:
-        return f"<DeviceConfig(id='{self.id}')>"
+        return f"<Config(config_id='{self.config_id}')>"
 
 
 class RegisterReadingRaw(Base):

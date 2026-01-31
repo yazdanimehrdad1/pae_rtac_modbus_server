@@ -7,13 +7,13 @@ from sqlalchemy import select
 from db.connection import get_async_session_factory
 from logger import get_logger
 from schemas.db_models.models import (
+    ConfigResponse,
     Coordinates,
-    DeviceConfigResponse,
     DeviceWithConfigs,
     Location,
     SiteComprehensiveResponse,
 )
-from schemas.db_models.orm_models import Device, DeviceConfig, Site
+from schemas.db_models.orm_models import Config, Device, Site
 
 logger = get_logger(__name__)
 
@@ -44,26 +44,28 @@ async def get_complete_site_data(site_id: int) -> Optional[SiteComprehensiveResp
 
         device_ids = [device.device_id for device in devices]
 
-        configs_by_device: dict[int, list[DeviceConfigResponse]] = {}
+        configs_by_device: dict[int, list[ConfigResponse]] = {}
         if device_ids:
             configs_result = await session.execute(
-                select(DeviceConfig).where(
-                    DeviceConfig.device_id.in_(device_ids),
-                    DeviceConfig.site_id == site_id
+                select(Config).where(
+                    Config.device_id.in_(device_ids),
+                    Config.site_id == site_id
                 )
             )
             for config in configs_result.scalars().all():
                 configs_by_device.setdefault(config.device_id, []).append(
-                    DeviceConfigResponse(
-                        config_id=config.id,
+                    ConfigResponse(
+                        config_id=config.config_id,
                         site_id=config.site_id,
                         device_id=config.device_id,
-                        poll_address=config.poll_address,
-                        poll_count=config.poll_count,
                         poll_kind=config.poll_kind,
-                        registers=config.registers,
+                        poll_start_index=config.poll_start_index,
+                        poll_count=config.poll_count,
+                        points=config.points,
+                        is_active=config.is_active,
                         created_at=config.created_at,
                         updated_at=config.updated_at,
+                        created_by=config.created_by,
                     )
                 )
 
@@ -97,7 +99,7 @@ async def get_complete_site_data(site_id: int) -> Optional[SiteComprehensiveResp
                     read_from_aggregator=device.read_from_aggregator if device.read_from_aggregator is not None else True,
                     created_at=device.created_at,
                     updated_at=device.updated_at,
-                    device_configs=device_configs,
+                    configs=device_configs,
                 )
             )
 

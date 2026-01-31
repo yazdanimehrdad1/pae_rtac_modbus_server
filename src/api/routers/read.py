@@ -11,7 +11,7 @@ from modbus.client import ModbusClient
 from modbus.modbus_utills import ModbusUtils
 from utils.map_csv_to_json import json_to_register_map
 from db.devices import get_device_by_id_internal, get_device_id_by_name_internal
-from db.device_configs import get_device_configs_for_device
+from db.device_configs import get_configs_for_device
 from cache.cache import CacheService
 from config import settings
 from logger import get_logger
@@ -186,9 +186,9 @@ async def read_main_sel_751_data():
         json_data = None
         if device.site_id:
             try:
-                configs = await get_device_configs_for_device(device.device_id, site_id=device.site_id)
+                configs = await get_configs_for_device(device.device_id, site_id=device.site_id)
                 if configs:
-                    json_data = {"registers": configs[0].registers}
+                    json_data = {"registers": configs[0].points}
             except Exception as e:
                 logger.warning(f"Error getting device configs for device {device.device_id}: {e}")
                 json_data = None

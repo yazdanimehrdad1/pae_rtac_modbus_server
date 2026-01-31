@@ -7,8 +7,7 @@ from fastapi import APIRouter, HTTPException, status
 from schemas.db_models.models import (
     DeviceCreate,
     DeviceUpdate,
-    DeviceResponse,
-    DeviceListItem,
+    DeviceWithConfigs,
     DeviceDeleteResponse,
 )
 from db.devices import get_all_devices
@@ -23,7 +22,7 @@ from logger import get_logger
 router = APIRouter(prefix="/devices", tags=["devices"])
 logger = get_logger(__name__)
 
-@router.get("/site/{site_id}/devices", response_model=List[DeviceListItem])
+@router.get("/site/{site_id}/devices", response_model=List[DeviceWithConfigs])
 async def get_all_devices_endpoint(site_id: int):
     """
     Get all devices.
@@ -57,7 +56,7 @@ async def get_all_devices_endpoint(site_id: int):
         )
 
 
-@router.post("/site/{site_id}/devices", response_model=DeviceResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/site/{site_id}/devices", response_model=DeviceWithConfigs, status_code=status.HTTP_201_CREATED)
 async def create_new_device(site_id: int, device: DeviceCreate):
     """
     Create a new Modbus device.
@@ -94,7 +93,7 @@ async def create_new_device(site_id: int, device: DeviceCreate):
         )
 
 
-@router.get("/site/{site_id}/devices/{device_id}", response_model=DeviceResponse)
+@router.get("/site/{site_id}/devices/{device_id}", response_model=DeviceWithConfigs)
 async def get_device(site_id: int, device_id: int):
     """
     Get a device by its database primary key.
@@ -120,7 +119,7 @@ async def get_device(site_id: int, device_id: int):
         )
 
 
-@router.put("/site/{site_id}/devices/{device_id}", response_model=DeviceResponse)
+@router.put("/site/{site_id}/devices/{device_id}", response_model=DeviceWithConfigs)
 async def update_existing_device(site_id: int, device_id: int, device_update: DeviceUpdate):
     """
     Update a Modbus device.

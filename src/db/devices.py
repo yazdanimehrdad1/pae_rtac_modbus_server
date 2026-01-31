@@ -10,14 +10,36 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from db.connection import get_async_session_factory
-from schemas.db_models.models import DeviceCreate, DeviceUpdate, DeviceResponse, DeviceListItem
-from schemas.db_models.orm_models import Device, DeviceConfig, Site
+from schemas.db_models.models import (
+    ConfigResponse,
+    DeviceCreate,
+    DeviceUpdate,
+    DeviceResponse,
+    DeviceWithConfigs,
+)
+from schemas.db_models.orm_models import Config, Device, Site
 from logger import get_logger
 
 logger = get_logger(__name__)
 
 
-async def create_device(device: DeviceCreate, site_id: int) -> DeviceResponse:
+def _config_to_response(config: Config) -> ConfigResponse:
+    return ConfigResponse(
+        config_id=config.config_id,
+        site_id=config.site_id,
+        device_id=config.device_id,
+        poll_kind=config.poll_kind,
+        poll_start_index=config.poll_start_index,
+        poll_count=config.poll_count,
+        points=config.points,
+        is_active=config.is_active,
+        created_at=config.created_at,
+        updated_at=config.updated_at,
+        created_by=config.created_by,
+    )
+
+
+async def create_device(device: DeviceCreate, site_id: int) -> DeviceWithConfigs:
     """
     Create a new device in the database.
     
@@ -79,7 +101,7 @@ async def create_device(device: DeviceCreate, site_id: int) -> DeviceResponse:
             if created_device is None:
                 raise RuntimeError(f"Device with id {device_primary_key} not found after creation")
             
-            return DeviceResponse(
+            return DeviceWithConfigs(
                 device_id=created_device.device_id,
                 site_id=created_device.site_id,
                 name=created_device.name,
@@ -94,7 +116,8 @@ async def create_device(device: DeviceCreate, site_id: int) -> DeviceResponse:
                 poll_enabled=created_device.poll_enabled if created_device.poll_enabled is not None else True,
                 read_from_aggregator=created_device.read_from_aggregator if created_device.read_from_aggregator is not None else True,
                 created_at=created_device.created_at,
-                updated_at=created_device.updated_at
+                updated_at=created_device.updated_at,
+                configs=[],
             )
             
         except IntegrityError as e:
@@ -113,7 +136,7 @@ async def create_device(device: DeviceCreate, site_id: int) -> DeviceResponse:
             raise
 
 
-async def get_all_devices(site_id: int) -> list[DeviceListItem]:
+async def get_all_devices(site_id: int) -> list[DeviceWithConfigs]:
     """
     Get all devices from the database.
     
@@ -127,11 +150,21 @@ async def get_all_devices(site_id: int) -> list[DeviceListItem]:
         )
         devices = result.scalars().all()
         
-        # Convert ORM models to Pydantic models
-        device_list = []
+        device_ids = [device.device_id for device in devices]
+        configs_by_device: dict[int, list[ConfigResponse]] = {}
+        if device_ids:
+            configs_result = await session.execute(
+                select(Config).where(Config.device_id.in_(device_ids))
+            )
+            for config in configs_result.scalars().all():
+                configs_by_device.setdefault(config.device_id, []).append(
+                    _config_to_response(config)
+                )
+
+        device_list: list[DeviceWithConfigs] = []
         for device in devices:
             device_list.append(
-                DeviceListItem(
+                DeviceWithConfigs(
                     device_id=device.device_id,
                     site_id=device.site_id,
                     name=device.name,
@@ -146,13 +179,14 @@ async def get_all_devices(site_id: int) -> list[DeviceListItem]:
                     poll_enabled=device.poll_enabled if device.poll_enabled is not None else True,
                     read_from_aggregator=device.read_from_aggregator if device.read_from_aggregator is not None else True,
                     created_at=device.created_at,
-                    updated_at=device.updated_at
+                    updated_at=device.updated_at,
+                    configs=configs_by_device.get(device.device_id, []),
                 )
             )
         return device_list
 
 
-async def get_device_by_id(device_id: int, site_id: int) -> Optional[DeviceResponse]:
+async def get_device_by_id(device_id: int, site_id: int) -> Optional[DeviceWithConfigs]:
     """
     Get a device by primary key ID.
     
@@ -172,7 +206,15 @@ async def get_device_by_id(device_id: int, site_id: int) -> Optional[DeviceRespo
         if device is None:
             return None
         
-        return DeviceResponse(
+        configs_result = await session.execute(
+            select(Config).where(Config.device_id == device.device_id)
+        )
+        device_configs = [
+            _config_to_response(config)
+            for config in configs_result.scalars().all()
+        ]
+
+        return DeviceWithConfigs(
             device_id=device.device_id,
             site_id=device.site_id,
             name=device.name,
@@ -187,11 +229,12 @@ async def get_device_by_id(device_id: int, site_id: int) -> Optional[DeviceRespo
             poll_enabled=device.poll_enabled if device.poll_enabled is not None else True,
             read_from_aggregator=device.read_from_aggregator if device.read_from_aggregator is not None else True,
             created_at=device.created_at,
-            updated_at=device.updated_at
+            updated_at=device.updated_at,
+            configs=device_configs,
         )
 
 
-async def get_device_by_id_internal(device_id: int) -> Optional[DeviceResponse]:
+async def get_device_by_id_internal(device_id: int) -> Optional[DeviceWithConfigs]:
     """Backward-compatible helper to get a device by ID."""
     session_factory = get_async_session_factory()
     async with session_factory() as session:
@@ -201,7 +244,15 @@ async def get_device_by_id_internal(device_id: int) -> Optional[DeviceResponse]:
         device = result.scalar_one_or_none()
         if device is None:
             return None
-        return DeviceResponse(
+        configs_result = await session.execute(
+            select(Config).where(Config.device_id == device.device_id)
+        )
+        device_configs = [
+            _config_to_response(config)
+            for config in configs_result.scalars().all()
+        ]
+
+        return DeviceWithConfigs(
             device_id=device.device_id,
             site_id=device.site_id,
             name=device.name,
@@ -216,7 +267,8 @@ async def get_device_by_id_internal(device_id: int) -> Optional[DeviceResponse]:
             poll_enabled=device.poll_enabled if device.poll_enabled is not None else True,
             read_from_aggregator=device.read_from_aggregator if device.read_from_aggregator is not None else True,
             created_at=device.created_at,
-            updated_at=device.updated_at
+            updated_at=device.updated_at,
+            configs=device_configs,
         )
 
 
@@ -245,7 +297,7 @@ async def get_device_id_by_name_internal(device_name: str) -> Optional[int]:
     return await get_device_id_by_name(device_name)
 
 
-async def update_device(device_id: int, device_update: DeviceUpdate, site_id: int) -> DeviceResponse:
+async def update_device(device_id: int, device_update: DeviceUpdate, site_id: int) -> DeviceWithConfigs:
     """
     Update a device in the database.
     
@@ -305,7 +357,15 @@ async def update_device(device_id: int, device_update: DeviceUpdate, site_id: in
             
             logger.info(f"Updated device with id {device.device_id}")
             
-            return DeviceResponse(
+            configs_result = await session.execute(
+                select(Config).where(Config.device_id == device.device_id)
+            )
+            device_configs = [
+                _config_to_response(config)
+                for config in configs_result.scalars().all()
+            ]
+
+            return DeviceWithConfigs(
                 device_id=device.device_id,
                 site_id=device.site_id,
                 name=device.name,
@@ -320,7 +380,8 @@ async def update_device(device_id: int, device_update: DeviceUpdate, site_id: in
                 poll_enabled=device.poll_enabled if device.poll_enabled is not None else True,
                 read_from_aggregator=device.read_from_aggregator if device.read_from_aggregator is not None else True,
                 created_at=device.created_at,
-                updated_at=device.updated_at
+                updated_at=device.updated_at,
+                configs=device_configs,
             )
             
         except IntegrityError as e:
@@ -364,13 +425,13 @@ async def delete_device(device_id: int, site_id: int) -> Optional[DeviceResponse
                 return None
 
             config_result = await session.execute(
-                select(DeviceConfig.id).where(DeviceConfig.device_id == device_id)
+                select(Config.config_id).where(Config.device_id == device_id)
             )
             config_ids = [row[0] for row in config_result.all()]
             if config_ids:
                 joined_ids = ", ".join(str(config_id) for config_id in config_ids)
                 raise ValueError(
-                    f"Device with id {device_id} has associated device configs: {joined_ids}"
+                    f"Device with id {device_id} has associated configs: {joined_ids}"
                 )
             
             device_response = DeviceResponse(

@@ -9,7 +9,6 @@ from modbus.client import ModbusClient
 from modbus.modbus_utills import ModbusUtils
 from config import settings
 from logger import get_logger
-from db.device_configs import get_device_config
 from utils.modbus_mapper import map_modbus_data_to_registers, MappedRegisterData
 from helpers.sites import get_complete_site_data
 from db.sites import get_site_by_id, get_all_sites
@@ -206,21 +205,21 @@ async def poll_single_device(site_name: str, device: DeviceWithConfigs) -> PollR
         last_polling_config = None
 
 
-        for config in device.device_configs:
+        for config in device.configs:
             polling_config = {
-                "poll_address": config.poll_address,
+                "poll_address": config.poll_start_index,
                 "poll_count": config.poll_count,
                 "poll_kind": config.poll_kind, 
             }
-            registers = config.registers or []
+            registers = config.points or []
             logger.info(
-                f"Loaded {len(registers)} register points for device '{device_name}' "
+                f"Loaded {len(registers)} points for device '{device_name}' "
                 f"(config_id='{config.config_id}')"
             )
 
             if not registers:
                 logger.warning(
-                    f"No register points to poll for device '{device_name}' (config_id='{config.config_id}')"
+                    f"No points to poll for device '{device_name}' (config_id='{config.config_id}')"
                 )
                 continue
 
@@ -267,7 +266,7 @@ async def poll_single_device(site_name: str, device: DeviceWithConfigs) -> PollR
 
 
         if not combined_mapped_registers_list_all_configs_per_device or last_polling_config is None:
-            result["error"] = f"No device configs were successfully polled for '{device_name}'"
+            result["error"] = f"No configs were successfully polled for '{device_name}'"
             logger.warning(result["error"])
             return result
 

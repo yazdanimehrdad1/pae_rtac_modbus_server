@@ -361,21 +361,29 @@ def map_modbus_data_to_registers(
 
     #TODO: see if default is necessary, given that we are setting to default at the time of creating
     for point in registers:
-        point_name = _get_attr(point, "register_name") 
-        point_address = _get_attr(point, "register_address")
-        point_size = _get_attr(point, "size", 1)
-        point_data_type = _get_attr(point, "data_type", "uint16") 
-        point_scale_factor = _get_attr(point, "scale_factor", 1.0)
-        point_unit = _get_attr(point, "unit", ""),
+        point_name = _get_attr(point, "register_name") or _get_attr(point, "point_name")
+        point_address = _get_attr(point, "register_address") or _get_attr(point, "point_address")
+        point_size = _get_attr(point, "size", None) or _get_attr(point, "point_size", 1)
+        point_data_type = _get_attr(point, "data_type", None) or _get_attr(point, "point_data_type", "uint16")
+        point_scale_factor = _get_attr(point, "scale_factor", None)
+        if point_scale_factor is None:
+            point_scale_factor = _get_attr(point, "point_scale_factor", 1.0)
+        point_unit = _get_attr(point, "unit", None)
+        if point_unit is None:
+            point_unit = _get_attr(point, "point_unit", "")
         point_bitfield_detail = _get_attr(point, "bitfield_detail", None)
+        if point_bitfield_detail is None:
+            point_bitfield_detail = _get_attr(point, "point_bitfield_detail", None)
         point_enum_detail = _get_attr(point, "enum_detail", None)
+        if point_enum_detail is None:
+            point_enum_detail = _get_attr(point, "point_enum_detail", None)
 
         
         #TODO: see if this is necessary, or maybe aggregate validation in a separate function
         # Skip points with missing required fields
         if point_address is None:
             logger.warning(
-                f"Skipping point '{point_name}': missing required field 'register_address'"
+                f"Skipping point '{point_name}': missing required field 'point_address'"
             )
             continue
         if point_size is None or point_size < 1:

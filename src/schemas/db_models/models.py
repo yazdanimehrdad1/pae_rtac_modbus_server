@@ -1,7 +1,7 @@
 """Database models for TimescaleDB hypertables."""
 
 from datetime import datetime
-from typing import Optional, Dict, Any, List, Literal
+from typing import Optional, Dict, List, Literal
 from pydantic import BaseModel, Field
 
 # TODO: Define SQLAlchemy models:
@@ -78,10 +78,10 @@ class DeviceDeleteResponse(BaseModel):
 
 
 class DeviceWithConfigs(DeviceListItem):
-    """Device response with expanded device configs."""
-    device_configs: List["DeviceConfigResponse"] = Field(
+    """Device response with expanded configs."""
+    configs: List["ConfigResponse"] = Field(
         default_factory=list,
-        description="Expanded device configs"
+        description="Expanded configs"
     )
 
 
@@ -170,71 +170,73 @@ class SiteComprehensiveResponse(BaseModel):
     }
 
 
-class DeviceConfigRegister(BaseModel):
-    """Single register definition in a device config."""
-    register_address: int = Field(..., ge=0, le=65535, description="Modbus register address")
-    register_name: str = Field(..., description="Human-readable name/label for this register")
-    data_type: Literal["int16", "uint16", "int32", "uint32", "float32", "int64", "uint64", "float64", "bool"] = Field(
-        ...,
-        description="Data type interpretation"
-    )
-    size: int = Field(..., ge=1, description="Number of registers/bits")
-    scale_factor: Optional[float] = Field(default=None, description="Scale factor to apply to raw value")
-    unit: Optional[str] = Field(default=None, description="Physical unit (e.g., 'V', 'A', 'kW')")
-    bitfield_detail: Optional[Dict[str, str]] = Field(
+class ConfigPoint(BaseModel):
+    """Single point definition in a config."""
+    point_name: str = Field(..., description="Human-readable point name/label")
+    point_address: int = Field(..., ge=0, le=65535, description="Modbus point address")
+    point_size: int = Field(..., ge=1, description="Number of registers/bits")
+    point_data_type: str = Field(..., description="Data type interpretation")
+    point_scale_factor: Optional[float] = Field(default=None, description="Scale factor to apply to raw value")
+    point_unit: Optional[str] = Field(default=None, description="Physical unit (e.g., 'V', 'A', 'kW')")
+    point_bitfield_detail: Optional[Dict[str, str]] = Field(
         default=None,
         description="Bitfield detail mapping (optional)"
     )
-    enum_detail: Optional[Dict[str, str]] = Field(
+    point_enum_detail: Optional[Dict[str, str]] = Field(
         default=None,
         description="Enum detail mapping (optional)"
     )
 
 
-class DeviceConfigData(BaseModel):
+class ConfigCreate(BaseModel):
     """Config payload for a device."""
-    site_id: int = Field(..., alias="Site_id", description="Site ID (4-digit number)")
+    site_id: int = Field(..., description="Site ID (4-digit number)")
     device_id: int = Field(..., description="Device ID (database primary key)")
-    poll_address: int = Field(..., ge=0, le=65535, description="Start address for polling Modbus registers")
+    poll_kind: Literal["holding", "input", "coils"] = Field(..., description="Register type")
+    poll_start_index: int = Field(..., ge=0, le=65535, description="Start index for polling")
     poll_count: int = Field(..., ge=1, description="Number of registers to read during polling")
-    poll_kind: Literal["holding", "input", "coils", "discretes"] = Field(..., description="Register type")
-    registers: List[DeviceConfigRegister] = Field(..., min_length=1, description="Register definitions")
-
-    model_config = {
-        "populate_by_name": True,
-    }
+    points: List[ConfigPoint] = Field(..., min_length=1, description="Point definitions")
+    is_active: bool = Field(default=True, description="Whether the config is active")
+    created_by: str = Field(..., min_length=1, max_length=255, description="Config creator identifier")
 
 
 
 
-class DeviceConfigResponse(BaseModel):
-    """Response model for device config."""
-    config_id: str = Field(..., alias="config_ID", description="Device config ID")
-    site_id: int = Field(..., alias="Site_id", description="Site ID (4-digit number)")
+class ConfigUpdate(BaseModel):
+    """Update payload for a config."""
+    poll_kind: Optional[Literal["holding", "input", "coils"]] = Field(None, description="Register type")
+    poll_start_index: Optional[int] = Field(None, ge=0, le=65535, description="Start index for polling")
+    poll_count: Optional[int] = Field(None, ge=1, description="Number of registers to read during polling")
+    points: Optional[List[ConfigPoint]] = Field(None, min_length=1, description="Point definitions")
+    is_active: Optional[bool] = Field(None, description="Whether the config is active")
+    created_by: Optional[str] = Field(None, min_length=1, max_length=255, description="Config creator identifier")
+
+
+class ConfigResponse(BaseModel):
+    """Response model for config."""
+    config_id: str = Field(..., description="Config ID")
+    site_id: int = Field(..., description="Site ID (4-digit number)")
     device_id: int = Field(..., description="Device ID (database primary key)")
-    poll_address: int = Field(..., ge=0, le=65535, description="Start address for polling Modbus registers")
+    poll_kind: Literal["holding", "input", "coils"] = Field(..., description="Register type")
+    poll_start_index: int = Field(..., ge=0, le=65535, description="Start index for polling")
     poll_count: int = Field(..., ge=1, description="Number of registers to read during polling")
-    poll_kind: Literal["holding", "input", "coils", "discretes"] = Field(..., description="Register type")
-    registers: List[DeviceConfigRegister] = Field(..., min_length=1, description="Register definitions")
+    points: List[ConfigPoint] = Field(..., min_length=1, description="Point definitions")
+    is_active: bool = Field(..., description="Whether the config is active")
     created_at: datetime = Field(..., description="Timestamp when config was created")
     updated_at: datetime = Field(..., description="Timestamp when config was last updated")
-    warnings: Optional[Dict[str, Any]] = Field(
-        default=None,
-        description="Optional warnings about the config payload"
-    )
+    created_by: str = Field(..., description="Config creator identifier")
 
     model_config = {
-        "populate_by_name": True,
+        "from_attributes": True,
     }
 
 
-class DeviceConfigDeleteResponse(BaseModel):
-    """Response model for a deleted device config."""
-    device_config_id: str = Field(..., description="Deleted device config ID")
+class ConfigDeleteResponse(BaseModel):
+    """Response model for a deleted config."""
+    config_id: str = Field(..., description="Deleted config ID")
 
 
 __all__ = ["DeviceCreate", "DeviceUpdate", "DeviceListItem", "DeviceResponse",
            "DeviceDeleteResponse", "DeviceWithConfigs", "SiteComprehensiveResponse",
            "Coordinates", "Location", "SiteCreate", "SiteUpdate", "SiteResponse", "SiteDeleteResponse",
-           "DeviceConfigRegister", "DeviceConfigData",
-           "DeviceConfigUpdate", "DeviceConfigResponse", "DeviceConfigDeleteResponse"]
+           "ConfigPoint", "ConfigCreate", "ConfigUpdate", "ConfigResponse", "ConfigDeleteResponse"]

@@ -5,13 +5,13 @@ from fastapi import HTTPException, status
 from cache.cache import CacheService
 from db.devices import create_device, delete_device, get_all_devices, get_device_by_id, update_device
 from logger import get_logger
-from schemas.db_models.models import DeviceCreate, DeviceListItem, DeviceUpdate, DeviceResponse
+from schemas.db_models.models import DeviceCreate, DeviceUpdate, DeviceWithConfigs
 
 logger = get_logger(__name__)
 cache_service = CacheService()
 
 
-async def get_devices_cache_db(site_id: int) -> list[DeviceListItem]:
+async def get_devices_cache_db(site_id: int) -> list[DeviceWithConfigs]:
     """
     Get all devices for a site with cache-first lookup.
     
@@ -26,7 +26,7 @@ async def get_devices_cache_db(site_id: int) -> list[DeviceListItem]:
     
     if cached_devices is not None:
         logger.debug(f"Devices for site {site_id} found in cache")
-        return [DeviceListItem(**item) for item in cached_devices]
+        return [DeviceWithConfigs(**item) for item in cached_devices]
     
     logger.debug(f"Devices for site {site_id} not in cache, querying database")
     devices = await get_all_devices(site_id)
@@ -42,7 +42,7 @@ async def get_devices_cache_db(site_id: int) -> list[DeviceListItem]:
     return devices
 
 
-async def get_device_cache_db(site_id: int, device_id: int) -> DeviceResponse:
+async def get_device_cache_db(site_id: int, device_id: int) -> DeviceWithConfigs:
     """
     Get device by ID with cache-first lookup.
     
@@ -51,7 +51,7 @@ async def get_device_cache_db(site_id: int, device_id: int) -> DeviceResponse:
         device_id: Device ID (database primary key)
         
     Returns:
-        DeviceResponse if found
+        DeviceWithConfigs if found
         
     Raises:
         HTTPException: If device not found
@@ -61,7 +61,9 @@ async def get_device_cache_db(site_id: int, device_id: int) -> DeviceResponse:
     
     if cached_device is not None:
         logger.debug(f"Device ID {device_id} found in cache")
-        return DeviceResponse(**cached_device)
+        cached_response = DeviceWithConfigs(**cached_device)
+        if cached_response.configs:
+            return cached_response
     
     logger.debug(f"Device ID {device_id} not in cache, querying database")
     try:
@@ -87,7 +89,7 @@ async def get_device_cache_db(site_id: int, device_id: int) -> DeviceResponse:
         )
 
 
-async def create_device_cache_db(device: DeviceCreate, site_id: int) -> DeviceResponse:
+async def create_device_cache_db(device: DeviceCreate, site_id: int) -> DeviceWithConfigs:
     """
     Create a new device in the database and cache.
     
@@ -119,7 +121,7 @@ async def update_device_cache_db(
     device_id: int,
     device_update: DeviceUpdate,
     site_id: int
-) -> DeviceResponse:
+) -> DeviceWithConfigs:
     """
     Update a device in the database and cache.
     
@@ -151,7 +153,7 @@ async def update_device_cache_db(
 async def delete_device_cache_db(
     device_id: int,
     site_id: int
-) -> DeviceResponse | None:
+) -> DeviceWithConfigs | None:
     """
     Delete a device from the database and cache.
     
