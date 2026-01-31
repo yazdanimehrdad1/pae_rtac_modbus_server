@@ -57,7 +57,8 @@ async def create_site(site: SiteCreate) -> SiteResponse:
             if existing_site.scalar_one_or_none() is not None:
                 raise ValueError(f"Site with name '{site.name}' already exists")
             
-            # Convert coordinates to dict if provided
+            # Convert location and coordinates to dicts for storage
+            location_dict = site.location.model_dump()
             coordinates_dict = None
             if site.coordinates:
                 coordinates_dict = {"lat": site.coordinates.lat, "lng": site.coordinates.lng}
@@ -66,9 +67,9 @@ async def create_site(site: SiteCreate) -> SiteResponse:
                 site_id = await _generate_site_id(session)
                 new_site = Site(
                     id=site_id,
-                    owner=site.owner,
+                    client_id=site.client_id,
                     name=site.name,
-                    location=site.location,
+                    location=location_dict,
                     operator=site.operator,
                     capacity=site.capacity,
                     description=site.description,
@@ -83,17 +84,21 @@ async def create_site(site: SiteCreate) -> SiteResponse:
                     
                     await session.commit()
                     
-                    # Convert coordinates back to Coordinates model if present
+                    # Convert coordinates/location back to models if present
                     coordinates = None
                     if new_site.coordinates:
                         from schemas.db_models.models import Coordinates
                         coordinates = Coordinates(lat=new_site.coordinates["lat"], lng=new_site.coordinates["lng"])
+                    location = None
+                    if new_site.location:
+                        from schemas.db_models.models import Location
+                        location = Location(**new_site.location)
                     
                     return SiteResponse(
-                        id=new_site.id,
-                        owner=new_site.owner,
+                        site_id=new_site.id,
+                        client_id=new_site.client_id,
                         name=new_site.name,
-                        location=new_site.location,
+                        location=location,
                         operator=new_site.operator,
                         capacity=new_site.capacity,
                         device_count=new_site.device_count,
@@ -145,17 +150,21 @@ async def get_all_sites() -> List[SiteResponse]:
         
         site_responses = []
         for site in sites:
-            # Convert coordinates to Coordinates model if present
+            # Convert coordinates/location to models if present
             coordinates = None
             if site.coordinates:
                 from schemas.db_models.models import Coordinates
                 coordinates = Coordinates(lat=site.coordinates["lat"], lng=site.coordinates["lng"])
+            location = None
+            if site.location:
+                from schemas.db_models.models import Location
+                location = Location(**site.location)
             
             site_responses.append(SiteResponse(
-                id=site.id,
-                owner=site.owner,
+                site_id=site.id,
+                client_id=site.client_id,
                 name=site.name,
-                location=site.location,
+                location=location,
                 operator=site.operator,
                 capacity=site.capacity,
                 device_count=site.device_count,
@@ -189,17 +198,21 @@ async def get_site_by_id(site_id: int) -> Optional[SiteResponse]:
         if site is None:
             return None
         
-        # Convert coordinates to Coordinates model if present
+        # Convert coordinates/location to models if present
         coordinates = None
         if site.coordinates:
             from schemas.db_models.models import Coordinates
             coordinates = Coordinates(lat=site.coordinates["lat"], lng=site.coordinates["lng"])
+        location = None
+        if site.location:
+            from schemas.db_models.models import Location
+            location = Location(**site.location)
         
         return SiteResponse(
-            id=site.id,
-            owner=site.owner,
+            site_id=site.id,
+            client_id=site.client_id,
             name=site.name,
-            location=site.location,
+            location=location,
             operator=site.operator,
             capacity=site.capacity,
             device_count=site.device_count,
@@ -240,12 +253,12 @@ async def update_site(site_id: int, site_update: SiteUpdate) -> SiteResponse:
                 raise ValueError(f"Site with id {site_id} not found")
             
             # Update only provided fields
-            if site_update.owner is not None:
-                site.owner = site_update.owner
+            if site_update.client_id is not None:
+                site.client_id = site_update.client_id
             if site_update.name is not None:
                 site.name = site_update.name
             if site_update.location is not None:
-                site.location = site_update.location
+                site.location = site_update.location.model_dump()
             if site_update.operator is not None:
                 site.operator = site_update.operator
             if site_update.capacity is not None:
@@ -268,17 +281,21 @@ async def update_site(site_id: int, site_update: SiteUpdate) -> SiteResponse:
             
             logger.info(f"Updated site with id {site_id}")
             
-            # Convert coordinates to Coordinates model if present
+            # Convert coordinates/location to models if present
             coordinates = None
             if site.coordinates:
                 from schemas.db_models.models import Coordinates
                 coordinates = Coordinates(lat=site.coordinates["lat"], lng=site.coordinates["lng"])
+            location = None
+            if site.location:
+                from schemas.db_models.models import Location
+                location = Location(**site.location)
             
             return SiteResponse(
-                id=site.id,
-                owner=site.owner,
+                site_id=site.id,
+                client_id=site.client_id,
                 name=site.name,
-                location=site.location,
+                location=location,
                 operator=site.operator,
                 capacity=site.capacity,
                 device_count=site.device_count,
@@ -340,18 +357,22 @@ async def delete_site(site_id: int) -> Optional[SiteResponse]:
                     f"Site with id {site_id} has associated devices: {joined_ids}"
                 )
 
-            # Convert coordinates to Coordinates model if present
+            # Convert coordinates/location to models if present
             coordinates = None
             if site.coordinates:
                 from schemas.db_models.models import Coordinates
                 coordinates = Coordinates(lat=site.coordinates["lat"], lng=site.coordinates["lng"])
+            location = None
+            if site.location:
+                from schemas.db_models.models import Location
+                location = Location(**site.location)
             
             # Store site data before deletion
             site_response = SiteResponse(
-                id=site.id,
-                owner=site.owner,
+                site_id=site.id,
+                client_id=site.client_id,
                 name=site.name,
-                location=site.location,
+                location=location,
                 operator=site.operator,
                 capacity=site.capacity,
                 device_count=site.device_count,

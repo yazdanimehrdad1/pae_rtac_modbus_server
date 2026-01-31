@@ -10,6 +10,7 @@ from schemas.db_models.models import (
     Coordinates,
     DeviceConfigResponse,
     DeviceWithConfigs,
+    Location,
     SiteComprehensiveResponse,
 )
 from schemas.db_models.orm_models import Device, DeviceConfig, Site
@@ -71,6 +72,9 @@ async def get_complete_site_data(site_id: int) -> Optional[SiteComprehensiveResp
                 lat=site.coordinates["lat"],
                 lng=site.coordinates["lng"],
             )
+        location = None
+        if site.location:
+            location = Location(**site.location)
 
         device_items: list[DeviceWithConfigs] = []
         for device in devices:
@@ -101,10 +105,10 @@ async def get_complete_site_data(site_id: int) -> Optional[SiteComprehensiveResp
             )
 
         return SiteComprehensiveResponse(
-            id=site.id,
-            owner=site.owner,
+            site_id=site.id,
+            client_id=site.client_id,
             name=site.name,
-            location=site.location,
+            location=location,
             operator=site.operator,
             capacity=site.capacity,
             device_count=site.device_count,

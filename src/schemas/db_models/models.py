@@ -87,11 +87,19 @@ class Coordinates(BaseModel):
     lng: float = Field(..., description="Longitude")
 
 
+class Location(BaseModel):
+    """Location model for site address details."""
+    street: str = Field(..., min_length=1, max_length=255, description="Street address")
+    city: str = Field(..., min_length=1, max_length=255, description="City")
+    state: str = Field(..., min_length=1, max_length=255, description="State/province")
+    zip_code: int = Field(..., ge=0, description="Zip/postal code")
+
+
 class SiteCreate(BaseModel):
     """Request model for creating a new site."""
-    owner: str = Field(..., min_length=1, max_length=255, description="Site owner")
+    client_id: str = Field(..., min_length=1, max_length=255, description="Client identifier")
     name: str = Field(..., min_length=1, max_length=255, description="Site name")
-    location: str = Field(..., min_length=1, max_length=255, description="Site location")
+    location: Location = Field(..., description="Site location details")
     operator: str = Field(..., min_length=1, max_length=255, description="Site operator")
     capacity: str = Field(..., min_length=1, max_length=255, description="Site capacity")
     description: Optional[str] = Field(default=None, description="Optional site description")
@@ -100,9 +108,9 @@ class SiteCreate(BaseModel):
 
 class SiteUpdate(BaseModel):
     """Request model for updating a site."""
-    owner: Optional[str] = Field(None, min_length=1, max_length=255, description="Site owner")
+    client_id: Optional[str] = Field(None, min_length=1, max_length=255, description="Client identifier")
     name: Optional[str] = Field(None, min_length=1, max_length=255, description="Site name")
-    location: Optional[str] = Field(None, min_length=1, max_length=255, description="Site location")
+    location: Optional[Location] = Field(None, description="Site location details")
     operator: Optional[str] = Field(None, min_length=1, max_length=255, description="Site operator")
     capacity: Optional[str] = Field(None, min_length=1, max_length=255, description="Site capacity")
     description: Optional[str] = Field(None, description="Site description")
@@ -111,10 +119,10 @@ class SiteUpdate(BaseModel):
 
 class SiteResponse(BaseModel):
     """Response model for site data."""
-    id: int = Field(..., description="Site ID (4-digit number)")
-    owner: str = Field(..., description="Site owner")
+    site_id: int = Field(..., alias="id", description="Site ID (4-digit number)")
+    client_id: str = Field(..., description="Client identifier")
     name: str = Field(..., description="Site name")
-    location: str = Field(..., description="Site location")
+    location: Location = Field(..., description="Site location details")
     operator: str = Field(..., description="Site operator")
     capacity: str = Field(..., description="Site capacity")
     deviceCount: int = Field(..., alias="device_count", description="Number of devices at this site")
@@ -138,10 +146,10 @@ class SiteDeleteResponse(BaseModel):
 
 class SiteComprehensiveResponse(BaseModel):
     """Comprehensive site response with devices and configs."""
-    id: int = Field(..., description="Site ID (4-digit number)")
-    owner: str = Field(..., description="Site owner")
+    site_id: int = Field(..., alias="id", description="Site ID (4-digit number)")
+    client_id: str = Field(..., description="Client identifier")
     name: str = Field(..., description="Site name")
-    location: str = Field(..., description="Site location")
+    location: Location = Field(..., description="Site location details")
     operator: str = Field(..., description="Site operator")
     capacity: str = Field(..., description="Site capacity")
     deviceCount: int = Field(..., alias="device_count", description="Number of devices at this site")
@@ -223,6 +231,6 @@ class DeviceConfigDeleteResponse(BaseModel):
 
 __all__ = ["DeviceCreate", "DeviceUpdate", "DeviceListItem", "DeviceResponse",
            "DeviceDeleteResponse", "DeviceWithConfigs", "SiteComprehensiveResponse",
-           "Coordinates", "SiteCreate", "SiteUpdate", "SiteResponse", "SiteDeleteResponse",
+           "Coordinates", "Location", "SiteCreate", "SiteUpdate", "SiteResponse", "SiteDeleteResponse",
            "DeviceConfigRegister", "DeviceConfigData",
            "DeviceConfigUpdate", "DeviceConfigResponse", "DeviceConfigDeleteResponse"]

@@ -40,11 +40,11 @@ class Site(Base):
         comment="Primary key, 4-digit site ID"
     )
     
-    owner: Mapped[str] = mapped_column(
+    client_id: Mapped[str] = mapped_column(
         String(255),
         nullable=False,
         index=True,
-        comment="Site owner"
+        comment="Client identifier"
     )
     
     name: Mapped[str] = mapped_column(
@@ -55,10 +55,10 @@ class Site(Base):
         comment="Site name (must be unique)"
     )
     
-    location: Mapped[str] = mapped_column(
-        String(255),
+    location: Mapped[Dict[str, Any]] = mapped_column(
+        JSON,
         nullable=False,
-        comment="Site location"
+        comment="Site location as JSON: {street: str, city: str, zip_code: int}"
     )
     
     operator: Mapped[str] = mapped_column(
