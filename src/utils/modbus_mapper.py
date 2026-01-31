@@ -366,7 +366,10 @@ def map_modbus_data_to_registers(
         point_size = _get_attr(point, "size", 1)
         point_data_type = _get_attr(point, "data_type", "uint16") 
         point_scale_factor = _get_attr(point, "scale_factor", 1.0)
-        point_unit = _get_attr(point, "unit", "")
+        point_unit = _get_attr(point, "unit", ""),
+        point_bitfield_detail = _get_attr(point, "bitfield_detail", None)
+        point_enum_detail = _get_attr(point, "enum_detail", None)
+
         
         #TODO: see if this is necessary, or maybe aggregate validation in a separate function
         # Skip points with missing required fields
@@ -442,7 +445,19 @@ def map_modbus_data_to_registers(
                 logger.warning(
                     f"Using first register value only for '{point_name}' due to conversion error"
                 )
-        
+        ###################################################################################
+        # This is under development. The purpose is to store scaled and translated bitfields 
+        # and enums in the database.
+        ###################################################################################
+        if point_bitfield_detail is not None:
+            point_value_scaled = point_value * point_scale_factor
+        elif point_enum_detail is not None:
+            point_value_scaled = point_value
+        elif point_scale_factor is not None:
+            point_value_scaled = point_value * point_scale_factor
+        else:
+            point_value_scaled = point_value
+        ###################################################################################
         
         # TODO: lets again confirm the default, I think we are setting the default in many places, it should be unified
         mapped_register = MappedRegisterData(
