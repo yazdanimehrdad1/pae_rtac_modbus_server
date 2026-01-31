@@ -7,32 +7,27 @@ from typing import Dict, Any, List, Optional, TypedDict
 from helpers.modbus import translate_modbus_error
 from modbus.client import ModbusClient
 from modbus.modbus_utills import ModbusUtils
-from cache.cache import CacheService
 from config import settings
 from logger import get_logger
 from db.device_configs import get_device_config
 from utils.modbus_mapper import map_modbus_data_to_registers, MappedRegisterData
-from helpers.devices import get_devices_cache_db
-from db.register_readings import insert_register_readings_batch
+from helpers.sites import get_complete_site_data
 from db.sites import get_site_by_id, get_all_sites
-from schemas.db_models.models import DeviceListItem
+from schemas.db_models.models import DeviceListItem, DeviceWithConfigs
+from utils.store_data_readings import (
+    store_device_data_in_cache,
+    store_device_data_in_db,
+    store_device_data_in_db_translated,
+)
 
 logger = get_logger(__name__)
 
 # Initialize services
 edge_aggregator_modbus_client = ModbusClient()
 edge_aggregator_modbus_utils = ModbusUtils(edge_aggregator_modbus_client)
-cache_service = CacheService()
 direct_modbus_utils_by_endpoint: dict[tuple[str, int], ModbusUtils] = {}
 
 
-def get_direct_modbus_utils(host: str, port: int) -> ModbusUtils:
-    endpoint = (host, port)
-    modbus_utils = direct_modbus_utils_by_endpoint.get(endpoint)
-    if modbus_utils is None:
-        modbus_utils = ModbusUtils(ModbusClient())
-        direct_modbus_utils_by_endpoint[endpoint] = modbus_utils
-    return modbus_utils
 
 class PollResult(TypedDict, total=False):
     """Result of polling a single device."""
@@ -44,19 +39,21 @@ class PollResult(TypedDict, total=False):
     db_failed: int
     error: Optional[str]
 
-async def get_devices_to_poll(site_id: int) -> List[DeviceListItem]:
+def get_direct_modbus_utils(host: str, port: int) -> ModbusUtils:
+    endpoint = (host, port)
+    modbus_utils = direct_modbus_utils_by_endpoint.get(endpoint)
+    if modbus_utils is None:
+        modbus_utils = ModbusUtils(ModbusClient())
+        direct_modbus_utils_by_endpoint[endpoint] = modbus_utils
+    return modbus_utils
+
+async def get_enabled_devices_to_poll(site_devices: List[DeviceListItem]) -> List[DeviceListItem]:
     """
     Get list of devices to poll from database, filtered by poll_enabled.
     
-    This function only returns devices for a single site.
-    
     Returns:
-        List of devices that have polling enabled for a site
+        List of devices that have polling enabled
     """
-    
-    site_devices = await get_devices_cache_db(site_id)
-    logger.info(f"Retrieved {len(site_devices)} device(s) for site ID {site_id}")
-    
     # Filter devices by poll_enabled from database
     devices_to_poll = []
     for device in site_devices:
@@ -70,7 +67,6 @@ async def get_devices_to_poll(site_id: int) -> List[DeviceListItem]:
     
     logger.info(
         f"Found {len(devices_to_poll)} device(s) to poll out of {len(site_devices)} total device(s) "
-        f"for site ID {site_id}"
     )
     return devices_to_poll
 
@@ -92,6 +88,10 @@ async def read_device_registers(
     Raises:
         Exception: If Modbus read fails
     """
+    #TODO: it is very important, when the device_config is created, there is a validation to autmatically calculate the count or default to 125
+    # Why/how count is dominated by 
+    # 1: last register - first rgister address + 1
+    # 2: If last register has a size of 2,4 then the count is the last register address + size - first register address
     address = polling_config["poll_address"]
     count = polling_config["poll_count"]
     kind = polling_config["poll_kind"]
@@ -154,136 +154,7 @@ async def read_device_registers(
     return modbus_data
 
 
-async def store_device_data_in_cache(
-    device_name: str,
-    mapped_registers: List[MappedRegisterData],
-    polling_config: Dict[str, Any],
-    timestamp: str,
-    site_name: Optional[str] = None
-) -> tuple[int, int]:
-    """
-    Store mapped register data in Redis cache.
-    
-    Args:
-        device_name: Device name for cache key
-        mapped_registers: List of mapped register data
-        polling_config: Polling configuration
-        timestamp: ISO format timestamp string
-        site_name: Optional site name to include in cache key
-        
-    Returns:
-        Tuple of (successful_reads, failed_reads)
-    """
-    try:
-        # Build register data dictionary
-        register_data_dict: Dict[int, Dict[str, Any]] = {}
-        
-        # Get kind and device_id from polling_config
-        kind = polling_config.get("poll_kind", "holding")
-        device_id = polling_config.get("device_id", 1)
-        
-        for register_data in mapped_registers:
-            register_entry: Dict[str, Any] = {
-                "name": register_data.name,
-                "value": register_data.value,
-                "address": register_data.address,
-                "size": register_data.size,
-                "device_id": device_id,
-            }
-            
-            # Add optional metadata
-            if register_data.data_type:
-                register_entry["Type"] = register_data.data_type
-            if register_data.scale_factor:
-                register_entry["scale_factor"] = register_data.scale_factor
-            if register_data.unit:
-                register_entry["unit"] = register_data.unit
-            
-            register_data_dict[register_data.address] = register_entry
-        
-        # Create cache object
-        cache_data: Dict[str, Any] = {
-            "ok": True,
-            "timestamp": timestamp,
-            "kind": polling_config["poll_kind"],
-            "address": polling_config["poll_address"],
-            "count": polling_config["poll_count"],
-            "device_id": polling_config.get("device_id"),  # Will be set by caller if needed
-            "data": register_data_dict
-        }
-        
-        # Store in cache
-        # Include site_name in cache key if provided, otherwise use device_name only
-        if site_name:
-            cache_key_latest = f"poll:{site_name}:{device_name}:latest"
-            cache_key_timestamped = f"poll:{site_name}:{device_name}:{timestamp}"
-        else:
-            cache_key_latest = f"poll:{device_name}:latest"
-            cache_key_timestamped = f"poll:{device_name}:{timestamp}"
-        
-        await cache_service.set(
-            key=cache_key_latest,
-            value=cache_data,
-            ttl=settings.poll_cache_ttl
-        )
-        
-        await cache_service.set(
-            key=cache_key_timestamped,
-            value=cache_data,
-            ttl=settings.poll_cache_ttl
-        )
-        
-        successful_reads = len(register_data_dict)
-        logger.info(f"Successfully stored {successful_reads} registers in cache for device '{device_name}'")
-        return successful_reads, 0
-        
-    except Exception as e:
-        logger.error(f"Failed to store data in cache for device '{device_name}': {e}", exc_info=True)
-        return 0, len(mapped_registers)
-
-
-async def store_device_data_in_db(
-    device_id: int,
-    site_id: str,
-    mapped_registers: List[MappedRegisterData],
-    timestamp_dt: datetime
-) -> tuple[int, int]:
-    """
-    Store mapped register data in database.
-    
-    Args:
-        device_id: Database device ID (primary key)
-        site_id: Site ID (UUID) to validate device belongs to site
-        mapped_registers: List of mapped register data
-        timestamp_dt: Datetime object for database storage
-        
-    Returns:
-        Tuple of (successful_inserts, failed_inserts)
-    """
-    try:
-        batch_readings = []
-        for register_data in mapped_registers:
-            batch_readings.append({
-                'device_id': device_id,
-                'register_address': register_data.address,
-                'value': register_data.value,
-                'timestamp': timestamp_dt,
-                'quality': 'good',
-                'register_name': register_data.name,
-                'unit': register_data.unit or None,
-                'scale_factor': register_data.scale_factor or None
-            })
-        
-        inserted_count = await insert_register_readings_batch(site_id, batch_readings)
-        logger.info(f"Successfully stored {inserted_count} register readings in database")
-        return inserted_count, 0
-        
-    except Exception as e:
-        logger.error(f"Failed to store register readings in database: {e}", exc_info=True)
-        return 0, len(mapped_registers)
-
-
-async def poll_single_device(device: DeviceListItem) -> PollResult:
+async def poll_single_device(site_name: str, device: DeviceWithConfigs) -> PollResult:
     """
     Poll a single device: load register map, read registers, map data, and store in cache/DB.
     
@@ -303,110 +174,132 @@ async def poll_single_device(device: DeviceListItem) -> PollResult:
         "db_failed": 0,
         "error": None
     }
-    #TODO: consider using a single DB call to get sites and its devices and the device's configs
+
+    device_without_configs = DeviceListItem(
+        id=device.id,
+        name=device.name,
+        modbus_host=device.modbus_host,
+        modbus_port=device.modbus_port,
+        modbus_timeout=device.modbus_timeout,
+        modbus_server_id=device.modbus_server_id,
+        site_id=device.site_id,
+        description=device.description,
+        main_type=device.main_type,
+        sub_type=device.sub_type,
+        poll_enabled=device.poll_enabled,
+        read_from_aggregator=device.read_from_aggregator,
+        configs=device.configs,
+        created_at=device.created_at,
+        updated_at=device.updated_at
+    )
+   
     try:
-        # 1. Get polling configuration from device configs
-        config_ids = list(device.configs or [])
-        if not config_ids:
-            result["error"] = f"No device configs associated with device '{device_name}'"
-            logger.warning(result["error"])
-            return result
 
-        # 2. Get site_name if site_id is available
-        site_name = None
-        if device.site_id:
-            try:
-                #TODO: maybe we can get the site name from the cache instead of the database
-                site = await get_site_by_id(device.site_id)
-                if site:
-                    site_name = site.name
-            except Exception as e:
-                logger.warning(f"Could not fetch site name for site_id '{device.site_id}': {e}")
-
-        # 3. Poll each device config associated with this device
         total_cache_successful = 0
         total_cache_failed = 0
         total_db_successful = 0
         total_db_failed = 0
-        any_success = False
+        combined_mapped_registers_list_all_configs_per_device = []
+        last_polling_config = None
 
-        #TODO: lets write a function that get all site,device, and config information by one call. Also priorotize cache over db. 
 
-        for config_id in config_ids:
-            device_config = await get_device_config(config_id)
-            if device_config is None:
-                logger.warning(
-                    f"Device config '{config_id}' not found for device '{device_name}'"
-                )
-                continue
-
+        for config in device.device_configs:
             polling_config = {
-                "poll_address": device_config.poll_address,
-                "poll_count": device_config.poll_count,
-                "poll_kind": device_config.poll_kind,  # "holding", "input", "coils", "discretes"
-                "poll_enabled": device.poll_enabled
+                "poll_address": config.poll_address,
+                "poll_count": config.poll_count,
+                "poll_kind": config.poll_kind, 
             }
-
-            registers = device_config.registers or []
+            registers = config.registers or []
             logger.info(
                 f"Loaded {len(registers)} register points for device '{device_name}' "
-                f"(config_id='{config_id}')"
+                f"(config_id='{config.config_id}')"
             )
 
             if not registers:
                 logger.warning(
-                    f"No register points to poll for device '{device_name}' (config_id='{config_id}')"
+                    f"No register points to poll for device '{device_name}' (config_id='{config.config_id}')"
                 )
                 continue
 
-            # 4. Read Modbus registers
-            modbus_data = await read_device_registers(device, polling_config)
+      
+            try:
+                modbus_data = await read_device_registers(device_without_configs, polling_config)
+            except Exception as e:
+                if device.read_from_aggregator:
+                    error_host = settings.modbus_host
+                    error_port = settings.modbus_port
+                else:
+                    error_host = device.modbus_host
+                    error_port = device.modbus_port
+                status_code, error_message = translate_modbus_error(
+                    e,
+                    host=error_host,
+                    port=error_port
+                )
+                result["error"] = f"status_code={status_code}, error_message={error_message}"
+                logger.warning(
+                    f"Error polling device '{device_name}': {result['error']}"
+                )
+                continue
 
-            # 5. Map register data
-            register_map = {"registers": registers}
+    
             mapped_registers = map_modbus_data_to_registers(
-                register_map=register_map,
+                registers=registers,
                 modbus_read_data=modbus_data,
                 poll_start_address=polling_config["poll_address"]
             )
 
             if not mapped_registers:
                 logger.warning(
-                    f"No register points mapped for device '{device_name}' (config_id='{config_id}')"
+                    f"No register points mapped for device '{device_name}' (config_id='{config.config_id}')"
                 )
                 continue
 
-            # 6. Store data in cache and database
-            timestamp = datetime.now(timezone.utc).isoformat()
-            timestamp_dt = datetime.now(timezone.utc)
+            combined_mapped_registers_list_all_configs_per_device.extend(mapped_registers)
+            last_polling_config = polling_config
 
-            # Add device_id (Modbus unit/slave ID) to polling_config for cache
-            polling_config["device_id"] = device.modbus_server_id  # Modbus device_id
 
-            cache_successful, cache_failed = await store_device_data_in_cache(
-                device_name, mapped_registers, polling_config, timestamp, site_name
-            )
-            total_cache_successful += cache_successful
-            total_cache_failed += cache_failed
+        timestamp = datetime.now(timezone.utc).isoformat()
+        timestamp_dt = datetime.now(timezone.utc)
 
-            if device.id is not None and device.site_id:
-                db_successful, db_failed = await store_device_data_in_db(
-                    device.id, device.site_id, mapped_registers, timestamp_dt
-                )
-            else:
-                logger.debug(
-                    f"Device '{device_name}' not found in database, skipping DB storage"
-                )
-                db_successful, db_failed = 0, len(mapped_registers)
 
-            total_db_successful += db_successful
-            total_db_failed += db_failed
-            any_success = True
-
-        if not any_success:
+        if not combined_mapped_registers_list_all_configs_per_device or last_polling_config is None:
             result["error"] = f"No device configs were successfully polled for '{device_name}'"
             logger.warning(result["error"])
             return result
+
+        cache_successful, cache_failed = await store_device_data_in_cache(
+            device_name,
+            combined_mapped_registers_list_all_configs_per_device,
+            last_polling_config,
+            timestamp,
+            site_name
+        )
+        total_cache_successful += cache_successful
+        total_cache_failed += cache_failed
+
+        
+        db_successful, db_failed = await store_device_data_in_db(
+                device.id,
+                device.site_id,
+                combined_mapped_registers_list_all_configs_per_device,
+                timestamp_dt
+        )
+
+        ###################################################################################
+        # This is under development. The purpose is to store scaled and translated bitfields 
+        # and enums in the database.
+        ###################################################################################
+
+        await store_device_data_in_db_translated(
+            device.id,
+            device.site_id,
+            combined_mapped_registers_list_all_configs_per_device,
+            timestamp_dt
+        )
+
+        total_db_successful += db_successful
+        total_db_failed += db_failed
 
         result["success"] = True
         result["cache_successful"] = total_cache_successful
@@ -421,11 +314,16 @@ async def poll_single_device(device: DeviceListItem) -> PollResult:
         )
         
     except Exception as e:
-        # Pass device host/port for better error messages
+        if device.read_from_aggregator:
+            error_host = settings.modbus_host
+            error_port = settings.modbus_port
+        else:
+            error_host = device.modbus_host
+            error_port = device.modbus_port
         status_code, error_message = translate_modbus_error(
             e,
-            host=device.modbus_host,
-            port=device.modbus_port
+            host=error_host,
+            port=error_port
         )
         result["error"] = f"status_code={status_code}, error_message={error_message}"
         logger.error(
@@ -436,7 +334,7 @@ async def poll_single_device(device: DeviceListItem) -> PollResult:
     return result
 
 # TODO: eventually this function also needs to be called by another function to grab all the devices for multiple sites
-async def cron_job_poll_modbus_registers_per_site() -> None:
+async def poll_modbus_registers_per_site(site_id: int) -> None:
     """
     Scheduled job to poll Modbus registers for all enabled devices.
     
@@ -453,26 +351,22 @@ async def cron_job_poll_modbus_registers_per_site() -> None:
     logger.info("Starting Modbus polling job")
     
     try:
-        # 1. Get devices to poll across all sites (site-scoped function)
-        devices_to_poll: List[DeviceListItem] = []
-        all_sites = await get_all_sites()
-        logger.info(f"Retrieved {len(all_sites)} site(s) from database")
-        for site in all_sites:
-            try:
-                site_devices = await get_devices_to_poll(site.id)
-                devices_to_poll.extend(site_devices)
-                logger.debug(
-                    f"Retrieved {len(site_devices)} device(s) to poll from site '{site.name}' (ID: {site.id})"
-                )
-            except Exception as e:
-                logger.warning(
-                    f"Error retrieving devices to poll for site '{site.name}' (ID: {site.id}): {e}"
-                )
-        
-        if not devices_to_poll:
-            logger.warning("No devices to poll (all devices disabled or not found in config)")
+
+        complete_site_data = await get_complete_site_data(site_id)
+        if complete_site_data is None:
+            logger.warning(f"Site with id {site_id} not found")
             return
         
+        site_name = complete_site_data.name
+        devices_list = complete_site_data.devices
+    
+        
+        if not devices_list:
+            logger.warning("No devices for site with id {site_id}")
+            return
+
+        enabled_devices_to_poll = await get_enabled_devices_to_poll(devices_list)
+  
         # 2. Poll each device in parallel (errors are isolated per device)
         # Use asyncio.gather to run all device polling operations concurrently
         # Note: ModbusClient is safe for concurrent use because:
@@ -480,7 +374,7 @@ async def cron_job_poll_modbus_registers_per_site() -> None:
         # - Each read_registers() call creates a new ModbusTcpClient connection via context manager
         # - No shared mutable state between concurrent calls
         results: List[PollResult] = await asyncio.gather(
-            *[poll_single_device(device) for device in devices_to_poll],
+            *[poll_single_device(site_name,device) for device in enabled_devices_to_poll],
             return_exceptions=True
         )
         
@@ -488,7 +382,7 @@ async def cron_job_poll_modbus_registers_per_site() -> None:
         processed_results: List[PollResult] = []
         for i, result in enumerate(results):
             if isinstance(result, Exception):
-                device_name = devices_to_poll[i].name if i < len(devices_to_poll) else "unknown"
+                device_name = enabled_devices_to_poll[i].name if i < len(enabled_devices_to_poll) else "unknown"
                 logger.error(f"Unexpected error polling device '{device_name}': {result}", exc_info=True)
                 processed_results.append({
                     "device_name": device_name,
@@ -532,4 +426,19 @@ async def cron_job_poll_modbus_registers_per_site() -> None:
             f"Error in Modbus polling job: {e}",
             exc_info=True
         )
+        # Don't re-raise - let scheduler handle retry on next interval
+
+
+async def cron_job_poll_modbus_registers_all_sites() -> None:
+    """
+    Scheduled job to poll Modbus registers for all sites.
+    """
+    logger.info("Starting Modbus polling job for all sites")
+    try:
+        all_sites = await get_all_sites()
+        logger.info(f"Retrieved {len(all_sites)} site(s) from database")
+        for site in all_sites:
+            await poll_modbus_registers_per_site(site.id)
+    except Exception as e:
+        logger.error(f"Error in Modbus polling job for all sites: {e}", exc_info=True)
         # Don't re-raise - let scheduler handle retry on next interval

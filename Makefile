@@ -1,4 +1,4 @@
-.PHONY: help up down build rebuild up-build up-rebuild restart logs shell clean ps health dev test-setup test lint format migrate apply-migration run
+.PHONY: help up down build rebuild up-build up-rebuild restart logs shell clean ps health dev test-setup test lint format migrate apply-migration run seed-db
 
 # Default target
 help:
@@ -25,6 +25,7 @@ help:
 	@echo "  make migrate    - Run database migrations"
 	@echo "  make apply-migration - Apply database migrations (in container)"
 	@echo "  make run        - Run service locally (non-Docker)"
+	@echo "  make seed-db    - Seed the database in container"
 
 # Start containers (ensures postgres is healthy, then starts services)
 up:
@@ -183,4 +184,9 @@ apply-migration:
 run:
 	@cd src && python -m main
 
+# Seed database with sample data (in container)
+seed-db:
+	@docker-compose -f docker-compose.yaml exec pae-rtac-server python tests/seed_db.py
 
+stop_rm_all:
+	docker stop $(docker ps -q) ; docker rm $(docker ps -aq) ; docker volume rm $(docker volume ls -q)

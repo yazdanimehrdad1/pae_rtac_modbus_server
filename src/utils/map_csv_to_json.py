@@ -135,30 +135,17 @@ def json_to_register_map(json_data: Dict[str, Any]) -> RegisterMap:
     points = []
     
     for reg in registers:
-        # Map from register_address/register_name (JSON format) to address/name (RegisterPoint format)
         point_data = {
-            "name": reg.get("register_name") or reg.get("name", ""),
-            "address": reg.get("register_address") or reg.get("address"),
-            "kind": reg.get("kind", "holding"),
+            "register_name": reg.get("register_name") or reg.get("name", ""),
+            "register_address": reg.get("register_address") or reg.get("address"),
+            "data_type": reg.get("data_type", "uint16"),
             "size": reg.get("size", 1),
+            "scale_factor": reg.get("scale_factor", 1.0),
+            "unit": reg.get("unit"),
+            "bitfield_detail": reg.get("bitfield_detail"),
+            "enum_detail": reg.get("enum_detail"),
         }
-        
-        # Optional fields
-        if "device_id" in reg and reg["device_id"] is not None:
-            point_data["device_id"] = reg["device_id"]
-        
-        if "data_type" in reg and reg["data_type"] is not None:
-            point_data["data_type"] = reg["data_type"]
-        
-        if "scale_factor" in reg and reg["scale_factor"] is not None:
-            point_data["scale_factor"] = reg["scale_factor"]
-        
-        if "unit" in reg and reg["unit"] is not None:
-            point_data["unit"] = reg["unit"]
-        
-        if "tags" in reg and reg["tags"] is not None:
-            point_data["tags"] = reg["tags"]
-        
+
         points.append(RegisterPoint(**point_data))
     
     return RegisterMap(points=points)

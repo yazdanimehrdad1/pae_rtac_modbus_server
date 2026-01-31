@@ -16,6 +16,10 @@ from logger import get_logger
 logger = get_logger(__name__)
 
 
+def _get_attr(point: RegisterPoint, attr, default=None):
+    return getattr(point, attr, default)
+
+
 class MappedRegisterData:
     """
     Data structure representing a register point with its read value(s).
@@ -324,7 +328,7 @@ def convert_multi_register_value(
 # ============================================================================
 
 def map_modbus_data_to_registers(
-    register_map: Union[RegisterMap, Dict[str, Any]],
+    registers: List[RegisterPoint],
     modbus_read_data: List[Union[int, bool]],
     poll_start_address: int
 ) -> List[MappedRegisterData]:
@@ -340,7 +344,7 @@ def map_modbus_data_to_registers(
     4. Creates a list of MappedRegisterData objects linking register info with their values
     
     Args:
-        register_map: RegisterMap object or dictionary with 'registers' key
+        registers: List of RegisterPoint objects
         modbus_read_data: Raw array of values from Modbus read (e.g., [100, 200, 300, ...])
                          This is the result from modbus_client.read_registers()
         poll_start_address: The starting address of the Modbus read (used to calculate array index)
@@ -349,48 +353,31 @@ def map_modbus_data_to_registers(
     Returns:
         List of MappedRegisterData objects, one for each register point that was found in the read data
     """
-    # Handle both RegisterMap object and dictionary formats
-    if isinstance(register_map, dict):
-        # Dictionary format: {"registers": [...], "metadata": {...}}
-        register_points = register_map.get("registers", [])
-        # Convert dict registers to RegisterPoint-like objects (using dict access)
-        points = register_points
-    else:
-        # RegisterMap object format
-        points = register_map.points
     
-    logger.debug(f"Mapping {len(points)} register points to Modbus read data")
+    logger.debug(f"Mapping {len(registers)} register points to Modbus read data")
     
-    # Helper function to get point attribute (handles both dict and RegisterPoint)
-    def get_attr(point, attr, default=None):
-        if isinstance(point, dict):
-            return point.get(attr, default)
-        return getattr(point, attr, default)
-    
-    # 2. Iterate through each register point and map to Modbus read data
-    mapped_registers: List[MappedRegisterData] = []
-    
-    # Track consumed registers to prevent overlapping register mappings
-    # When a point has size > 1, it consumes multiple consecutive registers
+    mapped_registers_list: List[MappedRegisterData] = []
     consumed_registers: set[int] = set()
-    
-    for point in points:
-        # Extract point attributes (works for both dict and RegisterPoint)
-        # Standardized to use register_address and register_name
-        point_name = get_attr(point, "register_name") or get_attr(point, "name", "")
-        point_address = get_attr(point, "register_address") or get_attr(point, "address")
-        point_size = get_attr(point, "size", 1)
-        point_data_type = get_attr(point, "data_type", "uint16")
-        point_scale_factor = get_attr(point, "scale_factor", 1.0)
-        point_unit = get_attr(point, "unit", "")
+
+    #TODO: see if default is necessary, given that we are setting to default at the time of creating
+    for point in registers:
+        point_name = _get_attr(point, "register_name") 
+        point_address = _get_attr(point, "register_address")
+        point_size = _get_attr(point, "size", 1)
+        point_data_type = _get_attr(point, "data_type", "uint16") 
+        point_scale_factor = _get_attr(point, "scale_factor", 1.0)
+        point_unit = _get_attr(point, "unit", ""),
+        point_bitfield_detail = _get_attr(point, "bitfield_detail", None)
+        point_enum_detail = _get_attr(point, "enum_detail", None)
+
         
+        #TODO: see if this is necessary, or maybe aggregate validation in a separate function
         # Skip points with missing required fields
         if point_address is None:
             logger.warning(
                 f"Skipping point '{point_name}': missing required field 'register_address'"
             )
             continue
-        
         if point_size is None or point_size < 1:
             logger.warning(
                 f"Skipping point '{point_name}' (address={point_address}): "
@@ -398,22 +385,21 @@ def map_modbus_data_to_registers(
             )
             continue
         
-        # 3. Calculate the array index for this register address
-        # If poll_start_address is 1400 and point.address is 1400, index is 0
-        # If poll_start_address is 1400 and point.address is 1401, index is 1
+
         data_index = point_address - poll_start_address
         
         
         # Check if this register is within the read data range
         if data_index < 0:
             logger.debug(
-                f"Skipping point '{point_name}' (address={point_address}): "
+                f"Skipping point '{point_name}' (address={point_address} size={point_size} ): "
                 f"address is before poll start address {poll_start_address}"
             )
             continue
         # what if the last point has a size of 2? so the index is 1400 + 2 = 1402 and the length of the modbus_read_data is 1400?
         # so we need to check if the index + size is greater than the length of the modbus_read_data
         # so if the index + size is greater than the length of the modbus_read_data then we need to skip the point
+        # TODO: Why skip?
         if data_index + point_size > len(modbus_read_data):
             logger.debug(
                 f"Skipping point '{point_name}' (address={point_address}, size={point_size}): "
@@ -423,20 +409,14 @@ def map_modbus_data_to_registers(
             continue
             
 
-        # Check for overlapping registers with previously processed points
-        # Calculate the range of registers this point uses
-        point_registers = set(range(point_address, point_address + point_size))
-        
-        # Check if any of these registers have already been consumed
-        if point_registers & consumed_registers:
-            overlapping = point_registers & consumed_registers
+        if point_address in consumed_registers:
             logger.warning(
-                f"Skipping point '{point_name}' (address={point_address}, size={point_size}): "
-                f"overlaps with previously processed registers {sorted(overlapping)}"
+                f"Skipping point '{point_name}' (address={point_address}): "
+                "starting register already consumed"
             )
             continue
-        
-        # Mark all registers in this point's range as consumed
+
+        point_registers = set(range(point_address, point_address + point_size))
         consumed_registers.update(point_registers)
 
         # Extract the value(s) for this register point
@@ -465,9 +445,21 @@ def map_modbus_data_to_registers(
                 logger.warning(
                     f"Using first register value only for '{point_name}' due to conversion error"
                 )
+        ###################################################################################
+        # This is under development. The purpose is to store scaled and translated bitfields 
+        # and enums in the database.
+        ###################################################################################
+        if point_bitfield_detail is not None:
+            point_value_scaled = point_value * point_scale_factor
+        elif point_enum_detail is not None:
+            point_value_scaled = point_value
+        elif point_scale_factor is not None:
+            point_value_scaled = point_value * point_scale_factor
+        else:
+            point_value_scaled = point_value
+        ###################################################################################
         
-        
-        # 4. Create MappedRegisterData object linking register info with values
+        # TODO: lets again confirm the default, I think we are setting the default in many places, it should be unified
         mapped_register = MappedRegisterData(
             name=point_name,
             address=point_address,
@@ -478,44 +470,44 @@ def map_modbus_data_to_registers(
             unit=point_unit or ""
         )
         
-        mapped_registers.append(mapped_register)
+        mapped_registers_list.append(mapped_register)
         logger.debug(
             f"Mapped register '{point_name}' (address={point_address}, index={data_index}): "
             f"value={point_value}"
         )
     
     logger.info(
-        f"Mapped {len(mapped_registers)} out of {len(points)} register points "
+        f"Mapped {len(mapped_registers_list)} out of {len(registers)} register points "
         f"from Modbus read data (start_address={poll_start_address}, read_count={len(modbus_read_data)})"
     )
     
-    return mapped_registers
+    return mapped_registers_list
 
 
 
-def mapped_registers_to_dataframe(mapped_registers: List[MappedRegisterData]) -> pd.DataFrame:
-    """
-    Convert list of MappedRegisterData objects to pandas DataFrame.
+# def mapped_registers_list_to_dataframe(mapped_registers_list: List[MappedRegisterData]) -> pd.DataFrame:
+#     """
+#     Convert list of MappedRegisterData objects to pandas DataFrame.
     
-    Args:
-        mapped_registers: List of MappedRegisterData objects
+#     Args:
+#         mapped_registers_list: List of MappedRegisterData objects
         
-    Returns:
-        DataFrame with columns: name, address, size, value, data_type, scale_factor, unit
-    """
-    data = [reg.to_dict() for reg in mapped_registers]
-    return pd.DataFrame(data)
+#     Returns:
+#         DataFrame with columns: name, address, size, value, data_type, scale_factor, unit
+#     """
+#     data = [reg.to_dict() for reg in mapped_registers_list]
+#     return pd.DataFrame(data)
 
-#
-def mapped_registers_to_dict(mapped_registers: List[MappedRegisterData]) -> Dict[str, Dict[str, Any]]:
-    """
-    Convert list of MappedRegisterData objects to dictionary keyed by register name.
+# #
+# def mapped_registers_list_to_dict(mapped_registers_list: List[MappedRegisterData]) -> Dict[str, Dict[str, Any]]:
+#     """
+#     Convert list of MappedRegisterData objects to dictionary keyed by register name.
     
-    Args:
-        mapped_registers: List of MappedRegisterData objects
+#     Args:
+#         mapped_registers_list: List of MappedRegisterData objects
         
-    Returns:
-        Dictionary mapping register name to its data dictionary
-    """
-    return {reg.address: reg.to_dict() for reg in mapped_registers}
+#     Returns:
+#         Dictionary mapping register name to its data dictionary
+#     """
+#     return {reg.address: reg.to_dict() for reg in mapped_registers_list}
 

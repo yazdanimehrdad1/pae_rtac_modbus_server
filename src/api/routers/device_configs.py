@@ -3,12 +3,16 @@
 from fastapi import APIRouter, HTTPException, status
 
 from db.device_configs import (
-    create_device_config_for_device,
     get_device_config,
     update_device_config,
     delete_device_config
 )
-from schemas.db_models.models import DeviceConfigData, DeviceConfigResponse
+from helpers.device_configs import create_device_config_cache_db
+from schemas.db_models.models import (
+    DeviceConfigData,
+    DeviceConfigResponse,
+    DeviceConfigDeleteResponse,
+)
 from logger import get_logger
 
 router = APIRouter(prefix="/device-configs", tags=["device-configs"])
@@ -19,7 +23,7 @@ logger = get_logger(__name__)
 async def create_new_device_config(site_id: int, device_id: int, config: DeviceConfigData):
     """Create a new device config."""
     try:
-        return await create_device_config_for_device(site_id, device_id, config)
+        return await create_device_config_cache_db(site_id, device_id, config)
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -75,7 +79,7 @@ async def update_device_config_endpoint(config_id: str, update: DeviceConfigData
         )
 
 
-@router.delete("/{config_id}", status_code=status.HTTP_200_OK)
+@router.delete("/{config_id}", response_model=DeviceConfigDeleteResponse, status_code=status.HTTP_200_OK)
 async def delete_device_config_endpoint(config_id: str):
     """Delete a device config by ID."""
     try:
@@ -85,7 +89,7 @@ async def delete_device_config_endpoint(config_id: str):
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Device config with id '{config_id}' not found"
             )
-        return {"message": f"Device config '{config_id}' deleted"}
+        return {"device_config_id": config_id}
     except HTTPException:
         raise
     except Exception as e:

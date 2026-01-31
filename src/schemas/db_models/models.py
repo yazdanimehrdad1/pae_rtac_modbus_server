@@ -67,6 +67,20 @@ class DeviceResponse(DeviceListItem):
     """Response model for device data."""
 
 
+class DeviceDeleteResponse(BaseModel):
+    """Response model for a deleted device."""
+    device_id: int = Field(..., description="Deleted device ID")
+    site_id: int = Field(..., description="Site ID for the deleted device")
+
+
+class DeviceWithConfigs(DeviceListItem):
+    """Device response with expanded device configs."""
+    device_configs: List["DeviceConfigResponse"] = Field(
+        default_factory=list,
+        description="Expanded device configs"
+    )
+
+
 class Coordinates(BaseModel):
     """Coordinates model for site location."""
     lat: float = Field(..., description="Latitude")
@@ -114,6 +128,33 @@ class SiteResponse(BaseModel):
     model_config = {
         "from_attributes": True,
         "populate_by_name": True,  # Allow both field name and alias
+    }
+
+
+class SiteDeleteResponse(BaseModel):
+    """Response model for a deleted site."""
+    site_id: int = Field(..., description="Deleted site ID")
+
+
+class SiteComprehensiveResponse(BaseModel):
+    """Comprehensive site response with devices and configs."""
+    id: int = Field(..., description="Site ID (4-digit number)")
+    owner: str = Field(..., description="Site owner")
+    name: str = Field(..., description="Site name")
+    location: str = Field(..., description="Site location")
+    operator: str = Field(..., description="Site operator")
+    capacity: str = Field(..., description="Site capacity")
+    deviceCount: int = Field(..., alias="device_count", description="Number of devices at this site")
+    description: Optional[str] = Field(None, description="Site description")
+    coordinates: Optional[Coordinates] = Field(None, description="Geographic coordinates")
+    devices: List[DeviceWithConfigs] = Field(default_factory=list, description="Devices with configs")
+    createdAt: datetime = Field(..., alias="created_at", description="Timestamp when site was created")
+    updatedAt: datetime = Field(..., alias="updated_at", description="Timestamp when site was last updated")
+    lastUpdate: datetime = Field(..., alias="last_update", description="Timestamp of last update")
+    
+    model_config = {
+        "from_attributes": True,
+        "populate_by_name": True,
     }
 
 
@@ -165,13 +206,23 @@ class DeviceConfigResponse(BaseModel):
     registers: List[DeviceConfigRegister] = Field(..., min_length=1, description="Register definitions")
     created_at: datetime = Field(..., description="Timestamp when config was created")
     updated_at: datetime = Field(..., description="Timestamp when config was last updated")
+    warnings: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Optional warnings about the config payload"
+    )
 
     model_config = {
         "populate_by_name": True,
     }
 
 
+class DeviceConfigDeleteResponse(BaseModel):
+    """Response model for a deleted device config."""
+    device_config_id: str = Field(..., description="Deleted device config ID")
+
+
 __all__ = ["DeviceCreate", "DeviceUpdate", "DeviceListItem", "DeviceResponse",
-           "Coordinates", "SiteCreate", "SiteUpdate", "SiteResponse",
+           "DeviceDeleteResponse", "DeviceWithConfigs", "SiteComprehensiveResponse",
+           "Coordinates", "SiteCreate", "SiteUpdate", "SiteResponse", "SiteDeleteResponse",
            "DeviceConfigRegister", "DeviceConfigData",
-           "DeviceConfigUpdate", "DeviceConfigResponse"]
+           "DeviceConfigUpdate", "DeviceConfigResponse", "DeviceConfigDeleteResponse"]
