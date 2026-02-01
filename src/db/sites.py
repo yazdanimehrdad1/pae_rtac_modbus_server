@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
 
 from db.connection import get_async_session_factory
-from schemas.db_models.models import SiteCreate, SiteUpdate, SiteResponse
+from schemas.db_models.models import SiteCreateRequest, SiteUpdate, SiteResponse
 from schemas.db_models.orm_models import Device, Site
 from logger import get_logger
 
@@ -33,7 +33,7 @@ async def _generate_site_id(session: AsyncSession) -> int:
     raise ValueError("No available site_id values")
 
 
-async def create_site(site: SiteCreate) -> SiteResponse:
+async def create_site(site: SiteCreateRequest) -> SiteResponse:
     """
     Create a new site in the database.
     

@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, status
 
 from schemas.db_models.models import (
     SiteComprehensiveResponse,
-    SiteCreate,
+    SiteCreateRequest,
     SiteUpdate,
     SiteResponse,
     SiteDeleteResponse,
@@ -43,7 +43,7 @@ async def get_all_sites_endpoint():
 
 
 @router.post("/", response_model=SiteResponse, status_code=status.HTTP_201_CREATED)
-async def create_new_site(site: SiteCreate):
+async def create_new_site(site: SiteCreateRequest):
     """
     Create a new site.
     

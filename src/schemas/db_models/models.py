@@ -99,7 +99,7 @@ class Location(BaseModel):
     zip_code: int = Field(..., ge=0, description="Zip/postal code")
 
 
-class SiteCreate(BaseModel):
+class SiteCreateRequest(BaseModel):
     """Request model for creating a new site."""
     client_id: str = Field(..., min_length=1, max_length=255, description="Client identifier")
     name: str = Field(..., min_length=1, max_length=255, description="Site name")
@@ -238,5 +238,5 @@ class ConfigDeleteResponse(BaseModel):
 
 __all__ = ["DeviceCreate", "DeviceUpdate", "DeviceListItem", "DeviceResponse",
            "DeviceDeleteResponse", "DeviceWithConfigs", "SiteComprehensiveResponse",
-           "Coordinates", "Location", "SiteCreate", "SiteUpdate", "SiteResponse", "SiteDeleteResponse",
+           "Coordinates", "Location", "SiteCreateRequest", "SiteUpdate", "SiteResponse", "SiteDeleteResponse",
            "ConfigPoint", "ConfigCreate", "ConfigUpdate", "ConfigResponse", "ConfigDeleteResponse"]
