@@ -492,3 +492,96 @@ class RegisterReadingTranslated(Base):
             f"<RegisterReadingTranslated(timestamp={self.timestamp}, device_id={self.device_id}, "
             f"register_address={self.register_address}, value={self.value})>"
         )
+
+
+class DevicePoint(Base):
+    """
+    SQLAlchemy model for the device_points table.
+    
+    Represents a flattened point definition for a device.
+    """
+    __tablename__ = "device_points"
+    
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+        autoincrement=True,
+        comment="Primary key"
+    )
+    
+    site_id: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        comment="Site ID"
+    )
+    
+    device_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("devices.device_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+        comment="Device ID"
+    )
+    
+    config_id: Mapped[str] = mapped_column(
+        String(255),
+        ForeignKey("configs.config_id", ondelete="CASCADE"),
+        nullable=False,
+        comment="Config ID"
+    )
+    
+    address: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        comment="Point address"
+    )
+    
+    name: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        comment="Point name (must be unique per device)"
+    )
+    
+    size: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        comment="Point size"
+    )
+    
+    data_type: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        comment="Data type"
+    )
+    
+    scale_factor: Mapped[Optional[float]] = mapped_column(
+        Float,
+        nullable=True,
+        comment="Scale factor"
+    )
+    
+    unit: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+        comment="Unit"
+    )
+    
+    enum_value: Mapped[Optional[str]] = mapped_column(
+        String(255),
+        nullable=True,
+        comment="Enum value if applicable"
+    )
+    
+    bitfield_value: Mapped[Optional[str]] = mapped_column(
+        String(255),
+        nullable=True,
+        comment="Bitfield value if applicable"
+    )
+
+    # Note: Unique constraint on (device_id, name) is enforced logic-side or via separate constraint
+    # We avoid strict DB constraint here to allow logic-side custom error handling as requested,
+    # OR we can add it. User asked to check manually.
+    
+    def __repr__(self) -> str:
+        return f"<DevicePoint(id={self.id}, name='{self.name}', device_id={self.device_id})>"
+
