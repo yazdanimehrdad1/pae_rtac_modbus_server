@@ -3,7 +3,7 @@
 from fastapi import HTTPException, status
 
 from cache.cache import CacheService
-from db.device_configs import create_config_for_device
+from db.device_configs import create_config_for_device, get_configs_for_device
 from db.devices import get_device_by_id
 from logger import get_logger
 from schemas.db_models.models import ConfigCreate, ConfigResponse
@@ -203,6 +203,44 @@ def validate_point_addresses(poll_start_index: int, points: list) -> None:
         )
 
 
+def validate_config_points_fields(points: list) -> None:
+    """
+    Validate the fields of the points in the config.
+    """
+    for point in points:
+        if not point.get("point_name"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Point name is required for point {point.get('point_address')}")
+        if not point.get("point_address"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Point address is required for point {point.get('point_address')}")
+        if not point.get("point_size"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Point size is required for point {point.get('point_address')}")
+        if not point.get("point_data_type"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Point data type is required for point {point.get('point_address')}")
+        if not point.get("point_scale_factor"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Point scale factor is required")
+        if not point.get("point_unit"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Point unit is required")
+        if not point.get("point_bitfield_detail"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Point bitfield detail is required")
+        if not point.get("point_enum_detail"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Point enum detail is required")
+
 async def create_config_cache_db(
     site_id: int,
     device_id: int,
@@ -219,7 +257,6 @@ async def create_config_cache_db(
 
     set_point_defaults(config.points)
 
-   
     min_register_number, max_register_end, poll_count = compute_poll_range(
         config.points
     )
@@ -257,3 +294,35 @@ async def create_config_cache_db(
     await cache_service.delete(cache_key)
 
     return created_config
+
+
+async def map_device_configs_to_device_points(device_id: int) -> list[dict[str, object]]:
+    """
+    Map all configs for a device into Device_Points rows.
+    """
+    configs = await get_configs_for_device(device_id)
+    device_points: list[dict[str, object]] = []
+    for config in configs:
+        for point in config.points:
+            if isinstance(point, dict):
+                point_data = point
+            elif hasattr(point, "model_dump"):
+                point_data = point.model_dump()
+            else:
+                point_data = vars(point)
+
+            
+            device_points.append(
+                {
+                    "name": point_data.get("point_name"),
+                    "address": point_data.get("point_address"),
+                    "size": point_data.get("point_size"),
+                    "data_type": point_data.get("point_data_type"),
+                    "scale_factor": point_data.get("point_scale_factor"),
+                    "unit": point_data.get("point_unit"),
+                    "convert_type": None,
+                }
+            )
+    return device_points
+
+
