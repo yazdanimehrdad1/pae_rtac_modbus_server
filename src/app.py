@@ -117,7 +117,7 @@ def create_app() -> FastAPI:
         logger.info("Device auto-creation disabled - devices must be created via API endpoints")
         
         # Start scheduler
-        await start_scheduler()
+        # await start_scheduler()
     
     @app.on_event("shutdown")
     async def shutdown():
