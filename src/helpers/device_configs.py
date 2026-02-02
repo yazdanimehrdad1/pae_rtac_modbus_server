@@ -304,6 +304,8 @@ async def create_config_cache_db(
     if config.site_id != site_id or config.device_id != device_id:
         raise ValueError("Path site_id/device_id must match body")
 
+    logger.info("config in create_config_cache_db: ", config)
+
     validate_point_addresses_result =validate_point_addresses(config.poll_start_index, config.points)
 
     set_point_defaults(config.points)
@@ -335,9 +337,9 @@ async def create_config_cache_db(
     device_data = device.model_dump()
     
     device_points_list = map_device_configs_to_device_points(config.points, device_data)
-    
+    logger.info("device_points_list in create_config_cache_db: ", device_points_list)
     device_points_uniquness_result = await validate_device_points_uniqueness(device_points_list, device_data)
-
+    logger.info("device_points_uniquness_result in create_config_cache_db: ", device_points_uniquness_result)
     create_config_result = await create_config_for_device(site_id, device_id, config)
 
     # device points are validated, now create them

@@ -78,8 +78,6 @@ async def validate_device_points_uniqueness(device_points_list: list[dict[str, o
     Validate that the points attempting to be created do not already exist
     for the device (based on point address).
     """
-    if not device_points_list.length:
-        return
 
     device_id = device.get("device_id")
     if not device_id:
