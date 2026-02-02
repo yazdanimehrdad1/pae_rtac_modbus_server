@@ -256,6 +256,7 @@ class DevicePointResponse(BaseModel):
     unit: Optional[str] = Field(None, description="Unit")
     enum_value: Optional[str] = Field(None, description="Enum value if applicable")
     bitfield_value: Optional[str] = Field(None, description="Bitfield value if applicable")
+    is_derived: bool = Field(False, description="Whether this point is derived from bitfield/enum expansion")
 
     model_config = {
         "from_attributes": True,

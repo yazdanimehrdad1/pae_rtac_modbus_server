@@ -577,6 +577,14 @@ class DevicePoint(Base):
         nullable=True,
         comment="Bitfield value if applicable"
     )
+    
+    is_derived: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+        comment="Whether this point is derived from bitfield/enum expansion"
+    )
 
     # Note: Unique constraint on (device_id, name) is enforced logic-side or via separate constraint
     # We avoid strict DB constraint here to allow logic-side custom error handling as requested,
