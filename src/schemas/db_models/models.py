@@ -242,7 +242,28 @@ class ConfigDeleteResponse(BaseModel):
     config_id: str = Field(..., description="Deleted config ID")
 
 
+class DevicePointResponse(BaseModel):
+    """Response model for a device point."""
+    id: int = Field(..., description="Primary key")
+    site_id: int = Field(..., description="Site ID")
+    device_id: int = Field(..., description="Device ID")
+    config_id: str = Field(..., description="Config ID")
+    name: str = Field(..., description="Point name")
+    address: int = Field(..., description="Point address")
+    size: int = Field(..., description="Point size")
+    data_type: str = Field(..., description="Data type")
+    scale_factor: Optional[float] = Field(None, description="Scale factor")
+    unit: Optional[str] = Field(None, description="Unit")
+    enum_value: Optional[str] = Field(None, description="Enum value if applicable")
+    bitfield_value: Optional[str] = Field(None, description="Bitfield value if applicable")
+
+    model_config = {
+        "from_attributes": True,
+    }
+
+
 __all__ = ["DeviceCreate", "DeviceUpdate", "DeviceListItem", "DeviceResponse",
            "DeviceDeleteResponse", "DeviceWithConfigs", "SiteComprehensiveResponse",
            "Coordinates", "Location", "SiteCreateRequest", "SiteUpdate", "SiteResponse", "SiteDeleteResponse",
-           "ConfigPoint", "ConfigCreateRequest", "ConfigUpdate", "ConfigResponse", "ConfigDeleteResponse"]
+           "ConfigPoint", "ConfigCreateRequest", "ConfigUpdate", "ConfigResponse", "ConfigDeleteResponse",
+           "DevicePointResponse"]

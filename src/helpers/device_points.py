@@ -20,7 +20,7 @@ def map_device_configs_to_device_points(points: list, device: Any) -> list[dict[
 
 
         if point_data.get("data_type") == "enum":
-            for enum_name, enum_value in point_data.get("enum_detail", {}).items():
+            for enum_value, enum_name in point_data.get("enum_detail", {}).items():
                 device_points_list.append(
                     {
                         #id or point_id as a PK
@@ -37,7 +37,7 @@ def map_device_configs_to_device_points(points: list, device: Any) -> list[dict[
                     }
                 )
         elif point_data.get("data_type") == "bitfield":
-            for bitfield_name, bitfield_value in point_data.get("bitfield_detail", {}).items():
+            for bitfield_value, bitfield_name in point_data.get("bitfield_detail", {}).items():
                 device_points_list.append(
                     {
                         #id or point_id as a PK
@@ -186,3 +186,18 @@ async def create_device_points(device_points_list: list[dict[str, object]]) -> N
         new_points = [DevicePoint(**point) for point in device_points_list]
         session.add_all(new_points)
         await session.commit()
+
+
+async def get_device_points(site_id: int, device_id: int) -> list[DevicePoint]:
+    """
+    Get all points for a specific site and device.
+    """
+    session_factory = get_async_session_factory()
+    async with session_factory() as session:
+        result = await session.execute(
+            select(DevicePoint)
+            .where(DevicePoint.site_id == site_id)
+            .where(DevicePoint.device_id == device_id)
+            .order_by(DevicePoint.address.asc())
+        )
+        return list(result.scalars().all())
