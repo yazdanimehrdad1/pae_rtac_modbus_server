@@ -31,7 +31,7 @@ def map_device_configs_to_device_points(points: list, device: Any) -> list[dict[
                         "address": point_data.get("address"),
                         "name": f"{base_name}_{enum_name}".lower(),
                         "size": point_data.get("size"),
-                        "data_type": point_data.get("data_type"),
+                        "data_type": "single_enum",
                         "scale_factor": point_data.get("scale_factor"),
                         "unit": point_data.get("unit"),
                         "enum_value": enum_value,
@@ -49,7 +49,7 @@ def map_device_configs_to_device_points(points: list, device: Any) -> list[dict[
                         "address": point_data.get("address"),
                         "name": f"{base_name}_{bitfield_name}".lower(),
                         "size": point_data.get("size"),
-                        "data_type": point_data.get("data_type"),
+                        "data_type": "single_bit",
                         "scale_factor": point_data.get("scale_factor"),
                         "unit": point_data.get("unit"),
                         "bitfield_value": bitfield_value,
@@ -71,6 +71,8 @@ def map_device_configs_to_device_points(points: list, device: Any) -> list[dict[
                 "data_type": point_data.get("data_type"),
                 "scale_factor": point_data.get("scale_factor"),
                 "unit": point_data.get("unit"),
+                "enum_detail": point_data.get("enum_detail"),
+                "bitfield_detail": point_data.get("bitfield_detail"),
                 "is_derived": False,
             }
         )
