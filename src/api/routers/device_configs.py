@@ -9,7 +9,7 @@ from db.device_configs import (
 )
 from helpers.device_configs import create_config_cache_db
 from schemas.db_models.models import (
-    ConfigCreate,
+    ConfigCreateRequest,
     ConfigResponse,
     ConfigDeleteResponse,
     ConfigUpdate,
@@ -21,7 +21,7 @@ logger = get_logger(__name__)
 
 
 @router.post("/site/{site_id}/device/{device_id}", response_model=ConfigResponse, status_code=status.HTTP_201_CREATED)
-async def create_new_config(site_id: int, device_id: int, config: ConfigCreate):
+async def create_new_config(site_id: int, device_id: int, config: ConfigCreateRequest):
     """Create a new config."""
     try:
         return await create_config_cache_db(site_id, device_id, config)

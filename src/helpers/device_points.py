@@ -19,37 +19,37 @@ def map_device_configs_to_device_points(points: list, device: Any) -> list[dict[
             point_data = vars(point)
 
 
-        if point_data.get("point_data_type") == "enum":
-            for enum_name, enum_value in point_data.get("point_enum_detail", {}).items():
+        if point_data.get("data_type") == "enum":
+            for enum_name, enum_value in point_data.get("enum_detail", {}).items():
                 device_points_list.append(
                     {
                         #id or point_id as a PK
                         "site_id": device.get("site_id"),
                         "device_id": device.get("device_id"),
                         "config_id": point_data.get("config_id"),
-                        "address": point_data.get("point_address"),
-                        "name": point_data.get("point_name") + "_" + enum_name,
-                        "size": point_data.get("point_size"),
-                        "data_type": point_data.get("point_data_type"),
-                        "scale_factor": point_data.get("point_scale_factor"),
-                        "unit": point_data.get("point_unit"),
+                        "address": point_data.get("address"),
+                        "name": point_data.get("name") + "_" + enum_name,
+                        "size": point_data.get("size"),
+                        "data_type": point_data.get("data_type"),
+                        "scale_factor": point_data.get("scale_factor"),
+                        "unit": point_data.get("unit"),
                         "enum_value": enum_value,
                     }
                 )
-        elif point_data.get("point_data_type") == "bitfield":
-            for bitfield_name, bitfield_value in point_data.get("point_bitfield_detail", {}).items():
+        elif point_data.get("data_type") == "bitfield":
+            for bitfield_name, bitfield_value in point_data.get("bitfield_detail", {}).items():
                 device_points_list.append(
                     {
                         #id or point_id as a PK
                         "site_id": device.get("site_id"),
                         "device_id": device.get("device_id"),
                         "config_id": point_data.get("config_id"),
-                        "address": point_data.get("point_address"),
-                        "name": point_data.get("point_name") + "_" + bitfield_name,
-                        "size": point_data.get("point_size"),
-                        "data_type": point_data.get("point_data_type"),
-                        "scale_factor": point_data.get("point_scale_factor"),
-                        "unit": point_data.get("point_unit"),
+                        "address": point_data.get("address"),
+                        "name": point_data.get("name") + "_" + bitfield_name,
+                        "size": point_data.get("size"),
+                        "data_type": point_data.get("data_type"),
+                        "scale_factor": point_data.get("scale_factor"),
+                        "unit": point_data.get("unit"),
                         "bitfield_value": bitfield_value,
                     }
                 )
@@ -62,12 +62,12 @@ def map_device_configs_to_device_points(points: list, device: Any) -> list[dict[
                 "site_id": device.get("site_id"),
                 "device_id": device.get("device_id"),
                 "config_id": point_data.get("config_id"),
-                "name": point_data.get("point_name"),
-                "address": point_data.get("point_address"),
-                "size": point_data.get("point_size"),
-                "data_type": point_data.get("point_data_type"),
-                "scale_factor": point_data.get("point_scale_factor"),
-                "unit": point_data.get("point_unit"),
+                "name": point_data.get("name"),
+                "address": point_data.get("address"),
+                "size": point_data.get("size"),
+                "data_type": point_data.get("data_type"),
+                "scale_factor": point_data.get("scale_factor"),
+                "unit": point_data.get("unit"),
             }
         )
     return device_points_list
@@ -76,7 +76,7 @@ def map_device_configs_to_device_points(points: list, device: Any) -> list[dict[
 async def validate_device_points_uniqueness(device_points_list: list[dict[str, object]], device: dict[str, Any]) -> None:
     """
     Validate that the points attempting to be created do not already exist
-    for the device (based on point address).
+    or overlap with existing points for the device (based on address range).
     """
 
     device_id = device.get("device_id")
@@ -85,38 +85,54 @@ async def validate_device_points_uniqueness(device_points_list: list[dict[str, o
 
     session_factory = get_async_session_factory()
     async with session_factory() as session:
-        addresses_to_check = {point.get("address") for point in device_points_list if point.get("address") is not None}
-        
-        # Query DB for ALL existing addresses for this device
+        # Get all existing points for this device from DB
         result = await session.execute(
-            select(DevicePoint.address)
+            select(DevicePoint.address, DevicePoint.size, DevicePoint.name)
             .where(DevicePoint.device_id == device_id)
         )
-        existing_addresses_db = set(result.scalars().all())
+        existing_points_db = result.all()
         
-        # Check for intersection
-        duplicates = addresses_to_check.intersection(existing_addresses_db)
-        
-        if duplicates:
-            # Reconstruct detailed error list
-            all_duplicates = []
-            for addr in duplicates:
-                all_duplicates.append(
-                    {
-                        "device_id": device_id,
-                        "address": addr,
-                        "error": f"Point with address {addr} already exists for device {device_id}"
-                    }
-                )
+        for new_point in device_points_list:
+            new_start = new_point.get("address")
+            new_size = new_point.get("size", 1)
+            new_name = new_point.get("name")
             
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail={
-                    "error": "Duplicate point addresses found",
-                    "message": "One or more points already exist for this device based on address.",
-                    "duplicates": all_duplicates
-                }
-            )
+            if new_start is None:
+                continue
+            
+            new_end = new_start + new_size - 1
+            
+            for ex_addr, ex_size, ex_name in existing_points_db:
+                ex_start = ex_addr
+                ex_end = ex_addr + ex_size - 1
+                
+                # Check for address overlap
+                if new_start <= ex_end and new_end >= ex_start:
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail={
+                            "error": "Point address overlap",
+                            "message": f"Point '{new_name}' (address {new_start}-{new_end}) overlaps with existing point '{ex_name}' (address {ex_start}-{ex_end})",
+                            "conflict": {
+                                "new_point": {"name": new_name, "address": new_start, "size": new_size},
+                                "existing_point": {"name": ex_name, "address": ex_start, "size": ex_size}
+                            }
+                        }
+                    )
+                
+                # Also check for name collision
+                if new_name == ex_name:
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail={
+                            "error": "Point name collision",
+                            "message": f"Point named '{new_name}' already exists for this device",
+                            "conflict": {
+                                "name": new_name,
+                                "existing_address": ex_start
+                            }
+                        }
+                    )
 
 
 async def create_device_points(device_points_list: list[dict[str, object]]) -> None:

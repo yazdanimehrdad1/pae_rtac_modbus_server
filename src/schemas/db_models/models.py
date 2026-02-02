@@ -172,23 +172,29 @@ class SiteComprehensiveResponse(BaseModel):
 
 class ConfigPoint(BaseModel):
     """Single point definition in a config."""
-    point_name: str = Field(..., description="Human-readable point name/label")
-    point_address: int = Field(..., ge=0, le=65535, description="Modbus point address")
-    point_size: int = Field(..., ge=1, description="Number of registers/bits")
-    point_data_type: str = Field(..., description="Data type interpretation")
-    point_scale_factor: Optional[float] = Field(default=None, description="Scale factor to apply to raw value")
-    point_unit: Optional[str] = Field(default=None, description="Physical unit (e.g., 'V', 'A', 'kW')")
-    point_bitfield_detail: Optional[Dict[str, str]] = Field(
-        default=None,
+    name: str = Field(..., alias="point_name", description="Human-readable point name/label")
+    address: int = Field(..., alias="point_address", ge=0, le=65535, description="Modbus point address")
+    size: int = Field(..., alias="point_size", ge=1, description="Number of registers/bits")
+    data_type: str = Field(..., alias="point_data_type", description="Data type interpretation")
+    scale_factor: Optional[float] = Field(None, alias="point_scale_factor", description="Scale factor to apply to raw value")
+    unit: Optional[str] = Field(None, alias="point_unit", description="Physical unit (e.g., 'V', 'A', 'kW')")
+    bitfield_detail: Optional[Dict[str, str]] = Field(
+        None,
+        alias="point_bitfield_detail",
         description="Bitfield detail mapping (optional)"
     )
-    point_enum_detail: Optional[Dict[str, str]] = Field(
-        default=None,
+    enum_detail: Optional[Dict[str, str]] = Field(
+        None,
+        alias="point_enum_detail",
         description="Enum detail mapping (optional)"
     )
 
+    model_config = {
+        "populate_by_name": True,
+    }
 
-class ConfigCreate(BaseModel):
+
+class ConfigCreateRequest(BaseModel):
     """Config payload for a device."""
     site_id: int = Field(..., description="Site ID (4-digit number)")
     device_id: int = Field(..., description="Device ID (database primary key)")
@@ -239,4 +245,4 @@ class ConfigDeleteResponse(BaseModel):
 __all__ = ["DeviceCreate", "DeviceUpdate", "DeviceListItem", "DeviceResponse",
            "DeviceDeleteResponse", "DeviceWithConfigs", "SiteComprehensiveResponse",
            "Coordinates", "Location", "SiteCreateRequest", "SiteUpdate", "SiteResponse", "SiteDeleteResponse",
-           "ConfigPoint", "ConfigCreate", "ConfigUpdate", "ConfigResponse", "ConfigDeleteResponse"]
+           "ConfigPoint", "ConfigCreateRequest", "ConfigUpdate", "ConfigResponse", "ConfigDeleteResponse"]

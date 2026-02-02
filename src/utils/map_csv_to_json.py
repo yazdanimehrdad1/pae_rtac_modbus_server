@@ -136,14 +136,14 @@ def json_to_register_map(json_data: Dict[str, Any]) -> RegisterMap:
     
     for reg in registers:
         point_data = {
-            "register_name": (
-                reg.get("register_name")
-                or reg.get("name")
+            "name": (
+                reg.get("name")
+                or reg.get("register_name")
                 or reg.get("point_name", "")
             ),
-            "register_address": (
-                reg.get("register_address")
-                or reg.get("address")
+            "address": (
+                reg.get("address")
+                or reg.get("register_address")
                 or reg.get("point_address")
             ),
             "data_type": reg.get("data_type", reg.get("point_data_type", "uint16")),

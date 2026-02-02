@@ -9,7 +9,7 @@ from sqlalchemy import select, delete
 from sqlalchemy.exc import IntegrityError
 
 from db.session import get_session
-from schemas.db_models.models import ConfigCreate, ConfigUpdate, ConfigResponse
+from schemas.db_models.models import ConfigCreateRequest, ConfigUpdate, ConfigResponse
 from schemas.db_models.orm_models import Config, Device
 from logger import get_logger
 
@@ -43,7 +43,7 @@ async def _generate_config_id(session, site_id: int, device_id: int) -> str:
 async def create_config_for_device(
     site_id: int,
     device_id: int,
-    config: ConfigCreate
+    config: ConfigCreateRequest
 ) -> ConfigResponse:
     """
     Create a new config.

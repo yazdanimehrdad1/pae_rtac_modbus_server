@@ -16,14 +16,14 @@ class Base(DeclarativeBase):
 
 
 class ConfigPointDefinition(TypedDict, total=False):
-    point_address: int
-    point_name: str
-    point_data_type: str
-    point_size: int
-    point_scale_factor: float
-    point_unit: str
-    point_bitfield_detail: Dict[str, str]
-    point_enum_detail: Dict[str, str]
+    address: int
+    name: str
+    data_type: str
+    size: int
+    scale_factor: float
+    unit: str
+    bitfield_detail: Dict[str, str]
+    enum_detail: Dict[str, str]
 
 
 class Site(Base):

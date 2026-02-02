@@ -361,8 +361,8 @@ def map_modbus_data_to_registers(
 
     #TODO: see if default is necessary, given that we are setting to default at the time of creating
     for point in registers:
-        point_name = _get_attr(point, "register_name") or _get_attr(point, "point_name")
-        point_address = _get_attr(point, "register_address") or _get_attr(point, "point_address")
+        point_name = _get_attr(point, "name") or _get_attr(point, "register_name") or _get_attr(point, "point_name")
+        point_address = _get_attr(point, "address") or _get_attr(point, "register_address") or _get_attr(point, "point_address")
         point_size = _get_attr(point, "size", None) or _get_attr(point, "point_size", 1)
         point_data_type = _get_attr(point, "data_type", None) or _get_attr(point, "point_data_type", "uint16")
         point_scale_factor = _get_attr(point, "scale_factor", None)
