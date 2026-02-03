@@ -18,6 +18,7 @@ from utils.store_data_readings import (
     store_device_data_in_db,
     store_device_data_in_db_translated,
 )
+from helpers.device_points import get_device_points
 
 logger = get_logger(__name__)
 
@@ -191,6 +192,7 @@ async def poll_single_device(site_name: str, device: DeviceWithConfigs) -> PollR
         description=device.description,
         poll_enabled=device.poll_enabled,
         read_from_aggregator=device.read_from_aggregator,
+        protocol=device.protocol,
         created_at=device.created_at,
         updated_at=device.updated_at
     )

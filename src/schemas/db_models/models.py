@@ -29,7 +29,6 @@ class DeviceCreateRequest(BaseModel):
     poll_enabled: bool = Field(True, description="Whether polling is enabled for this device")
     read_from_aggregator: bool = Field(True, description="Whether to read from edge aggregator")
 
-
 class DeviceUpdate(BaseModel):
     """Request model for updating a device."""
     name: Optional[str] = Field(None, min_length=1, max_length=255, description="Device name/identifier")

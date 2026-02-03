@@ -97,6 +97,7 @@ async def get_complete_site_data(site_id: int) -> Optional[SiteComprehensiveResp
                     description=device.description,
                     poll_enabled=device.poll_enabled if device.poll_enabled is not None else True,
                     read_from_aggregator=device.read_from_aggregator if device.read_from_aggregator is not None else True,
+                    protocol=device.protocol,
                     created_at=device.created_at,
                     updated_at=device.updated_at,
                     configs=device_configs,
