@@ -453,7 +453,7 @@ async def cron_job_poll_modbus_registers_all_sites() -> None:
         all_sites = await get_all_sites()
         logger.info(f"Retrieved {len(all_sites)} site(s) from database")
         for site in all_sites:
-            await poll_modbus_registers_per_site(site.id)
+            await poll_modbus_registers_per_site(site.site_id)
     except Exception as e:
         logger.error(f"Error in Modbus polling job for all sites: {e}", exc_info=True)
         # Don't re-raise - let scheduler handle retry on next interval
