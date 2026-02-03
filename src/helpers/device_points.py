@@ -37,6 +37,9 @@ def map_device_configs_to_device_points(points: list, device: DeviceWithConfigs)
                         "unit": point_data.get("unit"),
                         "enum_value": enum_value,
                         "is_derived": True,
+                        "bitfield_detail": point_data.get("bitfield_detail"),
+                        "enum_detail": point_data.get("enum_detail"),
+                        "byte_order": point_data.get("byte_order", "big-endian"),
                     }
                 )
         elif point_data.get("data_type") == "bitfield":
@@ -54,6 +57,9 @@ def map_device_configs_to_device_points(points: list, device: DeviceWithConfigs)
                         "unit": point_data.get("unit"),
                         "bitfield_value": bitfield_value,
                         "is_derived": True,
+                        "bitfield_detail": point_data.get("bitfield_detail"),
+                        "enum_detail": point_data.get("enum_detail"),
+                        "byte_order": point_data.get("byte_order", "big-endian"),
                     }
                 )
 
@@ -72,6 +78,7 @@ def map_device_configs_to_device_points(points: list, device: DeviceWithConfigs)
                 "unit": point_data.get("unit"),
                 "enum_detail": point_data.get("enum_detail"),
                 "bitfield_detail": point_data.get("bitfield_detail"),
+                "byte_order": point_data.get("byte_order", "big-endian"),
                 "is_derived": False,
             }
         )

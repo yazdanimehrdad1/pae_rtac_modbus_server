@@ -16,6 +16,9 @@ class DeviceCreateRequest(BaseModel):
     type: Literal["meter", "relay", "RTAC", "inverter", "BESS"] = Field(
         ..., description="Device type"
     )
+    protocol: Literal["Modbus", "DNP"] = Field(
+        default="Modbus", description="Communication protocol"
+    )
     vendor: Optional[str] = Field(default=None, max_length=255, description="Device vendor")
     model: Optional[str] = Field(default=None, max_length=255, description="Device model")
     host: str = Field(..., min_length=1, max_length=255, description="Device hostname or IP address")
@@ -32,6 +35,9 @@ class DeviceUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=255, description="Device name/identifier")
     type: Optional[Literal["meter", "relay", "RTAC", "inverter", "BESS"]] = Field(
         None, description="Device type"
+    )
+    protocol: Optional[Literal["Modbus", "DNP"]] = Field(
+        None, description="Communication protocol"
     )
     vendor: Optional[str] = Field(None, max_length=255, description="Device vendor")
     model: Optional[str] = Field(None, max_length=255, description="Device model")
@@ -50,6 +56,7 @@ class DeviceListItem(BaseModel):
     site_id: int = Field(..., description="Site ID (4-digit number)")
     name: str = Field(..., description="Device name")
     type: str = Field(..., description="Device type")
+    protocol: str = Field(..., description="Communication protocol")
     vendor: Optional[str] = Field(None, description="Device vendor")
     model: Optional[str] = Field(None, description="Device model")
     host: str = Field(..., description="Device hostname or IP address")
@@ -188,6 +195,11 @@ class ConfigPoint(BaseModel):
         alias="point_enum_detail",
         description="Enum detail mapping (optional)"
     )
+    byte_order: str = Field(
+        default="big-endian",
+        alias="point_byte_order",
+        description="Byte order for interpretation"
+    )
 
     model_config = {
         "populate_by_name": True,
@@ -259,6 +271,7 @@ class DevicePointResponse(BaseModel):
     is_derived: bool = Field(False, description="Whether this point is derived from bitfield/enum expansion")
     enum_detail: Optional[Dict[str, str]] = Field(None, description="Enum detail mapping")
     bitfield_detail: Optional[Dict[str, str]] = Field(None, description="Bitfield detail mapping")
+    byte_order: str = Field("big-endian", description="Byte order for interpretation")
 
     model_config = {
         "from_attributes": True,

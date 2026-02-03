@@ -24,6 +24,7 @@ class ConfigPointDefinition(TypedDict, total=False):
     unit: str
     bitfield_detail: Dict[str, str]
     enum_detail: Dict[str, str]
+    byte_order: str
 
 
 class Site(Base):
@@ -187,6 +188,14 @@ class Device(Base):
         String(50),
         nullable=False,
         comment="Device type"
+    )
+
+    protocol: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="Modbus",
+        server_default="Modbus",
+        comment="Communication protocol (Modbus or DNP)"
     )
     
     vendor: Mapped[Optional[str]] = mapped_column(
@@ -597,6 +606,14 @@ class DevicePoint(Base):
         JSON,
         nullable=True,
         comment="Bitfield detail mapping"
+    )
+
+    byte_order: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="big-endian",
+        server_default="big-endian",
+        comment="Byte order for interpretation (e.g., big-endian, little-endian)"
     )
 
     # Note: Unique constraint on (device_id, name) is enforced logic-side or via separate constraint

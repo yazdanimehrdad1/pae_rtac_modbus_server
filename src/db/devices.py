@@ -83,6 +83,7 @@ async def create_device(device: DeviceCreateRequest, site_id: int) -> DeviceWith
                 description=device.description,
                 poll_enabled=device.poll_enabled,
                 read_from_aggregator=device.read_from_aggregator,
+                protocol=device.protocol,
                 site_id=site_id
             )
             
@@ -116,6 +117,7 @@ async def create_device(device: DeviceCreateRequest, site_id: int) -> DeviceWith
                 description=created_device.description,
                 poll_enabled=created_device.poll_enabled if created_device.poll_enabled is not None else True,
                 read_from_aggregator=created_device.read_from_aggregator if created_device.read_from_aggregator is not None else True,
+                protocol=created_device.protocol,
                 created_at=created_device.created_at,
                 updated_at=created_device.updated_at,
                 configs=[],
@@ -179,6 +181,7 @@ async def get_all_devices(site_id: int) -> list[DeviceWithConfigs]:
                     description=device.description,
                     poll_enabled=device.poll_enabled if device.poll_enabled is not None else True,
                     read_from_aggregator=device.read_from_aggregator if device.read_from_aggregator is not None else True,
+                    protocol=device.protocol,
                     created_at=device.created_at,
                     updated_at=device.updated_at,
                     configs=configs_by_device.get(device.device_id, []),
@@ -229,6 +232,7 @@ async def get_device_by_id(device_id: int, site_id: int) -> Optional[DeviceWithC
             description=device.description,
             poll_enabled=device.poll_enabled if device.poll_enabled is not None else True,
             read_from_aggregator=device.read_from_aggregator if device.read_from_aggregator is not None else True,
+            protocol=device.protocol,
             created_at=device.created_at,
             updated_at=device.updated_at,
             configs=device_configs,
@@ -267,6 +271,7 @@ async def get_device_by_id_internal(device_id: int) -> Optional[DeviceWithConfig
             description=device.description,
             poll_enabled=device.poll_enabled if device.poll_enabled is not None else True,
             read_from_aggregator=device.read_from_aggregator if device.read_from_aggregator is not None else True,
+            protocol=device.protocol,
             created_at=device.created_at,
             updated_at=device.updated_at,
             configs=device_configs,
@@ -347,6 +352,8 @@ async def update_device(device_id: int, device_update: DeviceUpdate, site_id: in
                 device.poll_enabled = device_update.poll_enabled
             if device_update.read_from_aggregator is not None:
                 device.read_from_aggregator = device_update.read_from_aggregator
+            if device_update.protocol is not None:
+                device.protocol = device_update.protocol
             
             # updated_at is automatically updated by the ORM (onupdate=func.now())
             
@@ -380,6 +387,7 @@ async def update_device(device_id: int, device_update: DeviceUpdate, site_id: in
                 description=device.description,
                 poll_enabled=device.poll_enabled if device.poll_enabled is not None else True,
                 read_from_aggregator=device.read_from_aggregator if device.read_from_aggregator is not None else True,
+                protocol=device.protocol,
                 created_at=device.created_at,
                 updated_at=device.updated_at,
                 configs=device_configs,
@@ -450,6 +458,7 @@ async def delete_device(device_id: int, site_id: int) -> Optional[DeviceResponse
                 description=device.description,
                 poll_enabled=device.poll_enabled if device.poll_enabled is not None else True,
                 read_from_aggregator=device.read_from_aggregator if device.read_from_aggregator is not None else True,
+                protocol=device.protocol,
                 created_at=device.created_at,
                 updated_at=device.updated_at
             )

@@ -241,7 +241,7 @@ def convert_multi_register_value(
     register_values: List[Union[int, bool]],
     data_type: str,
     size: int,
-    byte_order: str = "big"
+    byte_order: str
 ) -> Union[int, float]:
     """
     Convert multiple 16-bit register values to a single value based on data type.
@@ -254,7 +254,7 @@ def convert_multi_register_value(
         register_values: List of register values (16-bit integers from Modbus read)
         data_type: Data type string (e.g., "uint32", "int32", "float32", "int64", "uint64", "float64")
         size: Number of registers (must match data_type requirements)
-        byte_order: Byte order - "big" (Modbus standard) or "little" (default: "big")
+        byte_order: Byte order - "big-endian" (Modbus standard) or "little-endian"
         
     Returns:
         Converted value as int or float
@@ -266,8 +266,8 @@ def convert_multi_register_value(
     if not register_values:
         raise ValueError("register_values cannot be empty")
     
-    if byte_order not in ("big", "little"):
-        raise ValueError(f"byte_order must be 'big' or 'little', got '{byte_order}'")
+    if byte_order not in ("big-endian", "little-endian"):
+        raise ValueError(f"byte_order must be 'big-endian' or 'little-endian', got '{byte_order}'")
     
     # Convert bool to int if needed
     register_values_int = [int(v) for v in register_values]
@@ -361,22 +361,16 @@ def map_modbus_data_to_registers(
 
     #TODO: see if default is necessary, given that we are setting to default at the time of creating
     for point in registers:
-        point_name = _get_attr(point, "name") or _get_attr(point, "register_name") or _get_attr(point, "point_name")
-        point_address = _get_attr(point, "address") or _get_attr(point, "register_address") or _get_attr(point, "point_address")
-        point_size = _get_attr(point, "size", None) or _get_attr(point, "point_size", 1)
-        point_data_type = _get_attr(point, "data_type", None) or _get_attr(point, "point_data_type", "uint16")
-        point_scale_factor = _get_attr(point, "scale_factor", None)
-        if point_scale_factor is None:
-            point_scale_factor = _get_attr(point, "point_scale_factor", 1.0)
-        point_unit = _get_attr(point, "unit", None)
-        if point_unit is None:
-            point_unit = _get_attr(point, "point_unit", "")
-        point_bitfield_detail = _get_attr(point, "bitfield_detail", None)
-        if point_bitfield_detail is None:
-            point_bitfield_detail = _get_attr(point, "point_bitfield_detail", None)
-        point_enum_detail = _get_attr(point, "enum_detail", None)
-        if point_enum_detail is None:
-            point_enum_detail = _get_attr(point, "point_enum_detail", None)
+        point_name = point.name
+        point_address = point.address
+        point_size = point.size
+        point_data_type = point.data_type
+        point_scale_factor = point.scale_factor or 1.0
+        point_unit = point.unit or ""
+        point_byte_order = point.byte_order or "big-endian"
+        point_bitfield_detail = point.bitfield_detail or None
+        point_enum_detail = point.enum_detail or None
+        point_is_derived = point.is_derived or False
 
         
         #TODO: see if this is necessary, or maybe aggregate validation in a separate function
@@ -441,7 +435,7 @@ def map_modbus_data_to_registers(
                     register_values=point_values,
                     data_type=point_data_type,
                     size=point_size,
-                    byte_order="big"  # Modbus standard is big-endian
+                    byte_order=point_byte_order
                 )
             except ValueError as e:
                 logger.error(
@@ -457,14 +451,18 @@ def map_modbus_data_to_registers(
         # This is under development. The purpose is to store scaled and translated bitfields 
         # and enums in the database.
         ###################################################################################
-        if point_bitfield_detail is not None:
-            point_value_scaled = point_value * point_scale_factor
-        elif point_enum_detail is not None:
-            point_value_scaled = point_value
-        elif point_scale_factor is not None:
-            point_value_scaled = point_value * point_scale_factor
+        if point_data_type == "bitfield" and point_is_derived is False and point_bitfield_detail is not None:
+            point_value_derived = point_value * point_scale_factor
+            point_unit = "bit"
+        elif point_data_type == "enum" and point_is_derived is False and point_enum_detail is not None:
+            point_value_derived = point_value
+            point_unit = "enum"
+        elif point_data_type == "single_bit" and point_is_derived is True:
+            point_value_derived = point_value
+        elif point_data_type == "single_enum" and point_is_derived is True:
+            point_value_derived = point_value
         else:
-            point_value_scaled = point_value
+            point_value_scaled = point_value * point_scale_factor
         ###################################################################################
         
         # TODO: lets again confirm the default, I think we are setting the default in many places, it should be unified
@@ -473,6 +471,8 @@ def map_modbus_data_to_registers(
             address=point_address,
             size=point_size,
             value=point_value,
+            value_derived=point_value_derived,
+            value_scaled=point_value_scaled,
             data_type=point_data_type or "uint16",
             scale_factor=point_scale_factor or 1.0,
             unit=point_unit or ""
