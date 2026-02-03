@@ -6,7 +6,7 @@ This is the fundamental mapping that links register metadata with their actual r
 """
 
 from pathlib import Path
-from typing import List, Dict, Any, Union
+from typing import List, Dict, Any, Union, Optional
 import pandas as pd
 import struct
 
@@ -33,6 +33,8 @@ class MappedRegisterData:
         address: int,
         size: int,
         value: Union[int, float],
+        value_derived: Optional[Union[int, float]] = None,
+        value_scaled: Optional[Union[int, float]] = None,
         data_type: str = "uint16",
         scale_factor: float = 1.0,
         unit: str = ""
@@ -41,6 +43,8 @@ class MappedRegisterData:
         self.address = address
         self.size = size
         self.value = value  # Raw values from Modbus read
+        self.value_derived = value_derived
+        self.value_scaled = value_scaled
         self.data_type = data_type
         self.scale_factor = scale_factor
         self.unit = unit
@@ -52,6 +56,8 @@ class MappedRegisterData:
             "address": self.address,
             "size": self.size,
             "value": self.value,
+            "value_derived": self.value_derived,
+            "value_scaled": self.value_scaled,
             "data_type": self.data_type,
             "scale_factor": self.scale_factor,
             "unit": self.unit
@@ -411,15 +417,16 @@ def map_modbus_data_to_registers(
             continue
             
 
-        if point_address in consumed_registers:
+        if point_address in consumed_registers and not point_is_derived:
             logger.warning(
                 f"Skipping point '{point_name}' (address={point_address}): "
                 "starting register already consumed"
             )
             continue
 
-        point_registers = set(range(point_address, point_address + point_size))
-        consumed_registers.update(point_registers)
+        if not point_is_derived:
+            point_registers = set(range(point_address, point_address + point_size))
+            consumed_registers.update(point_registers)
 
         # Extract the value(s) for this register point
         point_values = modbus_read_data[data_index:data_index + point_size]
@@ -451,6 +458,9 @@ def map_modbus_data_to_registers(
         # This is under development. The purpose is to store scaled and translated bitfields 
         # and enums in the database.
         ###################################################################################
+        point_value_derived = None
+        point_value_scaled = None
+        
         if point_data_type == "bitfield" and point_is_derived is False and point_bitfield_detail is not None:
             point_value_derived = point_value * point_scale_factor
             point_unit = "bit"

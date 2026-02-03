@@ -217,9 +217,10 @@ async def poll_single_device(site_name: str, device: DeviceWithConfigs) -> PollR
                 "poll_kind": config.poll_kind, 
             }
 
-            points = device_points_all.filter(
-                lambda point: point.config_id == config.config_id
-            )
+            points = [
+                point for point in device_points_all
+                if point.config_id == config.config_id
+            ]
 
 
             #registers = config_points.points or []  
