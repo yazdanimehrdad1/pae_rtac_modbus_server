@@ -14,23 +14,13 @@ from sqlalchemy.exc import IntegrityError
 from db.connection import get_async_session_factory
 from schemas.db_models.models import SiteCreateRequest, SiteUpdate, SiteResponse
 from schemas.db_models.orm_models import Device, Site
+from utils.exceptions import ConflictError, NotFoundError, ValidationError, InternalError
 from logger import get_logger
 
 logger = get_logger(__name__)
 
 
-SITE_ID_MIN = 1000
-SITE_ID_MAX = 9999
-SITE_ID_ATTEMPTS = 5
 
-
-async def _generate_site_id(session: AsyncSession) -> int:
-    result = await session.execute(select(Site.id))
-    used_ids = {row[0] for row in result.all() if row[0] is not None}
-    for candidate in range(SITE_ID_MIN, SITE_ID_MAX + 1):
-        if candidate not in used_ids:
-            return candidate
-    raise ValueError("No available site_id values")
 
 
 async def create_site(site: SiteCreateRequest) -> SiteResponse:
@@ -55,7 +45,7 @@ async def create_site(site: SiteCreateRequest) -> SiteResponse:
                 select(Site).where(Site.name == site.name)
             )
             if existing_site.scalar_one_or_none() is not None:
-                raise ValueError(f"Site with name '{site.name}' already exists")
+                raise ConflictError(f"Site with name '{site.name}' already exists")
             
             # Convert location and coordinates to dicts for storage
             location_dict = site.location.model_dump()
@@ -63,77 +53,59 @@ async def create_site(site: SiteCreateRequest) -> SiteResponse:
             if site.coordinates:
                 coordinates_dict = {"lat": site.coordinates.lat, "lng": site.coordinates.lng}
             
-            for attempt in range(SITE_ID_ATTEMPTS):
-                site_id = await _generate_site_id(session)
-                new_site = Site(
-                    id=site_id,
-                    client_id=site.client_id,
-                    name=site.name,
-                    location=location_dict,
-                    operator=site.operator,
-                    capacity=site.capacity,
-                    description=site.description,
-                    coordinates=coordinates_dict,
-                    device_count=0  # New sites start with 0 devices
-                )
-                
-                session.add(new_site)
-                try:
-                    await session.flush()
-                    logger.info(f"Created site: {site.name} (ID: {new_site.id})")
-                    
-                    await session.commit()
-                    
-                    # Convert coordinates/location back to models if present
-                    coordinates = None
-                    if new_site.coordinates:
-                        from schemas.db_models.models import Coordinates
-                        coordinates = Coordinates(lat=new_site.coordinates["lat"], lng=new_site.coordinates["lng"])
-                    location = None
-                    if new_site.location:
-                        from schemas.db_models.models import Location
-                        location = Location(**new_site.location)
-                    
-                    return SiteResponse(
-                        site_id=new_site.id,
-                        client_id=new_site.client_id,
-                        name=new_site.name,
-                        location=location,
-                        operator=new_site.operator,
-                        capacity=new_site.capacity,
-                        device_count=new_site.device_count,
-                        description=new_site.description,
-                        coordinates=coordinates,
-                        created_at=new_site.created_at,
-                        updated_at=new_site.updated_at,
-                        last_update=new_site.last_update
-                    )
-                except IntegrityError as e:
-                    await session.rollback()
-                    error_text = str(e).lower()
-                    if "site_pkey" in error_text and attempt < SITE_ID_ATTEMPTS - 1:
-                        session.expunge(new_site)
-                        continue
-                    raise
+            new_site = Site(
+                client_id=site.client_id,
+                name=site.name,
+                location=location_dict,
+                operator=site.operator,
+                capacity=site.capacity,
+                description=site.description,
+                coordinates=coordinates_dict,
+                device_count=0  # New sites start with 0 devices
+            )
             
-            raise RuntimeError("Unable to create site after multiple site_id attempts")
+            session.add(new_site)
+            await session.flush()
+            logger.info(f"Created site: {site.name} (ID: {new_site.id})")
             
-        except IntegrityError as e:
+            await session.commit()
+            
+            # Convert coordinates/location back to models if present
+            coordinates = None
+            if new_site.coordinates:
+                from schemas.db_models.models import Coordinates
+                coordinates = Coordinates(lat=new_site.coordinates["lat"], lng=new_site.coordinates["lng"])
+            location = None
+            if new_site.location:
+                from schemas.db_models.models import Location
+                location = Location(**new_site.location)
+            
+            return SiteResponse(
+                site_id=new_site.id,
+                client_id=new_site.client_id,
+                name=new_site.name,
+                location=location,
+                operator=new_site.operator,
+                capacity=new_site.capacity,
+                device_count=new_site.device_count,
+                description=new_site.description,
+                coordinates=coordinates,
+                created_at=new_site.created_at,
+                updated_at=new_site.updated_at,
+                last_update=new_site.last_update
+            )
+            
+        except IntegrityError as error:
             await session.rollback()
-            error_msg = str(e)
-            # Check if it's a unique constraint violation
-            if "unique" in error_msg.lower() or "duplicate" in error_msg.lower() or "already exists" in error_msg.lower():
-                logger.warning(f"Site name '{site.name}' already exists: {error_msg}")
-                raise ValueError(f"Site with name '{site.name}' already exists") from e
-            else:
-                logger.error(f"Database integrity error creating site '{site.name}': {error_msg}", exc_info=True)
-                raise ValueError(f"Database constraint violation: {error_msg}") from e
-        except Exception as e:
+            error_msg = str(error)
+            logger.error(f"Database integrity error creating site '{site.name}': {error_msg}", exc_info=True)
+            raise ValidationError(f"Database constraint violation: {error_msg}") from error
+        except Exception as error:
             await session.rollback()
-            error_msg = str(e)
-            error_type = type(e).__name__
+            error_msg = str(error)
+            error_type = type(error).__name__
             logger.error(f"Database error creating site '{site.name}': {error_type}: {error_msg}", exc_info=True)
-            raise RuntimeError(f"Failed to create site '{site.name}': {error_type}: {error_msg}") from e
+            raise InternalError(f"Failed to create site '{site.name}': {error_type}: {error_msg}") from error
 
 
 async def get_all_sites() -> List[SiteResponse]:
@@ -250,7 +222,7 @@ async def update_site(site_id: int, site_update: SiteUpdate) -> SiteResponse:
             site = result.scalar_one_or_none()
             
             if site is None:
-                raise ValueError(f"Site with id {site_id} not found")
+                raise NotFoundError(f"Site with id {site_id} not found")
             
             # Update only provided fields
             if site_update.client_id is not None:
@@ -311,7 +283,7 @@ async def update_site(site_id: int, site_update: SiteUpdate) -> SiteResponse:
             # Check if it's a unique constraint violation
             if "unique" in str(e).lower() or "duplicate" in str(e).lower():
                 logger.warning(f"Site name already exists")
-                raise ValueError("Site with this name already exists") from e
+                raise ConflictError("Site with this name already exists") from e
             else:
                 logger.error(f"Database integrity error updating site: {e}")
                 raise
@@ -353,8 +325,9 @@ async def delete_site(site_id: int) -> Optional[SiteResponse]:
             device_ids = [row[0] for row in device_result.all()]
             if device_ids:
                 joined_ids = ", ".join(str(device_id) for device_id in device_ids)
-                raise ValueError(
-                    f"Site with id {site_id} has associated devices: {joined_ids}"
+                raise ConflictError(
+                    f"Site with id {site_id} has associated devices: {joined_ids}",
+                    payload={"device_ids": device_ids}
                 )
 
             # Convert coordinates/location to models if present

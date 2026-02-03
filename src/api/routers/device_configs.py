@@ -14,6 +14,7 @@ from schemas.db_models.models import (
     ConfigDeleteResponse,
     ConfigUpdate,
 )
+from utils.exceptions import AppError, NotFoundError, ConflictError, ValidationError, InternalError
 from logger import get_logger
 
 router = APIRouter(prefix="/configs", tags=["configs"])
@@ -22,25 +23,32 @@ logger = get_logger(__name__)
 
 @router.post("/site/{site_id}/device/{device_id}", response_model=ConfigResponse, status_code=status.HTTP_201_CREATED)
 async def create_new_config(site_id: int, device_id: int, config: ConfigCreateRequest):
-    """Create a new config."""
+    """Create a new config."""    
     try:
         return await create_config_cache_db(site_id, device_id, config)
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=str(e)
-        )
+    except AppError as e:
+        status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        if isinstance(e, NotFoundError):
+            status_code = status.HTTP_404_NOT_FOUND
+        elif isinstance(e, ConflictError):
+            status_code = status.HTTP_409_CONFLICT
+        elif isinstance(e, ValidationError):
+            status_code = status.HTTP_400_BAD_REQUEST
+            
+        detail = {"error": type(e).__name__, "message": e.message}
+        if e.payload:
+            detail.update(e.payload)
+        raise HTTPException(status_code=status_code, detail=detail)
     except Exception as e:
-        logger.error(f"Error creating config: {e}", exc_info=True)
+        logger.error(f"Unexpected error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to create config"
+            detail="An internal server error occurred"
         )
 
 
 @router.get("/{config_id}", response_model=ConfigResponse)
 async def get_config_endpoint(config_id: str):
-    """Get a config by ID."""
     try:
         config = await get_config(config_id)
         if config is None:
@@ -49,19 +57,31 @@ async def get_config_endpoint(config_id: str):
                 detail=f"Config with id '{config_id}' not found"
             )
         return config
+    except AppError as e:
+        status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        if isinstance(e, NotFoundError):
+            status_code = status.HTTP_404_NOT_FOUND
+        elif isinstance(e, ConflictError):
+            status_code = status.HTTP_409_CONFLICT
+        elif isinstance(e, ValidationError):
+            status_code = status.HTTP_400_BAD_REQUEST
+            
+        detail = {"error": type(e).__name__, "message": e.message}
+        if e.payload:
+            detail.update(e.payload)
+        raise HTTPException(status_code=status_code, detail=detail)
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error getting config '{config_id}': {e}", exc_info=True)
+        logger.error(f"Unexpected error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve config"
+            detail="An internal server error occurred"
         )
 
 
 @router.put("/{config_id}", response_model=ConfigResponse)
 async def update_config_endpoint(config_id: str, update: ConfigUpdate):
-    """Update a config by ID."""
     try:
         config = await update_config(config_id, update)
         if config is None:
@@ -70,19 +90,31 @@ async def update_config_endpoint(config_id: str, update: ConfigUpdate):
                 detail=f"Config with id '{config_id}' not found"
             )
         return config
+    except AppError as e:
+        status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        if isinstance(e, NotFoundError):
+            status_code = status.HTTP_404_NOT_FOUND
+        elif isinstance(e, ConflictError):
+            status_code = status.HTTP_409_CONFLICT
+        elif isinstance(e, ValidationError):
+            status_code = status.HTTP_400_BAD_REQUEST
+            
+        detail = {"error": type(e).__name__, "message": e.message}
+        if e.payload:
+            detail.update(e.payload)
+        raise HTTPException(status_code=status_code, detail=detail)
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error updating config '{config_id}': {e}", exc_info=True)
+        logger.error(f"Unexpected error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to update config"
+            detail="An internal server error occurred"
         )
 
 
 @router.delete("/{config_id}", response_model=ConfigDeleteResponse, status_code=status.HTTP_200_OK)
 async def delete_config_endpoint(config_id: str):
-    """Delete a config by ID."""
     try:
         deleted = await delete_config(config_id)
         if not deleted:
@@ -91,12 +123,25 @@ async def delete_config_endpoint(config_id: str):
                 detail=f"Config with id '{config_id}' not found"
             )
         return {"config_id": config_id}
+    except AppError as e:
+        status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        if isinstance(e, NotFoundError):
+            status_code = status.HTTP_404_NOT_FOUND
+        elif isinstance(e, ConflictError):
+            status_code = status.HTTP_409_CONFLICT
+        elif isinstance(e, ValidationError):
+            status_code = status.HTTP_400_BAD_REQUEST
+            
+        detail = {"error": type(e).__name__, "message": e.message}
+        if e.payload:
+            detail.update(e.payload)
+        raise HTTPException(status_code=status_code, detail=detail)
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error deleting config '{config_id}': {e}", exc_info=True)
+        logger.error(f"Unexpected error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to delete config"
+            detail="An internal server error occurred"
         )
 

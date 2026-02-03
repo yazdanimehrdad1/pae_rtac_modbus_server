@@ -5,7 +5,7 @@ from typing import List
 from fastapi import APIRouter, HTTPException, status
 
 from schemas.db_models.models import (
-    DeviceCreate,
+    DeviceCreateRequest,
     DeviceUpdate,
     DeviceWithConfigs,
     DeviceDeleteResponse,
@@ -17,6 +17,7 @@ from helpers.devices import (
     get_device_cache_db,
     update_device_cache_db,
 )
+from utils.exceptions import AppError, NotFoundError, ConflictError, ValidationError, InternalError
 from logger import get_logger
 
 router = APIRouter(prefix="/devices", tags=["devices"])
@@ -41,23 +42,31 @@ async def get_all_devices_endpoint(site_id: int):
                 detail=f"No devices found for site '{site_id}'"
             )
         return devices
+    except AppError as e:
+        status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        if isinstance(e, NotFoundError):
+            status_code = status.HTTP_404_NOT_FOUND
+        elif isinstance(e, ConflictError):
+            status_code = status.HTTP_409_CONFLICT
+        elif isinstance(e, ValidationError):
+            status_code = status.HTTP_400_BAD_REQUEST
+            
+        detail = {"error": type(e).__name__, "message": e.message}
+        if e.payload:
+            detail.update(e.payload)
+        raise HTTPException(status_code=status_code, detail=detail)
     except HTTPException:
         raise
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
     except Exception as e:
-        logger.error(f"Error getting devices: {e}", exc_info=True)
+        logger.error(f"Unexpected error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve devices"
+            detail="An internal server error occurred"
         )
 
 
 @router.post("/site/{site_id}/devices", response_model=DeviceWithConfigs, status_code=status.HTTP_201_CREATED)
-async def create_new_device(site_id: int, device: DeviceCreate):
+async def create_new_device(site_id: int, device: DeviceCreateRequest):
     """
     Create a new Modbus device.
     
@@ -71,25 +80,25 @@ async def create_new_device(site_id: int, device: DeviceCreate):
         HTTPException: If device name already exists or database error occurs
     """
     try:
-        created_device = await create_device_cache_db(device, site_id=site_id)
-        return created_device
-    except ValueError as e:
-        error_msg = str(e)
-        # Handle unique constraint violations
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=error_msg
-        )
+        return await create_device_cache_db(device, site_id=site_id)
+    except AppError as e:
+        status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        if isinstance(e, NotFoundError):
+            status_code = status.HTTP_404_NOT_FOUND
+        elif isinstance(e, ConflictError):
+            status_code = status.HTTP_409_CONFLICT
+        elif isinstance(e, ValidationError):
+            status_code = status.HTTP_400_BAD_REQUEST
+            
+        detail = {"error": type(e).__name__, "message": e.message}
+        if e.payload:
+            detail.update(e.payload)
+        raise HTTPException(status_code=status_code, detail=detail)
     except Exception as e:
-        logger.error(f"Error creating device: {e}", exc_info=True)
-        error_detail = {
-            "error": "Failed to create device",
-            "error_type": type(e).__name__,
-            "message": str(e)
-        }
+        logger.error(f"Unexpected error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=error_detail
+            detail="An internal server error occurred"
         )
 
 
@@ -109,13 +118,24 @@ async def get_device(site_id: int, device_id: int):
     """
     try:
         return await get_device_cache_db(site_id, device_id)
-    except HTTPException:
-        raise
+    except AppError as e:
+        status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        if isinstance(e, NotFoundError):
+            status_code = status.HTTP_404_NOT_FOUND
+        elif isinstance(e, ConflictError):
+            status_code = status.HTTP_409_CONFLICT
+        elif isinstance(e, ValidationError):
+            status_code = status.HTTP_400_BAD_REQUEST
+            
+        detail = {"error": type(e).__name__, "message": e.message}
+        if e.payload:
+            detail.update(e.payload)
+        raise HTTPException(status_code=status_code, detail=detail)
     except Exception as e:
-        logger.error(f"Error getting device {device_id}: {e}", exc_info=True)
+        logger.error(f"Unexpected error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve device"
+            detail="An internal server error occurred"
         )
 
 
@@ -135,25 +155,25 @@ async def update_existing_device(site_id: int, device_id: int, device_update: De
         HTTPException: If device not found, name already exists, or database error occurs
     """
     try:
-        updated_device = await update_device_cache_db(device_id, device_update, site_id=site_id)
-        return updated_device
-    except ValueError as e:
-        # Handle not found or unique constraint violation
-        if "not found" in str(e).lower():
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=str(e)
-            )
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=str(e)
-            )
+        return await update_device_cache_db(device_id, device_update, site_id=site_id)
+    except AppError as e:
+        status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        if isinstance(e, NotFoundError):
+            status_code = status.HTTP_404_NOT_FOUND
+        elif isinstance(e, ConflictError):
+            status_code = status.HTTP_409_CONFLICT
+        elif isinstance(e, ValidationError):
+            status_code = status.HTTP_400_BAD_REQUEST
+            
+        detail = {"error": type(e).__name__, "message": e.message}
+        if e.payload:
+            detail.update(e.payload)
+        raise HTTPException(status_code=status_code, detail=detail)
     except Exception as e:
-        logger.error(f"Error updating device: {e}", exc_info=True)
+        logger.error(f"Unexpected error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to update device"
+            detail="An internal server error occurred"
         )
 
 # TODO: lets make sure cascade delete is implemented and soft delete is implemented
@@ -179,23 +199,25 @@ async def delete_existing_device(site_id: int, device_id: int):
                 detail=f"Device with id {device_id} not found in site '{site_id}'"
             )
         return {"device_id": deleted_device.device_id, "site_id": deleted_device.site_id}
-    except ValueError as e:
-        error_msg = str(e)
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=error_msg
-        )
+    except AppError as e:
+        status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        if isinstance(e, NotFoundError):
+            status_code = status.HTTP_404_NOT_FOUND
+        elif isinstance(e, ConflictError):
+            status_code = status.HTTP_409_CONFLICT
+        elif isinstance(e, ValidationError):
+            status_code = status.HTTP_400_BAD_REQUEST
+            
+        detail = {"error": type(e).__name__, "message": e.message}
+        if e.payload:
+            detail.update(e.payload)
+        raise HTTPException(status_code=status_code, detail=detail)
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error deleting device: {e}", exc_info=True)
-        error_detail = {
-            "error": "Failed to delete device",
-            "error_type": type(e).__name__,
-            "message": str(e)
-        }
+        logger.error(f"Unexpected error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=error_detail
+            detail="An internal server error occurred"
         )
 

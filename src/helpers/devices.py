@@ -4,8 +4,9 @@ from fastapi import HTTPException, status
 
 from cache.cache import CacheService
 from db.devices import create_device, delete_device, get_all_devices, get_device_by_id, update_device
+from utils.exceptions import NotFoundError, InternalError
 from logger import get_logger
-from schemas.db_models.models import DeviceCreate, DeviceUpdate, DeviceWithConfigs
+from schemas.db_models.models import DeviceCreateRequest, DeviceUpdate, DeviceWithConfigs
 
 logger = get_logger(__name__)
 cache_service = CacheService()
@@ -66,30 +67,22 @@ async def get_device_cache_db(site_id: int, device_id: int) -> DeviceWithConfigs
             return cached_response
     
     logger.debug(f"Device ID {device_id} not in cache, querying database")
-    try:
-        device = await get_device_by_id(device_id, site_id)
-        if device is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Device with ID {device_id} not found in site {site_id}"
-            )
-        cached = await cache_service.set(
-            key=cache_key,
-            value=device.model_dump(mode="json")
+    device = await get_device_by_id(device_id, site_id)
+    if device is None:
+        raise NotFoundError(f"Device with ID {device_id} not found in site {site_id}")
+    
+    cached = await cache_service.set(
+        key=cache_key,
+        value=device.model_dump(mode="json")
+    )
+    if not cached:
+        logger.error(
+            f"Failed to cache device {device_id} for site {site_id} after DB read"
         )
-        if not cached:
-            logger.error(
-                f"Failed to cache device {device_id} for site {site_id} after DB read"
-            )
-        return device
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(e)
-        )
+    return device
 
 
-async def create_device_cache_db(device: DeviceCreate, site_id: int) -> DeviceWithConfigs:
+async def create_device_cache_db(device: DeviceCreateRequest, site_id: int) -> DeviceWithConfigs:
     """
     Create a new device in the database and cache.
     
@@ -113,7 +106,7 @@ async def create_device_cache_db(device: DeviceCreate, site_id: int) -> DeviceWi
         logger.error(
             f"Failed to cache created device {created_device.device_id} for site {site_id}"
         )
-        raise RuntimeError("Failed to cache created device")
+        raise InternalError("Failed to cache created device")
     return created_device
 
 
@@ -146,7 +139,7 @@ async def update_device_cache_db(
         logger.error(
             f"Failed to cache updated device {updated_device.device_id} for site {site_id}"
         )
-        raise RuntimeError("Failed to cache updated device")
+        raise InternalError("Failed to cache updated device")
     return updated_device
 
 
@@ -178,5 +171,5 @@ async def delete_device_cache_db(
             logger.error(
                 f"Failed to delete cached device {deleted_device.device_id} for site {site_id}"
             )
-            raise RuntimeError("Failed to delete cached device")
+            raise InternalError("Failed to delete cached device")
     return deleted_device

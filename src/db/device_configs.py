@@ -11,6 +11,7 @@ from sqlalchemy.exc import IntegrityError
 from db.session import get_session
 from schemas.db_models.models import ConfigCreateRequest, ConfigUpdate, ConfigResponse
 from schemas.db_models.orm_models import Config, Device
+from utils.exceptions import ConflictError, NotFoundError, InternalError
 from logger import get_logger
 
 logger = get_logger(__name__)
@@ -27,14 +28,14 @@ async def _generate_config_id(session, site_id: int, device_id: int) -> str:
     )
     device_exists = device_result.scalar_one_or_none()
     if device_exists is None:
-        raise ValueError(f"Device with id '{device_id}' not found")
+        raise NotFoundError(f"Device with id '{device_id}' not found")
     config_count_result = await session.execute(
         select(Config.config_id).where(Config.device_id == device_id)
     )
     existing_count = len(config_count_result.scalars().all())
     next_index = existing_count + 1
     if next_index > CONFIG_INDEX_MAX:
-        raise ValueError("No available device config slots")
+        raise ConflictError("No available device config slots")
     if next_index < CONFIG_INDEX_MIN:
         next_index = CONFIG_INDEX_MIN
     return f"{prefix}{next_index}"
@@ -67,7 +68,7 @@ async def create_config_for_device(
             )
             device = device_result.scalar_one_or_none()
             if device is None:
-                raise ValueError(f"Device with id '{device_id}' not found in site '{site_id}'")
+                raise NotFoundError(f"Device with id '{device_id}' not found in site '{site_id}'")
             existing_poll_result = await session.execute(
                 select(Config.config_id, Config.poll_start_index).where(
                     Config.device_id == device_id,
@@ -76,7 +77,7 @@ async def create_config_for_device(
             )
             for existing_id, existing_poll_start in existing_poll_result.all():
                 if existing_poll_start == payload["poll_start_index"]:
-                    raise ValueError(
+                    raise ConflictError(
                         f"Config with poll_start_index {payload['poll_start_index']} already exists "
                         f"(config_id '{existing_id}')"
                     )
@@ -103,7 +104,7 @@ async def create_config_for_device(
             )
         except IntegrityError as e:
             await session.rollback()
-            raise ValueError("Config already exists") from e
+            raise ConflictError("Config already exists") from e
         except Exception:
             await session.rollback()
             raise

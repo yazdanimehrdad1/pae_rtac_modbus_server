@@ -37,6 +37,7 @@ class Site(Base):
     id: Mapped[int] = mapped_column(
         Integer,
         primary_key=True,
+        autoincrement=True,
         comment="Primary key, 4-digit site ID"
     )
     
@@ -584,6 +585,18 @@ class DevicePoint(Base):
         default=False,
         server_default="false",
         comment="Whether this point is derived from bitfield/enum expansion"
+    )
+
+    enum_detail: Mapped[Optional[Dict[str, str]]] = mapped_column(
+        JSON,
+        nullable=True,
+        comment="Enum detail mapping"
+    )
+
+    bitfield_detail: Mapped[Optional[Dict[str, str]]] = mapped_column(
+        JSON,
+        nullable=True,
+        comment="Bitfield detail mapping"
     )
 
     # Note: Unique constraint on (device_id, name) is enforced logic-side or via separate constraint

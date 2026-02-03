@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 # - TimescaleDB extension setup
 
 
-class DeviceCreate(BaseModel):
+class DeviceCreateRequest(BaseModel):
     """Request model for creating a new device."""
     name: str = Field(..., min_length=1, max_length=255, description="Unique device name/identifier")
     type: Literal["meter", "relay", "RTAC", "inverter", "BESS"] = Field(
@@ -257,13 +257,15 @@ class DevicePointResponse(BaseModel):
     enum_value: Optional[str] = Field(None, description="Enum value if applicable")
     bitfield_value: Optional[str] = Field(None, description="Bitfield value if applicable")
     is_derived: bool = Field(False, description="Whether this point is derived from bitfield/enum expansion")
+    enum_detail: Optional[Dict[str, str]] = Field(None, description="Enum detail mapping")
+    bitfield_detail: Optional[Dict[str, str]] = Field(None, description="Bitfield detail mapping")
 
     model_config = {
         "from_attributes": True,
     }
 
 
-__all__ = ["DeviceCreate", "DeviceUpdate", "DeviceListItem", "DeviceResponse",
+__all__ = ["DeviceCreateRequest", "DeviceUpdate", "DeviceListItem", "DeviceResponse",
            "DeviceDeleteResponse", "DeviceWithConfigs", "SiteComprehensiveResponse",
            "Coordinates", "Location", "SiteCreateRequest", "SiteUpdate", "SiteResponse", "SiteDeleteResponse",
            "ConfigPoint", "ConfigCreateRequest", "ConfigUpdate", "ConfigResponse", "ConfigDeleteResponse",

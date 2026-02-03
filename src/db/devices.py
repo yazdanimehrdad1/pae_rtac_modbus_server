@@ -12,12 +12,13 @@ from sqlalchemy.exc import IntegrityError
 from db.connection import get_async_session_factory
 from schemas.db_models.models import (
     ConfigResponse,
-    DeviceCreate,
+    DeviceCreateRequest,
     DeviceUpdate,
     DeviceResponse,
     DeviceWithConfigs,
 )
 from schemas.db_models.orm_models import Config, Device, Site
+from utils.exceptions import ConflictError, NotFoundError, ValidationError, InternalError
 from logger import get_logger
 
 logger = get_logger(__name__)
@@ -39,7 +40,7 @@ def _config_to_response(config: Config) -> ConfigResponse:
     )
 
 
-async def create_device(device: DeviceCreate, site_id: int) -> DeviceWithConfigs:
+async def create_device(device: DeviceCreateRequest, site_id: int) -> DeviceWithConfigs:
     """
     Create a new device in the database.
     
@@ -61,14 +62,14 @@ async def create_device(device: DeviceCreate, site_id: int) -> DeviceWithConfigs
             )
             existing_device = existing_device_result.scalar_one_or_none()
             if existing_device is not None:
-                raise ValueError(f"Device with name '{device.name}' already exists")
+                raise ConflictError(f"Device with name '{device.name}' already exists")
             
             site_result = await session.execute(
                 select(Site).where(Site.id == site_id)
             )
             site = site_result.scalar_one_or_none()
             if site is None:
-                raise ValueError(f"Site with id '{site_id}' not found")
+                raise NotFoundError(f"Site with id '{site_id}' not found")
             
             new_device = Device(
                 name=device.name,
@@ -99,7 +100,7 @@ async def create_device(device: DeviceCreate, site_id: int) -> DeviceWithConfigs
             created_device = result.scalar_one_or_none()
             
             if created_device is None:
-                raise RuntimeError(f"Device with id {device_primary_key} not found after creation")
+                raise InternalError(f"Device with id {device_primary_key} not found after creation")
             
             return DeviceWithConfigs(
                 device_id=created_device.device_id,
@@ -126,14 +127,14 @@ async def create_device(device: DeviceCreate, site_id: int) -> DeviceWithConfigs
             error_text = str(e).lower()
             if "unique" in error_text or "duplicate" in error_text or "already exists" in error_text:
                 logger.warning(f"Device name '{device.name}' already exists")
-                raise ValueError(f"Device with name '{device.name}' already exists") from e
+                raise ConflictError(f"Device with name '{device.name}' already exists") from e
             else:
                 logger.error(f"Database integrity error creating device: {e}")
-                raise
+                raise ValidationError(f"Database integrity error: {e}") from e
         except Exception as e:
             await session.rollback()
             logger.error(f"Database error creating device: {e}")
-            raise
+            raise InternalError(f"Failed to create device: {e}") from e
 
 
 async def get_all_devices(site_id: int) -> list[DeviceWithConfigs]:
@@ -321,7 +322,7 @@ async def update_device(device_id: int, device_update: DeviceUpdate, site_id: in
             device = result.scalar_one_or_none()
             
             if device is None:
-                raise ValueError(f"Device with id {device_id} not found")
+                raise NotFoundError(f"Device with id {device_id} not found")
             
             # Update only provided fields
             if device_update.name is not None:
@@ -389,14 +390,14 @@ async def update_device(device_id: int, device_update: DeviceUpdate, site_id: in
             # Check if it's a unique constraint violation
             if "unique" in str(e).lower() or "duplicate" in str(e).lower():
                 logger.warning(f"Device name already exists")
-                raise ValueError("Device with this name already exists") from e
+                raise ConflictError("Device with this name already exists") from e
             else:
                 logger.error(f"Database integrity error updating device: {e}")
-                raise
+                raise ValidationError(f"Database integrity error: {e}") from e
         except Exception as e:
             await session.rollback()
             logger.error(f"Database error updating device: {e}")
-            raise
+            raise InternalError(f"Failed to update device: {e}") from e
 
 
 async def delete_device(device_id: int, site_id: int) -> Optional[DeviceResponse]:
@@ -430,8 +431,9 @@ async def delete_device(device_id: int, site_id: int) -> Optional[DeviceResponse
             config_ids = [row[0] for row in config_result.all()]
             if config_ids:
                 joined_ids = ", ".join(str(config_id) for config_id in config_ids)
-                raise ValueError(
-                    f"Device with id {device_id} has associated configs: {joined_ids}"
+                raise ConflictError(
+                    f"Device with id {device_id} has associated configs: {joined_ids}",
+                    payload={"config_ids": config_ids}
                 )
             
             device_response = DeviceResponse(
@@ -465,7 +467,7 @@ async def delete_device(device_id: int, site_id: int) -> Optional[DeviceResponse
         except Exception as e:
             await session.rollback()
             logger.error(f"Database error deleting device: {e}")
-            raise
+            raise InternalError(f"Failed to delete device: {e}") from e
 
 
 async def delete_device_by_id(id: int) -> Optional[DeviceResponse]:
