@@ -9,7 +9,7 @@ from modbus.client import ModbusClient
 from modbus.modbus_utills import ModbusUtils
 from config import settings
 from logger import get_logger
-from utils.modbus_mapper import map_modbus_data_to_registers, MappedRegisterData
+from utils.modbus_mapper import map_modbus_data_to_device_points, MappedRegisterData
 from helpers.sites import get_complete_site_data
 from db.sites import get_site_by_id, get_all_sites
 from schemas.db_models.models import DeviceListItem, DeviceWithConfigs
@@ -77,7 +77,7 @@ async def get_enabled_devices_to_poll(site_devices: List[DeviceListItem]) -> Lis
 async def read_device_registers(
     device: DeviceListItem,
     polling_config: Dict[str, Any]
-) -> List[Any]:
+) -> list[int | bool]:
     """
     Read Modbus registers for a device using polling configuration.
     
@@ -239,8 +239,8 @@ async def poll_single_device(site_name: str, device: DeviceWithConfigs) -> PollR
             try:
                 if device.protocol == "Modbus":
                     modbus_data = await read_device_registers(device_without_configs, polling_config)
-                    mapped_registers = map_modbus_data_to_registers(
-                        registers=points,
+                    mapped_registers = map_modbus_data_to_device_points(
+                        device_points_list=points,
                         modbus_read_data=modbus_data,
                         poll_start_address=polling_config["poll_address"]
                     )
@@ -280,6 +280,8 @@ async def poll_single_device(site_name: str, device: DeviceWithConfigs) -> PollR
         timestamp = datetime.now(timezone.utc).isoformat()
         timestamp_dt = datetime.now(timezone.utc)
 
+        #TO_REMOVE
+        print("this is combined_mapped_registers_list_all_configs_per_device", json.dumps(combined_mapped_registers_list_all_configs_per_device, indent=4))
 
         if not combined_mapped_registers_list_all_configs_per_device or last_polling_config is None:
             result["error"] = f"No configs were successfully polled for '{device_name}'"
@@ -309,12 +311,12 @@ async def poll_single_device(site_name: str, device: DeviceWithConfigs) -> PollR
         # and enums in the database.
         ###################################################################################
 
-        await store_device_data_in_db_translated(
-            device.device_id,
-            device.site_id,
-            combined_mapped_registers_list_all_configs_per_device,
-            timestamp_dt
-        )
+        # await store_device_data_in_db_translated(
+        #     device.device_id,
+        #     device.site_id,
+        #     combined_mapped_registers_list_all_configs_per_device,
+        #     timestamp_dt
+        # )
 
         total_db_successful += db_successful
         total_db_failed += db_failed

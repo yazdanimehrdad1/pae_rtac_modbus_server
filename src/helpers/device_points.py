@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, TypedDict, Optional
 from fastapi import HTTPException, status
 from sqlalchemy import select
 from db.connection import get_async_session_factory
@@ -6,11 +6,31 @@ from schemas.db_models.orm_models import DevicePoint
 from utils.exceptions import ConflictError, NotFoundError, InternalError
 from schemas.db_models.models import DeviceWithConfigs
 
-def map_device_configs_to_device_points(points: list, device: DeviceWithConfigs) -> list[dict[str, object]]:
+
+class DevicePointData(TypedDict, total=False):
+    """Type definition for device point data dictionary."""
+    site_id: int
+    device_id: int
+    config_id: str
+    address: int
+    name: str
+    size: int
+    data_type: str
+    scale_factor: Optional[float]
+    unit: Optional[str]
+    enum_value: Optional[str]
+    bitfield_value: Optional[str]
+    is_derived: bool
+    bitfield_detail: Optional[dict[str, str]]
+    enum_detail: Optional[dict[str, str]]
+    byte_order: str
+
+
+def map_device_configs_to_device_points(points: list, device: DeviceWithConfigs) -> list[DevicePointData]:
     """
     Map points into Device_Points rows.
     """
-    device_points_list: list[dict[str, object]] = []
+    device_points_list: list[DevicePointData] = []
     for point in points:
         # TODO: make sure points are passed as a model and not dict when calling this function
         if isinstance(point, dict): # point is a dict

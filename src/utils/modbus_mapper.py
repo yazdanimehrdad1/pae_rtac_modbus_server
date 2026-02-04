@@ -10,13 +10,13 @@ from typing import List, Dict, Any, Union, Optional
 import pandas as pd
 import struct
 
-from schemas.modbus_models import RegisterMap, RegisterPoint
+from schemas.db_models.orm_models import DevicePoint
 from logger import get_logger
 
 logger = get_logger(__name__)
 
 
-def _get_attr(point: RegisterPoint, attr, default=None):
+def _get_attr(point: DevicePoint, attr, default=None):
     return getattr(point, attr, default)
 
 
@@ -333,11 +333,11 @@ def convert_multi_register_value(
 # Main mapping function
 # ============================================================================
 
-def map_modbus_data_to_registers(
-    registers: List[RegisterPoint],
-    modbus_read_data: List[Union[int, bool]],
+def map_modbus_data_to_device_points(
+    device_points_list: list[DevicePoint],
+    modbus_read_data: list[int | bool],
     poll_start_address: int
-) -> List[MappedRegisterData]:
+) -> list[MappedRegisterData]:
     """
     Map raw Modbus read data to register points from register map.
     
@@ -350,7 +350,7 @@ def map_modbus_data_to_registers(
     4. Creates a list of MappedRegisterData objects linking register info with their values
     
     Args:
-        registers: List of RegisterPoint objects
+        device_points_list: List of DevicePoint ORM objects from the database
         modbus_read_data: Raw array of values from Modbus read (e.g., [100, 200, 300, ...])
                          This is the result from modbus_client.read_registers()
         poll_start_address: The starting address of the Modbus read (used to calculate array index)
@@ -360,13 +360,17 @@ def map_modbus_data_to_registers(
         List of MappedRegisterData objects, one for each register point that was found in the read data
     """
     
-    logger.debug(f"Mapping {len(registers)} register points to Modbus read data")
+    logger.debug(f"Mapping {len(device_points_list)} register points to Modbus read data")
     
-    mapped_registers_list: List[MappedRegisterData] = []
+    mapped_registers_list: List[DevicePointsValues] = []
     consumed_registers: set[int] = set()
+    #TO_REMOVE
+    print("this is modbus_read_data", json.dumps(modbus_read_data, indent=4))
+    print("this is device_points_list", json.dumps(device_points_list, indent=4))
+    print("this is poll_start_address", poll_start_address)
 
     #TODO: see if default is necessary, given that we are setting to default at the time of creating
-    for point in registers:
+    for point in device_points_list:
         point_name = point.name
         point_address = point.address
         point_size = point.size
@@ -459,24 +463,25 @@ def map_modbus_data_to_registers(
         # and enums in the database.
         ###################################################################################
         point_value_derived = None
-        point_value_scaled = None
+    
         
-        if point_data_type == "bitfield" and point_is_derived is False and point_bitfield_detail is not None:
-            point_value_derived = point_value * point_scale_factor
+        if point_data_type == "bitfield" and point_is_derived is False:
+            point_value_derived = point_value
             point_unit = "bit"
-        elif point_data_type == "enum" and point_is_derived is False and point_enum_detail is not None:
+        elif point_data_type == "enum" and point_is_derived is False:
             point_value_derived = point_value
             point_unit = "enum"
         elif point_data_type == "single_bit" and point_is_derived is True:
-            point_value_derived = point_value
+            # the value is to convert the value to binary and check if the bit from point.bitfield_value is 1 or 0
+            point_value_derived = bin(point_value)[2:][point.point_bitfield_value]
         elif point_data_type == "single_enum" and point_is_derived is True:
-            point_value_derived = point_value
+            point_value_derived = point_value== point.point_enum_value
         else:
-            point_value_scaled = point_value * point_scale_factor
+            point_value_derived = point_value * point_scale_factor
         ###################################################################################
         
         # TODO: lets again confirm the default, I think we are setting the default in many places, it should be unified
-        mapped_register = MappedRegisterData(
+        mapped_register = DevicePointsValues(
             name=point_name,
             address=point_address,
             size=point_size,
