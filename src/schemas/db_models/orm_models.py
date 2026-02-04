@@ -6,7 +6,7 @@ These models represent the database schema and are used for ORM operations.
 
 from datetime import datetime
 from typing import Optional, Dict, Any, TypedDict
-from sqlalchemy import String, Integer, Text, DateTime, func, Float, ForeignKey, JSON, Boolean
+from sqlalchemy import String, Integer, Text, DateTime, func, Float, ForeignKey, JSON, Boolean, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -242,11 +242,14 @@ class Device(Base):
         comment="Timestamp when device record was last updated"
     )
     
-    # Relationship to RegisterReadingRaw
-    register_readings: Mapped[list["RegisterReadingRaw"]] = relationship(
-        "RegisterReadingRaw",
-        back_populates="device",
-        cascade="all, delete-orphan"
+    # Relationship to DevicePointsReading
+    device_points_readings: Mapped[list["DevicePointsReading"]] = relationship(
+        "DevicePointsReading",
+        back_populates="device_point",
+        cascade="all, delete-orphan",
+        primaryjoin="Device.device_id == foreign(DevicePoint.device_id)",
+        secondary="join(DevicePointsReading, DevicePoint, DevicePointsReading.device_point_id == DevicePoint.id)",
+        viewonly=True
     )
 
     # Relationship to RegisterReadingTranslated
@@ -345,14 +348,14 @@ class Config(Base):
         return f"<Config(config_id='{self.config_id}')>"
 
 
-class RegisterReadingRaw(Base):
+class DevicePointsReading(Base):
     """
-    SQLAlchemy model for the register_readings_raw table.
+    SQLAlchemy model for the device_points_readings table.
     
-    Represents a time-series data point for a Modbus register reading.
-    Uses composite primary key (timestamp, device_id, register_address).
+    Represents a time-series data point reading for a device point.
+    Uses composite primary key (timestamp, device_point_id).
     """
-    __tablename__ = "register_readings_raw"
+    __tablename__ = "device_points_readings"
     
     timestamp: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -361,57 +364,31 @@ class RegisterReadingRaw(Base):
         comment="Timestamp when the reading was taken (UTC)"
     )
     
-    device_id: Mapped[int] = mapped_column(
+    device_point_id: Mapped[int] = mapped_column(
         Integer,
-        ForeignKey("devices.device_id", ondelete="CASCADE"),
+        ForeignKey("device_points.id", ondelete="CASCADE"),
         primary_key=True,
         nullable=False,
-        comment="Foreign key to devices table"
+        comment="Foreign key to device_points table"
     )
     
-    register_address: Mapped[int] = mapped_column(
-        Integer,
-        primary_key=True,
-        nullable=False,
-        comment="Modbus register address"
-    )
-    
-    value: Mapped[float] = mapped_column(
-        Float,
-        nullable=False,
-        comment="The actual register value"
-    )
-    
-    quality: Mapped[str] = mapped_column(
-        String(50),
-        nullable=False,
-        default='good',
-        comment="Data quality flag: good, bad, uncertain, or substituted"
-    )
-    
-    register_name: Mapped[Optional[str]] = mapped_column(
-        Text,
-        nullable=True,
-        comment="Register name (denormalized from register_map for performance)"
-    )
-    
-    unit: Mapped[Optional[str]] = mapped_column(
-        Text,
-        nullable=True,
-        comment="Unit of measurement (denormalized from register_map)"
-    )
-    
-    scale_factor: Mapped[Optional[float]] = mapped_column(
+    raw_value: Mapped[Optional[float]] = mapped_column(
         Float,
         nullable=True,
-        comment="Scale factor to apply to raw value (denormalized from register_map)"
+        comment="The raw value read from the device"
     )
     
-    # Relationship to Device
-    device: Mapped["Device"] = relationship("Device", back_populates="register_readings")
+    derived_value: Mapped[Optional[float]] = mapped_column(
+        Float,
+        nullable=True,
+        comment="The derived/calculated value (for bitfields, enums, scaled values)"
+    )
+    
+    # Relationship to DevicePoint
+    device_point: Mapped["DevicePoint"] = relationship("DevicePoint", back_populates="readings")
     
     def __repr__(self) -> str:
-        return f"<RegisterReadingRaw(timestamp={self.timestamp}, device_id={self.device_id}, register_address={self.register_address}, value={self.value})>"
+        return f"<DevicePointsReading(timestamp={self.timestamp}, device_point_id={self.device_point_id}, raw_value={self.raw_value}, derived_value={self.derived_value})>"
 
 
 class RegisterReadingTranslated(Base):
@@ -616,9 +593,22 @@ class DevicePoint(Base):
         comment="Byte order for interpretation (e.g., big-endian, little-endian)"
     )
 
+    # Table-level constraints
+    __table_args__ = (
+        UniqueConstraint('site_id', 'device_id', 'name', name='uq_device_point_site_device_name'),
+        {'comment': 'Device points with unique names per site and device'}
+    )
+
     # Note: Unique constraint on (device_id, name) is enforced logic-side or via separate constraint
     # We avoid strict DB constraint here to allow logic-side custom error handling as requested,
     # OR we can add it. User asked to check manually.
+    
+    # Relationship to DevicePointsReading
+    readings: Mapped[list["DevicePointsReading"]] = relationship(
+        "DevicePointsReading",
+        back_populates="device_point",
+        cascade="all, delete-orphan"
+    )
     
     def __repr__(self) -> str:
         return f"<DevicePoint(id={self.id}, name='{self.name}', device_id={self.device_id})>"
