@@ -1,10 +1,12 @@
 """Polling jobs for Modbus data collection."""
 
 import asyncio
+import json
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional, TypedDict
 
 from helpers.modbus import translate_modbus_error
+from pymodbus.exceptions import ConnectionException
 from modbus.client import ModbusClient
 from modbus.modbus_utills import ModbusUtils
 from config import settings
@@ -157,7 +159,7 @@ async def read_device_registers(
     return modbus_data
 
 
-async def poll_single_device(site_name: str, device: DeviceWithConfigs) -> PollResult:
+async def poll_single_device_modbus(site_name: str, device: DeviceWithConfigs) -> PollResult:
     """
     Poll a single device: load register map, read registers, map data, and store in cache/DB.
     
@@ -204,11 +206,13 @@ async def poll_single_device(site_name: str, device: DeviceWithConfigs) -> PollR
     total_db_failed = 0
     combined_mapped_registers_list_all_configs_per_device = []
     last_polling_config = None
+    last_read_error: Optional[str] = None
 
     try:
 
         device_points_all = await get_device_points(device.site_id, device.device_id)
-
+        timestamp = datetime.now(timezone.utc).isoformat()
+        timestamp_dt = datetime.now(timezone.utc)
 
         for config in device.configs:
             polling_config = {
@@ -216,47 +220,41 @@ async def poll_single_device(site_name: str, device: DeviceWithConfigs) -> PollR
                 "poll_count": config.poll_count,
                 "poll_kind": config.poll_kind, 
             }
-
-            points = [
-                point for point in device_points_all
-                if point.config_id == config.config_id
-            ]
-
-
-            #registers = config_points.points or []  
-            logger.info(
-                f"Loaded {len(points)} points for device '{device_name}' "
-                f"(config_id='{config.config_id}')"
-            )
-
-            if not points:
-                logger.warning(
-                    f"No points to poll for device '{device_name}' (config_id='{config.config_id}')"
-                )
-                continue
-
-      
             try:
-                if device.protocol == "Modbus":
-                    modbus_data = await read_device_registers(device_without_configs, polling_config)
-                    mapped_registers = map_modbus_data_to_device_points(
-                        device_points_list=points,
-                        modbus_read_data=modbus_data,
-                        poll_start_address=polling_config["poll_address"]
+                modbus_data_readings_per_config = await read_device_registers(
+                    device_without_configs,
+                    polling_config
+                )
+
+
+                if not modbus_data_readings_per_config:
+                    logger.info(
+                        "No Modbus data readings for device '%s' (config_id='%s')",
+                        device_name,
+                        config.config_id
                     )
+                    continue
 
-                    if not mapped_registers:
-                        logger.warning(
-                            f"No register points mapped for device '{device_name}' (config_id='{config.config_id}')"
-                        )
-                        continue
+                device_points = [
+                    point for point in device_points_all
+                    if point.config_id == config.config_id
+                ]
 
-                    combined_mapped_registers_list_all_configs_per_device.extend(mapped_registers)
-                    last_polling_config = polling_config
+            
+                mapped_registers_readings_list = map_modbus_data_to_device_points(
+                    timestamp_dt=timestamp_dt,
+                    device_points_list=device_points,
+                    modbus_read_data=modbus_data_readings_per_config,
+                    poll_start_address=int(polling_config["poll_address"])
+                )
+                combined_mapped_registers_list_all_configs_per_device.extend(mapped_registers_readings_list)
+                last_polling_config = polling_config
 
-                else:
-                    print("Device protocol is not DNP")
             except Exception as e:
+                if isinstance(e, ConnectionException):
+                    logger.warning(f"Error reading device registers: {e}")
+                else:
+                    logger.error(f"Error reading device registers: {e}", exc_info=True)
                 if device.read_from_aggregator:
                     error_host = settings.modbus_host
                     error_port = settings.modbus_port
@@ -269,6 +267,7 @@ async def poll_single_device(site_name: str, device: DeviceWithConfigs) -> PollR
                     port=error_port
                 )
                 result["error"] = f"status_code={status_code}, error_message={error_message}"
+                last_read_error = result["error"]
                 logger.warning(
                     f"Error polling device '{device_name}': {result['error']}"
                 )
@@ -277,26 +276,46 @@ async def poll_single_device(site_name: str, device: DeviceWithConfigs) -> PollR
 
 
 
-        timestamp = datetime.now(timezone.utc).isoformat()
-        timestamp_dt = datetime.now(timezone.utc)
+
+
 
         #TO_REMOVE
-        print("this is combined_mapped_registers_list_all_configs_per_device", json.dumps(combined_mapped_registers_list_all_configs_per_device, indent=4))
+        logger.info(
+            "this is combined_mapped_registers_list_all_configs_per_device %s",
+            json.dumps(
+                [
+                    {
+                        "timestamp": reading.timestamp,
+                        "site_id": reading.site_id,
+                        "device_id": reading.device_id,
+                        "device_point_id": reading.device_point_id,
+                        "raw_value": reading.raw_value,
+                        "derived_value": reading.derived_value,
+                    }
+                    for reading in combined_mapped_registers_list_all_configs_per_device
+                ],
+                default=str,
+                indent=4,
+            ),
+        )
 
         if not combined_mapped_registers_list_all_configs_per_device or last_polling_config is None:
-            result["error"] = f"No configs were successfully polled for '{device_name}'"
+            if last_read_error:
+                result["error"] = last_read_error
+            else:
+                result["error"] = f"No configs were successfully polled for '{device_name}'"
             logger.warning(result["error"])
             return result
 
-        cache_successful, cache_failed = await store_device_data_in_cache(
-            device_name,
-            combined_mapped_registers_list_all_configs_per_device,
-            last_polling_config,
-            timestamp,
-            site_name
-        )
-        total_cache_successful += cache_successful
-        total_cache_failed += cache_failed
+        # cache_successful, cache_failed = await store_device_data_in_cache(
+        #     device_name,
+        #     combined_mapped_registers_list_all_configs_per_device,
+        #     last_polling_config,
+        #     timestamp,
+        #     site_name
+        # )
+        # total_cache_successful += cache_successful
+        # total_cache_failed += cache_failed
 
         
         db_successful, db_failed = await store_device_data_in_db(
@@ -394,7 +413,7 @@ async def poll_modbus_registers_per_site(site_id: int) -> None:
         # - Each read_registers() call creates a new ModbusTcpClient connection via context manager
         # - No shared mutable state between concurrent calls
         results: List[PollResult] = await asyncio.gather(
-            *[poll_single_device(site_name,device) for device in enabled_devices_to_poll],
+            *[poll_single_device_modbus(site_name,device) for device in enabled_devices_to_poll],
             return_exceptions=True
         )
         

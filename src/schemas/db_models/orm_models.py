@@ -245,11 +245,9 @@ class Device(Base):
     # Relationship to DevicePointsReading
     device_points_readings: Mapped[list["DevicePointsReading"]] = relationship(
         "DevicePointsReading",
-        back_populates="device_point",
+        back_populates="device",
         cascade="all, delete-orphan",
-        primaryjoin="Device.device_id == foreign(DevicePoint.device_id)",
-        secondary="join(DevicePointsReading, DevicePoint, DevicePointsReading.device_point_id == DevicePoint.id)",
-        viewonly=True
+        primaryjoin="Device.device_id == foreign(DevicePointsReading.device_id)"
     )
 
     # Relationship to RegisterReadingTranslated
@@ -356,6 +354,14 @@ class DevicePointsReading(Base):
     Uses composite primary key (timestamp, device_point_id).
     """
     __tablename__ = "device_points_readings"
+
+    __table_args__ = (
+        UniqueConstraint(
+            'device_point_id',
+            'timestamp',
+            name='uq_device_points_readings_point_time'
+        ),
+    )
     
     timestamp: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -364,6 +370,22 @@ class DevicePointsReading(Base):
         comment="Timestamp when the reading was taken (UTC)"
     )
     
+    site_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("sites.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+        comment="Site ID (denormalized from device_points)"
+    )
+
+    device_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("devices.device_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+        comment="Device ID (denormalized from device_points)"
+    )
+
     device_point_id: Mapped[int] = mapped_column(
         Integer,
         ForeignKey("device_points.id", ondelete="CASCADE"),
@@ -386,9 +408,14 @@ class DevicePointsReading(Base):
     
     # Relationship to DevicePoint
     device_point: Mapped["DevicePoint"] = relationship("DevicePoint", back_populates="readings")
+    device: Mapped["Device"] = relationship("Device", back_populates="device_points_readings")
     
     def __repr__(self) -> str:
-        return f"<DevicePointsReading(timestamp={self.timestamp}, device_point_id={self.device_point_id}, raw_value={self.raw_value}, derived_value={self.derived_value})>"
+        return (
+            f"<DevicePointsReading(timestamp={self.timestamp}, site_id={self.site_id}, "
+            f"device_id={self.device_id}, device_point_id={self.device_point_id}, "
+            f"raw_value={self.raw_value}, derived_value={self.derived_value})>"
+        )
 
 
 class RegisterReadingTranslated(Base):
@@ -595,8 +622,12 @@ class DevicePoint(Base):
 
     # Table-level constraints
     __table_args__ = (
+        # Primary uniqueness: point names must be unique per site/device
         UniqueConstraint('site_id', 'device_id', 'name', name='uq_device_point_site_device_name'),
-        {'comment': 'Device points with unique names per site and device'}
+        # Secondary uniqueness for derived points: prevent duplicate bitfield/enum expansions
+        # Note: bitfield_value and enum_value are nullable, so this only applies when they're set
+        UniqueConstraint('site_id', 'device_id', 'address', 'bitfield_value', name='uq_device_point_address_bitfield'),
+        {'comment': 'Device points with unique names per site and device, and unique address/bitfield combinations'}
     )
 
     # Note: Unique constraint on (device_id, name) is enforced logic-side or via separate constraint
@@ -612,4 +643,3 @@ class DevicePoint(Base):
     
     def __repr__(self) -> str:
         return f"<DevicePoint(id={self.id}, name='{self.name}', device_id={self.device_id})>"
-

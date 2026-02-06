@@ -8,6 +8,7 @@ from config import settings
 from db.register_readings import insert_register_readings_batch
 from logger import get_logger
 from utils.modbus_mapper import MappedRegisterData
+from schemas.db_models.orm_models import DevicePointsReading
 
 logger = get_logger(__name__)
 cache_service = CacheService()
@@ -104,7 +105,7 @@ async def store_device_data_in_cache(
 async def store_device_data_in_db(
     device_id: int,
     site_id: str,
-    mapped_registers: List[MappedRegisterData],
+    points_readings_list: List[DevicePointsReading],
     timestamp_dt: datetime
 ) -> tuple[int, int]:
     """
@@ -120,26 +121,18 @@ async def store_device_data_in_db(
         Tuple of (successful_inserts, failed_inserts)
     """
     try:
-        batch_readings = []
-        for register_data in mapped_registers:
-            batch_readings.append({
-                'device_id': device_id,
-                'register_address': register_data.address,
-                'value': register_data.value,
-                'timestamp': timestamp_dt,
-                'quality': 'good',
-                'register_name': register_data.name,
-                'unit': register_data.unit or None,
-                'scale_factor': register_data.scale_factor or None
-            })
-
-        inserted_count = await insert_register_readings_batch(site_id, batch_readings)
+        inserted_count = await insert_register_readings_batch(
+            site_id=site_id,
+            device_id=device_id,
+            points_readings_list=points_readings_list,
+            timestamp_dt=timestamp_dt
+        )
         logger.info(f"Successfully stored {inserted_count} register readings in database")
         return inserted_count, 0
 
     except Exception as e:
         logger.error(f"Failed to store register readings in database: {e}", exc_info=True)
-        return 0, len(mapped_registers)
+        return 0, len(points_readings_list)
 
 
 async def store_device_data_in_db_translated(

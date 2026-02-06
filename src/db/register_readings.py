@@ -72,7 +72,7 @@ async def insert_register_reading(
             # the table should have the following foreign key: device_id
             # the table should have the following index: timestamp, register_address
             # the table should have the following constraint: device_id must be unique for each site
-            statement = insert(PointReading).values(
+            statement = insert(DevicePointsReading).values(
                 timestamp=timestamp,
                 device_id=device_id,
                 register_address=register_address,
@@ -84,13 +84,10 @@ async def insert_register_reading(
             )
             
             statement = statement.on_conflict_do_update(
-                index_elements=['timestamp', 'device_id', 'register_address'],
+                index_elements=['device_point_id', 'timestamp'],
                 set_=dict(
-                    value=statement.excluded.value,
-                    quality=statement.excluded.quality,
-                    register_name=statement.excluded.register_name,
-                    unit=statement.excluded.unit,
-                    scale_factor=statement.excluded.scale_factor
+                    raw_value=statement.excluded.raw_value,
+                    derived_value=statement.excluded.derived_value
                 )
             )
             
@@ -107,7 +104,9 @@ async def insert_register_reading(
 
 async def insert_register_readings_batch(
     site_id: Optional[str],
-    readings: List[Dict[str, Any]]
+    device_id: int,
+    points_readings_list: List[DevicePointsReading],
+    timestamp_dt: datetime
 ) -> int:
     """
     Insert multiple register readings in a single batch operation.
@@ -131,66 +130,47 @@ async def insert_register_readings_batch(
         ValueError: If site doesn't exist or any device doesn't belong to site
         Exception: For database errors
     """
-    if not readings:
+    if not points_readings_list:
         logger.debug("No readings to insert in batch")
         return 0
     
     try:
         async with get_session() as session:
-            # Validate all devices exist and get unique device_ids
-            device_ids = {reading['device_id'] for reading in readings}
-            devices_result = await session.execute(
-                select(Device).where(Device.device_id.in_(device_ids))
-            )
-            valid_devices = {device.device_id for device in devices_result.scalars().all()}
             
-            # Check if all device_ids are valid
-            invalid_devices = device_ids - valid_devices
-            if invalid_devices:
-                raise ValueError(
-                    f"Device(s) {sorted(invalid_devices)} not found"
-                )
-            # Prepare values for batch insert
             values = []
-            for reading in readings:
-                timestamp = reading.get('timestamp')
-                if timestamp is None:
-                    timestamp = datetime.now(timezone.utc)
-                
+            for device_point_reading in points_readings_list:
+                reading_site_id = device_point_reading.site_id if device_point_reading.site_id is not None else site_id
+                reading_device_id = device_point_reading.device_id if device_point_reading.device_id is not None else device_id
+
                 values.append({
-                    'timestamp': timestamp,
-                    'device_id': reading['device_id'],
-                    'register_address': reading['register_address'],
-                    'value': float(reading['value']),  # Ensure it's a float
-                    'quality': reading.get('quality', 'good'),
-                    'register_name': reading.get('register_name'),
-                    'unit': reading.get('unit'),
-                    'scale_factor': reading.get('scale_factor')
+                    'site_id': reading_site_id,
+                    'device_id': reading_device_id,
+                    'device_point_id': device_point_reading.device_point_id,
+                    'timestamp': device_point_reading.timestamp,
+                    'raw_value': device_point_reading.raw_value,
+                    'derived_value': device_point_reading.derived_value
                 })
             
             # Build batch INSERT query with ON CONFLICT
             # TODO: critical: we need to insert the readings into the correct table, based on the site_id
             # we need to create a new table for each site, and then insert the readings into the correct table
             # the table name should be register_readings_raw_site_id_device_id
-            # the table should have the following columns: timestamp, register_address, value, quality, register_name, unit, scale_factor
-            # the table should have the following primary key: timestamp, register_address
-            # the table should have the following foreign key: device_id
-            # the table should have the following index: timestamp, register_address
+            # the table should have the following columns: timestamp, device_point_id, raw_value, derived_value
+            # the table should have the following primary key: timestamp, device_point_id
+            # the table should have the following foreign key: device_point_id
+            # the table should have the following index: device_point_id, timestamp
             # the table should have the following constraint: device_id must be unique for each site
-            statement = insert(PointReading).values(values)
+            statement = insert(DevicePointsReading).values(values)
             
             statement = statement.on_conflict_do_update(
-                index_elements=['timestamp', 'device_id', 'register_address'],
+                index_elements=['device_point_id', 'timestamp'],
                 set_=dict(
-                    value=statement.excluded.value,
-                    quality=statement.excluded.quality,
-                    register_name=statement.excluded.register_name,
-                    unit=statement.excluded.unit,
-                    scale_factor=statement.excluded.scale_factor
+                    raw_value=statement.excluded.raw_value,
+                    derived_value=statement.excluded.derived_value
                 )
             )
             
-            result = await session.execute(statement)
+            await session.execute(statement)
             await session.commit()
             
             inserted_count = len(values)
@@ -240,23 +220,23 @@ async def get_all_readings(
                 raise ValueError(f"Device with id '{device_id}' not found")
         
         # Build query with filters
-        statement = select(PointReading)
+        statement = select(DevicePointsReading)
         
         conditions = []
         if device_id is not None:
-            conditions.append(PointReading.device_id == device_id)
+            conditions.append(DevicePointsReading.device_id == device_id)
         if register_address is not None:
-            conditions.append(PointReading.register_address == register_address)
+            conditions.append(DevicePointsReading.register_address == register_address)
         if start_time is not None:
-            conditions.append(PointReading.timestamp >= start_time)
+            conditions.append(DevicePointsReading.timestamp >= start_time)
         if end_time is not None:
-            conditions.append(PointReading.timestamp <= end_time)
+            conditions.append(DevicePointsReading.timestamp <= end_time)
         
         if conditions:
             statement = statement.where(and_(*conditions))
         
         # Order by timestamp descending (newest first)
-        statement = statement.order_by(PointReading.timestamp.desc())
+        statement = statement.order_by(DevicePointsReading.timestamp.desc())
         
         # Add LIMIT and OFFSET if provided
         if limit is not None:
@@ -308,12 +288,12 @@ async def get_latest_reading(
         if device is None:
             raise ValueError(f"Device with id '{device_id}' not found")
         
-        statement = select(PointReading).where(
+        statement = select(DevicePointsReading).where(
             and_(
-                PointReading.device_id == device_id,
-                PointReading.register_address == register_address
+                DevicePointsReading.device_id == device_id,
+                DevicePointsReading.register_address == register_address
             )
-        ).order_by(PointReading.timestamp.desc()).limit(1)
+        ).order_by(DevicePointsReading.timestamp.desc()).limit(1)
         
         result = await session.execute(statement)
         reading = result.scalar_one_or_none()
@@ -367,25 +347,25 @@ async def get_latest_readings_for_device(
         # Use window function to rank readings by timestamp per register_address
         rank_subquery = (
             select(
-                PointReading.timestamp,
-                PointReading.register_address,
-                PointReading.value,
-                PointReading.quality,
-                PointReading.register_name,
-                PointReading.unit,
-                PointReading.scale_factor,
+                DevicePointsReading.timestamp,
+                DevicePointsReading.register_address,
+                DevicePointsReading.value,
+                DevicePointsReading.quality,
+                DevicePointsReading.register_name,
+                DevicePointsReading.unit,
+                DevicePointsReading.scale_factor,
                 sql_func.row_number().over(
-                    partition_by=PointReading.register_address,
-                    order_by=PointReading.timestamp.desc()
+                    partition_by=DevicePointsReading.register_address,
+                    order_by=DevicePointsReading.timestamp.desc()
                 ).label('rn')
             )
-            .where(PointReading.device_id == device_id)
+            .where(DevicePointsReading.device_id == device_id)
         )
         
         # If register_addresses is provided, filter the subquery to only include the specified register addresses
         if register_addresses:
             rank_subquery = rank_subquery.where(
-                PointReading.register_address.in_(register_addresses)
+                DevicePointsReading.register_address.in_(register_addresses)
             )
         
         # Create subquery alias
