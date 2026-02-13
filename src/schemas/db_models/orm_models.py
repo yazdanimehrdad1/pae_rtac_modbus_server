@@ -418,96 +418,6 @@ class DevicePointsReading(Base):
         )
 
 
-class RegisterReadingTranslated(Base):
-    """
-    SQLAlchemy model for the register_readings_translated table.
-    
-    Represents a time-series data point for a translated Modbus register reading.
-    Uses composite primary key (timestamp, device_id, register_address).
-    """
-    __tablename__ = "register_readings_translated"
-    
-    timestamp: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        primary_key=True,
-        nullable=False,
-        comment="Timestamp when the reading was taken (UTC)"
-    )
-    
-    device_id: Mapped[int] = mapped_column(
-        Integer,
-        ForeignKey("devices.device_id", ondelete="CASCADE"),
-        primary_key=True,
-        nullable=False,
-        comment="Foreign key to devices table"
-    )
-    
-    register_address: Mapped[int] = mapped_column(
-        Integer,
-        primary_key=True,
-        nullable=False,
-        comment="Modbus register address"
-    )
-    
-    value: Mapped[float] = mapped_column(
-        Float,
-        nullable=False,
-        comment="The actual register value"
-    )
-    
-    quality: Mapped[str] = mapped_column(
-        String(50),
-        nullable=False,
-        default='good',
-        comment="Data quality flag: good, bad, uncertain, or substituted"
-    )
-    
-    register_name: Mapped[Optional[str]] = mapped_column(
-        Text,
-        nullable=True,
-        comment="Register name (denormalized from register_map for performance)"
-    )
-    
-    unit: Mapped[Optional[str]] = mapped_column(
-        Text,
-        nullable=True,
-        comment="Unit of measurement (denormalized from register_map)"
-    )
-    
-    scale_factor: Mapped[Optional[float]] = mapped_column(
-        Float,
-        nullable=True,
-        comment="Scale factor to apply to raw value (denormalized from register_map)"
-    )
-
-    value_scaled: Mapped[float] = mapped_column(
-        Float,
-        nullable=False,
-        comment="The scaled register value"
-    )
-
-    enum_detail: Mapped[Optional[Dict[str, str]]] = mapped_column(
-        JSON,
-        nullable=True,
-        comment="Enum detail mapping (denormalized from register_map)"
-    )
-
-    bitfield_detail: Mapped[Optional[Dict[str, str]]] = mapped_column(
-        JSON,
-        nullable=True,
-        comment="Bitfield detail mapping (denormalized from register_map)"
-    )
-
-    # Relationship to Device
-    device: Mapped["Device"] = relationship("Device", back_populates="register_readings_translated")
-    
-    def __repr__(self) -> str:
-        return (
-            f"<RegisterReadingTranslated(timestamp={self.timestamp}, device_id={self.device_id}, "
-            f"register_address={self.register_address}, value={self.value})>"
-        )
-
-
 class DevicePoint(Base):
     """
     SQLAlchemy model for the device_points table.
@@ -643,3 +553,93 @@ class DevicePoint(Base):
     
     def __repr__(self) -> str:
         return f"<DevicePoint(id={self.id}, name='{self.name}', device_id={self.device_id})>"
+
+
+class RegisterReadingTranslated(Base):
+    """
+    SQLAlchemy model for the register_readings_translated table.
+    
+    Represents a time-series data point for a translated Modbus register reading.
+    Uses composite primary key (timestamp, device_id, register_address).
+    """
+    __tablename__ = "register_readings_translated"
+    
+    timestamp: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        primary_key=True,
+        nullable=False,
+        comment="Timestamp when the reading was taken (UTC)"
+    )
+    
+    device_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("devices.device_id", ondelete="CASCADE"),
+        primary_key=True,
+        nullable=False,
+        comment="Foreign key to devices table"
+    )
+    
+    register_address: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+        nullable=False,
+        comment="Modbus register address"
+    )
+    
+    value: Mapped[float] = mapped_column(
+        Float,
+        nullable=False,
+        comment="The actual register value"
+    )
+    
+    quality: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        default='good',
+        comment="Data quality flag: good, bad, uncertain, or substituted"
+    )
+    
+    register_name: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Register name (denormalized from register_map for performance)"
+    )
+    
+    unit: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Unit of measurement (denormalized from register_map)"
+    )
+    
+    scale_factor: Mapped[Optional[float]] = mapped_column(
+        Float,
+        nullable=True,
+        comment="Scale factor to apply to raw value (denormalized from register_map)"
+    )
+
+    value_scaled: Mapped[float] = mapped_column(
+        Float,
+        nullable=False,
+        comment="The scaled register value"
+    )
+
+    enum_detail: Mapped[Optional[Dict[str, str]]] = mapped_column(
+        JSON,
+        nullable=True,
+        comment="Enum detail mapping (denormalized from register_map)"
+    )
+
+    bitfield_detail: Mapped[Optional[Dict[str, str]]] = mapped_column(
+        JSON,
+        nullable=True,
+        comment="Bitfield detail mapping (denormalized from register_map)"
+    )
+
+    # Relationship to Device
+    device: Mapped["Device"] = relationship("Device", back_populates="register_readings_translated")
+    
+    def __repr__(self) -> str:
+        return (
+            f"<RegisterReadingTranslated(timestamp={self.timestamp}, device_id={self.device_id}, "
+            f"register_address={self.register_address}, value={self.value})>"
+        )
