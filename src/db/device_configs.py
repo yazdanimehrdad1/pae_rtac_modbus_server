@@ -1,16 +1,17 @@
 """
-Device config database operations.
+Config database operations.
 
-Handles CRUD operations for device_configs table.
+Handles CRUD operations for configs table.
 """
 
 from typing import Optional
-from sqlalchemy import select, update, delete
+from sqlalchemy import select, delete
 from sqlalchemy.exc import IntegrityError
 
 from db.session import get_session
-from schemas.db_models.models import DeviceConfigData, DeviceConfigResponse
-from schemas.db_models.orm_models import DeviceConfig, Device
+from schemas.db_models.models import ConfigCreateRequest, ConfigUpdate, ConfigResponse
+from schemas.db_models.orm_models import Config, Device
+from utils.exceptions import ConflictError, NotFoundError, InternalError
 from logger import get_logger
 
 logger = get_logger(__name__)
@@ -22,27 +23,31 @@ CONFIG_INDEX_MAX = 10
 # 
 async def _generate_config_id(session, site_id: int, device_id: int) -> str:
     prefix = f"{site_id}-{device_id}-"
-    result = await session.execute(
-        select(Device.configs).where(Device.id == device_id)
+    device_result = await session.execute(
+        select(Device.device_id).where(Device.device_id == device_id)
     )
-    device_configs = result.scalar_one_or_none()
-    if device_configs is None:
-        raise ValueError(f"Device with id '{device_id}' not found")
-    next_index = len(device_configs) + 1
+    device_exists = device_result.scalar_one_or_none()
+    if device_exists is None:
+        raise NotFoundError(f"Device with id '{device_id}' not found")
+    config_count_result = await session.execute(
+        select(Config.config_id).where(Config.device_id == device_id)
+    )
+    existing_count = len(config_count_result.scalars().all())
+    next_index = existing_count + 1
     if next_index > CONFIG_INDEX_MAX:
-        raise ValueError("No available device config slots")
+        raise ConflictError("No available device config slots")
     if next_index < CONFIG_INDEX_MIN:
         next_index = CONFIG_INDEX_MIN
     return f"{prefix}{next_index}"
 
 
-async def create_device_config_for_device(
+async def create_config_for_device(
     site_id: int,
     device_id: int,
-    config: DeviceConfigData
-) -> DeviceConfigResponse:
+    config: ConfigCreateRequest
+) -> ConfigResponse:
     """
-    Create a new device config.
+    Create a new config.
     
     Args:
         config: Device config creation data
@@ -57,168 +62,169 @@ async def create_device_config_for_device(
     async with get_session() as session:
         try:
             config_id = await _generate_config_id(session, site_id, device_id)
-            # convert DeviceConfigData to dict
-            payload = config.model_dump(by_alias=True)
+            payload = config.model_dump()
             device_result = await session.execute(
-                select(Device).where(Device.id == device_id, Device.site_id == site_id)
+                select(Device).where(Device.device_id == device_id, Device.site_id == site_id)
             )
             device = device_result.scalar_one_or_none()
             if device is None:
-                raise ValueError(f"Device with id '{device_id}' not found in site '{site_id}'")
-            existing_configs = list(device.configs or [])
-            if existing_configs:
-                existing_poll_result = await session.execute(
-                    select(DeviceConfig.id, DeviceConfig.poll_address).where(
-                        DeviceConfig.id.in_(existing_configs)
-                    )
+                raise NotFoundError(f"Device with id '{device_id}' not found in site '{site_id}'")
+            existing_poll_result = await session.execute(
+                select(Config.config_id, Config.poll_start_index).where(
+                    Config.device_id == device_id,
+                    Config.site_id == site_id
                 )
-                for existing_id, existing_poll_address in existing_poll_result.all():
-                    if existing_poll_address == payload["poll_address"]:
-                        raise ValueError(
-                            f"Device config with poll_address {payload['poll_address']} already exists "
-                            f"(config_id '{existing_id}')"
-                        )
-            existing_configs.append(config_id)
-            device.configs = existing_configs
-
-            device_config = DeviceConfig(
-                id=config_id,
-                site_id=payload["Site_id"],
-                device_id=payload["device_id"],
-                poll_address=payload["poll_address"],
-                poll_count=payload["poll_count"],
-                poll_kind=payload["poll_kind"],
-                registers=payload["registers"]
             )
-            session.add(device_config)
+            for existing_id, existing_poll_start in existing_poll_result.all():
+                if existing_poll_start == payload["poll_start_index"]:
+                    raise ConflictError(
+                        f"Config with poll_start_index {payload['poll_start_index']} already exists "
+                        f"(config_id '{existing_id}')"
+                    )
+
+            config_row = Config(
+                config_id=config_id,
+                site_id=payload["site_id"],
+                device_id=payload["device_id"],
+                poll_kind=payload["poll_kind"],
+                poll_start_index=payload["poll_start_index"],
+                poll_count=payload["poll_count"],
+                points=payload["points"],
+                is_active=payload["is_active"],
+                created_by=payload["created_by"],
+            )
+            session.add(config_row)
             await session.commit()
             
-            return DeviceConfigResponse(
-                config_id=device_config.id,
-                created_at=device_config.created_at,
-                updated_at=device_config.updated_at,
+            return ConfigResponse(
+                config_id=config_row.config_id,
+                created_at=config_row.created_at,
+                updated_at=config_row.updated_at,
                 **payload
             )
         except IntegrityError as e:
             await session.rollback()
-            raise ValueError("Device config already exists") from e
+            raise ConflictError("Config already exists") from e
         except Exception:
             await session.rollback()
             raise
 
 
-async def get_device_config(config_id: str) -> Optional[DeviceConfigResponse]:
+async def get_config(config_id: str) -> Optional[ConfigResponse]:
     """
-    Get a device config by ID.
+    Get a config by ID.
     """
     async with get_session() as session:
         result = await session.execute(
-            select(DeviceConfig).where(DeviceConfig.id == config_id)
+            select(Config).where(Config.config_id == config_id)
         )
         config = result.scalar_one_or_none()
         if config is None:
             return None
-        return DeviceConfigResponse(
-            config_id=config.id,
+        return ConfigResponse(
+            config_id=config.config_id,
             created_at=config.created_at,
             updated_at=config.updated_at,
-            Site_id=config.site_id,
+            site_id=config.site_id,
             device_id=config.device_id,
-            poll_address=config.poll_address,
-            poll_count=config.poll_count,
             poll_kind=config.poll_kind,
-            registers=config.registers
+            poll_start_index=config.poll_start_index,
+            poll_count=config.poll_count,
+            points=config.points,
+            is_active=config.is_active,
+            created_by=config.created_by,
         )
 
 
-async def update_device_config(config_id: str, update: DeviceConfigData) -> Optional[DeviceConfigResponse]:
+async def update_config(config_id: str, update: ConfigUpdate) -> Optional[ConfigResponse]:
     """
-    Update an existing device config.
+    Update an existing config.
     """
     async with get_session() as session:
         result = await session.execute(
-            select(DeviceConfig).where(DeviceConfig.id == config_id)
+            select(Config).where(Config.config_id == config_id)
         )
         config = result.scalar_one_or_none()
         if config is None:
             return None
         
-        payload = update.model_dump(by_alias=True)
-        config.site_id = payload["Site_id"]
-        config.device_id = payload["device_id"]
-        config.poll_address = payload["poll_address"]
-        config.poll_count = payload["poll_count"]
-        config.poll_kind = payload["poll_kind"]
-        config.registers = payload["registers"]
+        payload = update.model_dump()
+        if payload.get("poll_kind") is not None:
+            config.poll_kind = payload["poll_kind"]
+        if payload.get("poll_start_index") is not None:
+            config.poll_start_index = payload["poll_start_index"]
+        if payload.get("poll_count") is not None:
+            config.poll_count = payload["poll_count"]
+        if payload.get("points") is not None:
+            config.points = payload["points"]
+        if payload.get("is_active") is not None:
+            config.is_active = payload["is_active"]
+        if payload.get("created_by") is not None:
+            config.created_by = payload["created_by"]
         await session.commit()
         await session.refresh(config)
         
-        return DeviceConfigResponse(
-            config_id=config.id,
+        return ConfigResponse(
+            config_id=config.config_id,
             created_at=config.created_at,
             updated_at=config.updated_at,
-            Site_id=config.site_id,
+            site_id=config.site_id,
             device_id=config.device_id,
-            poll_address=config.poll_address,
-            poll_count=config.poll_count,
             poll_kind=config.poll_kind,
-            registers=config.registers
+            poll_start_index=config.poll_start_index,
+            poll_count=config.poll_count,
+            points=config.points,
+            is_active=config.is_active,
+            created_by=config.created_by,
         )
 
 
-async def delete_device_config(config_id: str) -> bool:
+async def delete_config(config_id: str) -> bool:
     """
-    Delete a device config by ID.
+    Delete a config by ID.
     """
     async with get_session() as session:
         result = await session.execute(
-            select(DeviceConfig).where(DeviceConfig.id == config_id)
+            select(Config).where(Config.config_id == config_id)
         )
         config = result.scalar_one_or_none()
         if config is None:
             return False
-        device_result = await session.execute(
-            select(Device).where(Device.id == config.device_id)
-        )
-        device = device_result.scalar_one_or_none()
-        if device is not None:
-            existing_configs = list(device.configs or [])
-            if config_id in existing_configs:
-                existing_configs.remove(config_id)
-                device.configs = existing_configs
         delete_result = await session.execute(
-            delete(DeviceConfig).where(DeviceConfig.id == config_id)
+            delete(Config).where(Config.config_id == config_id)
         )
         await session.commit()
         return delete_result.rowcount > 0
 
 
-async def get_device_configs_for_device(
+async def get_configs_for_device(
     device_id: int,
     site_id: Optional[int] = None,
-) -> list[DeviceConfigResponse]:
+) -> list[ConfigResponse]:
     """
-    Get all device configs for a device, optionally scoped by site_id.
+    Get all configs for a device, optionally scoped by site_id.
     """
     async with get_session() as session:
-        query = select(DeviceConfig).where(DeviceConfig.device_id == device_id)
+        query = select(Config).where(Config.device_id == device_id)
         if site_id is not None:
-            query = query.where(DeviceConfig.site_id == site_id)
-        result = await session.execute(query.order_by(DeviceConfig.poll_address))
+            query = query.where(Config.site_id == site_id)
+        result = await session.execute(query.order_by(Config.poll_start_index))
         configs = result.scalars().all()
-        responses: list[DeviceConfigResponse] = []
+        responses: list[ConfigResponse] = []
         for config in configs:
             responses.append(
-                DeviceConfigResponse(
-                    config_id=config.id,
+                ConfigResponse(
+                    config_id=config.config_id,
                     created_at=config.created_at,
                     updated_at=config.updated_at,
-                    Site_id=config.site_id,
+                    site_id=config.site_id,
                     device_id=config.device_id,
-                    poll_address=config.poll_address,
-                    poll_count=config.poll_count,
                     poll_kind=config.poll_kind,
-                    registers=config.registers,
+                    poll_start_index=config.poll_start_index,
+                    poll_count=config.poll_count,
+                    points=config.points,
+                    is_active=config.is_active,
+                    created_by=config.created_by,
                 )
             )
         return responses

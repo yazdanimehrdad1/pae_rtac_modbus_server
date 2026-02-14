@@ -1,6 +1,6 @@
 """Database models for TimescaleDB hypertables."""
 
-from schemas.db_models.models import DeviceCreate, DeviceUpdate, DeviceResponse
+from schemas.db_models.models import DeviceCreateRequest, DeviceUpdate, DeviceResponse
 
 # TODO: Import SQLAlchemy models when implemented
 # from schemas.db_models.models import (
@@ -8,5 +8,5 @@ from schemas.db_models.models import DeviceCreate, DeviceUpdate, DeviceResponse
 #     PointMetadata,
 # )
 
-__all__ = ["DeviceCreate", "DeviceUpdate", "DeviceResponse"]
+__all__ = ["DeviceCreateRequest", "DeviceUpdate", "DeviceResponse"]
 

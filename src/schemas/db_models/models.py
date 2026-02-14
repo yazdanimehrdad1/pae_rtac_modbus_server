@@ -1,7 +1,7 @@
 """Database models for TimescaleDB hypertables."""
 
 from datetime import datetime
-from typing import Optional, Dict, Any, List, Literal
+from typing import Optional, Dict, List, Literal
 from pydantic import BaseModel, Field
 
 # TODO: Define SQLAlchemy models:
@@ -10,51 +10,61 @@ from pydantic import BaseModel, Field
 # - TimescaleDB extension setup
 
 
-class DeviceCreate(BaseModel):
+class DeviceCreateRequest(BaseModel):
     """Request model for creating a new device."""
     name: str = Field(..., min_length=1, max_length=255, description="Unique device name/identifier")
-    modbus_host: str = Field(..., min_length=1, max_length=255, description="Modbus device hostname or IP address")
-    modbus_port: int = Field(default=502, ge=1, le=65535, description="Modbus TCP port (default: 502)")
-    modbus_timeout: Optional[float] = Field(default=None, ge=0, description="Optional Modbus timeout (seconds)")
-    modbus_server_id: int = Field(default=1, ge=1, description="Modbus server identifier (default: 1)")
+    type: Literal["meter", "relay", "RTAC", "inverter", "BESS"] = Field(
+        ..., description="Device type"
+    )
+    protocol: Literal["Modbus", "DNP"] = Field(
+        default="Modbus", description="Communication protocol"
+    )
+    vendor: Optional[str] = Field(default=None, max_length=255, description="Device vendor")
+    model: Optional[str] = Field(default=None, max_length=255, description="Device model")
+    host: str = Field(..., min_length=1, max_length=255, description="Device hostname or IP address")
+    port: int = Field(default=502, ge=1, le=65535, description="Device port (default: 502)")
+    timeout: Optional[float] = Field(default=None, ge=0, description="Optional timeout (seconds)")
+    server_address: int = Field(default=1, ge=1, description="Server address (default: 1)")
     description: Optional[str] = Field(default=None, description="Optional device description")
-    main_type: str = Field(..., min_length=1, max_length=255, description="Device main type (required)")
-    sub_type: Optional[str] = Field(default=None, max_length=255, description="Device sub type (optional)")
     poll_enabled: bool = Field(True, description="Whether polling is enabled for this device")
     read_from_aggregator: bool = Field(True, description="Whether to read from edge aggregator")
-    configs: List[str] = Field(default_factory=list, description="Device config IDs")
-
 
 class DeviceUpdate(BaseModel):
     """Request model for updating a device."""
     name: Optional[str] = Field(None, min_length=1, max_length=255, description="Device name/identifier")
-    modbus_host: Optional[str] = Field(None, min_length=1, max_length=255, description="Modbus device hostname or IP address")
-    modbus_port: Optional[int] = Field(None, ge=1, le=65535, description="Modbus TCP port")
-    modbus_timeout: Optional[float] = Field(default=None, ge=0, description="Optional Modbus timeout (seconds)")
-    modbus_server_id: Optional[int] = Field(None, ge=1, description="Modbus server identifier")
+    type: Optional[Literal["meter", "relay", "RTAC", "inverter", "BESS"]] = Field(
+        None, description="Device type"
+    )
+    protocol: Optional[Literal["Modbus", "DNP"]] = Field(
+        None, description="Communication protocol"
+    )
+    vendor: Optional[str] = Field(None, max_length=255, description="Device vendor")
+    model: Optional[str] = Field(None, max_length=255, description="Device model")
+    host: Optional[str] = Field(None, min_length=1, max_length=255, description="Device hostname or IP address")
+    port: Optional[int] = Field(None, ge=1, le=65535, description="Device port")
+    timeout: Optional[float] = Field(default=None, ge=0, description="Optional timeout (seconds)")
+    server_address: Optional[int] = Field(None, ge=1, description="Server address")
     description: Optional[str] = Field(None, description="Device description")
-    main_type: Optional[str] = Field(None, min_length=1, max_length=255, description="Device main type")
-    sub_type: Optional[str] = Field(None, max_length=255, description="Device sub type")
     poll_enabled: Optional[bool] = Field(None, description="Whether polling is enabled for this device")
     read_from_aggregator: Optional[bool] = Field(None, description="Whether to read from edge aggregator")
-    configs: Optional[List[str]] = Field(None, description="Device config IDs")
 
 
 class DeviceListItem(BaseModel):
     """Response model for device data in list views."""
-    id: int = Field(..., description="Device ID")
-    name: str = Field(..., description="Device name")
-    modbus_host: str = Field(..., description="Device hostname or IP address")
-    modbus_port: int = Field(..., description="Modbus TCP port")
-    modbus_timeout: Optional[float] = Field(default=None, description="Optional Modbus timeout (seconds)")
-    modbus_server_id: int = Field(..., description="Modbus server identifier")
+    device_id: int = Field(..., description="Device ID")
     site_id: int = Field(..., description="Site ID (4-digit number)")
+    name: str = Field(..., description="Device name")
+    type: str = Field(..., description="Device type")
+    protocol: str = Field(..., description="Communication protocol")
+    vendor: Optional[str] = Field(None, description="Device vendor")
+    model: Optional[str] = Field(None, description="Device model")
+    host: str = Field(..., description="Device hostname or IP address")
+    port: int = Field(..., description="Device port")
+    timeout: Optional[float] = Field(default=None, description="Optional timeout (seconds)")
+    server_address: int = Field(..., description="Server address")
     description: Optional[str] = Field(None, description="Device description")
-    main_type: str = Field(..., description="Device main type")
-    sub_type: Optional[str] = Field(None, description="Device sub type")
     poll_enabled: bool = Field(True, description="Whether polling is enabled for this device")
     read_from_aggregator: bool = Field(True, description="Whether to read from edge aggregator")
-    configs: List[str] = Field(default_factory=list, description="Device config IDs")
     created_at: datetime = Field(..., description="Timestamp when device was created")
     updated_at: datetime = Field(..., description="Timestamp when device was last updated")
     
@@ -74,10 +84,10 @@ class DeviceDeleteResponse(BaseModel):
 
 
 class DeviceWithConfigs(DeviceListItem):
-    """Device response with expanded device configs."""
-    device_configs: List["DeviceConfigResponse"] = Field(
+    """Device response with expanded configs."""
+    configs: List["ConfigResponse"] = Field(
         default_factory=list,
-        description="Expanded device configs"
+        description="Expanded configs"
     )
 
 
@@ -87,11 +97,19 @@ class Coordinates(BaseModel):
     lng: float = Field(..., description="Longitude")
 
 
-class SiteCreate(BaseModel):
+class Location(BaseModel):
+    """Location model for site address details."""
+    street: str = Field(..., min_length=1, max_length=255, description="Street address")
+    city: str = Field(..., min_length=1, max_length=255, description="City")
+    state: str = Field(..., min_length=1, max_length=255, description="State/province")
+    zip_code: int = Field(..., ge=0, description="Zip/postal code")
+
+
+class SiteCreateRequest(BaseModel):
     """Request model for creating a new site."""
-    owner: str = Field(..., min_length=1, max_length=255, description="Site owner")
+    client_id: str = Field(..., min_length=1, max_length=255, description="Client identifier")
     name: str = Field(..., min_length=1, max_length=255, description="Site name")
-    location: str = Field(..., min_length=1, max_length=255, description="Site location")
+    location: Location = Field(..., description="Site location details")
     operator: str = Field(..., min_length=1, max_length=255, description="Site operator")
     capacity: str = Field(..., min_length=1, max_length=255, description="Site capacity")
     description: Optional[str] = Field(default=None, description="Optional site description")
@@ -100,9 +118,9 @@ class SiteCreate(BaseModel):
 
 class SiteUpdate(BaseModel):
     """Request model for updating a site."""
-    owner: Optional[str] = Field(None, min_length=1, max_length=255, description="Site owner")
+    client_id: Optional[str] = Field(None, min_length=1, max_length=255, description="Client identifier")
     name: Optional[str] = Field(None, min_length=1, max_length=255, description="Site name")
-    location: Optional[str] = Field(None, min_length=1, max_length=255, description="Site location")
+    location: Optional[Location] = Field(None, description="Site location details")
     operator: Optional[str] = Field(None, min_length=1, max_length=255, description="Site operator")
     capacity: Optional[str] = Field(None, min_length=1, max_length=255, description="Site capacity")
     description: Optional[str] = Field(None, description="Site description")
@@ -111,10 +129,10 @@ class SiteUpdate(BaseModel):
 
 class SiteResponse(BaseModel):
     """Response model for site data."""
-    id: int = Field(..., description="Site ID (4-digit number)")
-    owner: str = Field(..., description="Site owner")
+    site_id: int = Field(..., alias="id", description="Site ID (4-digit number)")
+    client_id: str = Field(..., description="Client identifier")
     name: str = Field(..., description="Site name")
-    location: str = Field(..., description="Site location")
+    location: Location = Field(..., description="Site location details")
     operator: str = Field(..., description="Site operator")
     capacity: str = Field(..., description="Site capacity")
     deviceCount: int = Field(..., alias="device_count", description="Number of devices at this site")
@@ -138,10 +156,10 @@ class SiteDeleteResponse(BaseModel):
 
 class SiteComprehensiveResponse(BaseModel):
     """Comprehensive site response with devices and configs."""
-    id: int = Field(..., description="Site ID (4-digit number)")
-    owner: str = Field(..., description="Site owner")
+    site_id: int = Field(..., alias="id", description="Site ID (4-digit number)")
+    client_id: str = Field(..., description="Client identifier")
     name: str = Field(..., description="Site name")
-    location: str = Field(..., description="Site location")
+    location: Location = Field(..., description="Site location details")
     operator: str = Field(..., description="Site operator")
     capacity: str = Field(..., description="Site capacity")
     deviceCount: int = Field(..., alias="device_count", description="Number of devices at this site")
@@ -158,57 +176,28 @@ class SiteComprehensiveResponse(BaseModel):
     }
 
 
-class DeviceConfigRegister(BaseModel):
-    """Single register definition in a device config."""
-    register_address: int = Field(..., ge=0, le=65535, description="Modbus register address")
-    register_name: str = Field(..., description="Human-readable name/label for this register")
-    data_type: Literal["int16", "uint16", "int32", "uint32", "float32", "int64", "uint64", "float64", "bool"] = Field(
-        ...,
-        description="Data type interpretation"
-    )
-    size: int = Field(..., ge=1, description="Number of registers/bits")
-    scale_factor: Optional[float] = Field(default=None, description="Scale factor to apply to raw value")
-    unit: Optional[str] = Field(default=None, description="Physical unit (e.g., 'V', 'A', 'kW')")
+class ConfigPoint(BaseModel):
+    """Single point definition in a config."""
+    name: str = Field(..., alias="point_name", description="Human-readable point name/label")
+    address: int = Field(..., alias="point_address", ge=0, le=65535, description="Modbus point address")
+    size: int = Field(..., alias="point_size", ge=1, description="Number of registers/bits")
+    data_type: str = Field(..., alias="point_data_type", description="Data type interpretation")
+    scale_factor: Optional[float] = Field(None, alias="point_scale_factor", description="Scale factor to apply to raw value")
+    unit: Optional[str] = Field(None, alias="point_unit", description="Physical unit (e.g., 'V', 'A', 'kW')")
     bitfield_detail: Optional[Dict[str, str]] = Field(
-        default=None,
+        None,
+        alias="point_bitfield_detail",
         description="Bitfield detail mapping (optional)"
     )
     enum_detail: Optional[Dict[str, str]] = Field(
-        default=None,
+        None,
+        alias="point_enum_detail",
         description="Enum detail mapping (optional)"
     )
-
-
-class DeviceConfigData(BaseModel):
-    """Config payload for a device."""
-    site_id: int = Field(..., alias="Site_id", description="Site ID (4-digit number)")
-    device_id: int = Field(..., description="Device ID (database primary key)")
-    poll_address: int = Field(..., ge=0, le=65535, description="Start address for polling Modbus registers")
-    poll_count: int = Field(..., ge=1, description="Number of registers to read during polling")
-    poll_kind: Literal["holding", "input", "coils", "discretes"] = Field(..., description="Register type")
-    registers: List[DeviceConfigRegister] = Field(..., min_length=1, description="Register definitions")
-
-    model_config = {
-        "populate_by_name": True,
-    }
-
-
-
-
-class DeviceConfigResponse(BaseModel):
-    """Response model for device config."""
-    config_id: str = Field(..., alias="config_ID", description="Device config ID")
-    site_id: int = Field(..., alias="Site_id", description="Site ID (4-digit number)")
-    device_id: int = Field(..., description="Device ID (database primary key)")
-    poll_address: int = Field(..., ge=0, le=65535, description="Start address for polling Modbus registers")
-    poll_count: int = Field(..., ge=1, description="Number of registers to read during polling")
-    poll_kind: Literal["holding", "input", "coils", "discretes"] = Field(..., description="Register type")
-    registers: List[DeviceConfigRegister] = Field(..., min_length=1, description="Register definitions")
-    created_at: datetime = Field(..., description="Timestamp when config was created")
-    updated_at: datetime = Field(..., description="Timestamp when config was last updated")
-    warnings: Optional[Dict[str, Any]] = Field(
-        default=None,
-        description="Optional warnings about the config payload"
+    byte_order: str = Field(
+        default="big-endian",
+        alias="point_byte_order",
+        description="Byte order for interpretation"
     )
 
     model_config = {
@@ -216,13 +205,80 @@ class DeviceConfigResponse(BaseModel):
     }
 
 
-class DeviceConfigDeleteResponse(BaseModel):
-    """Response model for a deleted device config."""
-    device_config_id: str = Field(..., description="Deleted device config ID")
+class ConfigCreateRequest(BaseModel):
+    """Config payload for a device."""
+    site_id: int = Field(..., description="Site ID (4-digit number)")
+    device_id: int = Field(..., description="Device ID (database primary key)")
+    poll_kind: Literal["holding", "input", "coils"] = Field(..., description="Register type")
+    poll_start_index: int = Field(..., ge=0, le=65535, description="Start index for polling")
+    poll_count: int = Field(..., ge=1, description="Number of registers to read during polling")
+    points: List[ConfigPoint] = Field(..., min_length=1, description="Point definitions")
+    is_active: bool = Field(default=True, description="Whether the config is active")
+    created_by: str = Field(..., min_length=1, max_length=255, description="Config creator identifier")
 
 
-__all__ = ["DeviceCreate", "DeviceUpdate", "DeviceListItem", "DeviceResponse",
+
+
+class ConfigUpdate(BaseModel):
+    """Update payload for a config."""
+    poll_kind: Optional[Literal["holding", "input", "coils"]] = Field(None, description="Register type")
+    poll_start_index: Optional[int] = Field(None, ge=0, le=65535, description="Start index for polling")
+    poll_count: Optional[int] = Field(None, ge=1, description="Number of registers to read during polling")
+    points: Optional[List[ConfigPoint]] = Field(None, min_length=1, description="Point definitions")
+    is_active: Optional[bool] = Field(None, description="Whether the config is active")
+    created_by: Optional[str] = Field(None, min_length=1, max_length=255, description="Config creator identifier")
+
+
+class ConfigResponse(BaseModel):
+    """Response model for config."""
+    config_id: str = Field(..., description="Config ID")
+    site_id: int = Field(..., description="Site ID (4-digit number)")
+    device_id: int = Field(..., description="Device ID (database primary key)")
+    poll_kind: Literal["holding", "input", "coils"] = Field(..., description="Register type")
+    poll_start_index: int = Field(..., ge=0, le=65535, description="Start index for polling")
+    poll_count: int = Field(..., ge=1, description="Number of registers to read during polling")
+    points: List[ConfigPoint] = Field(..., min_length=1, description="Point definitions")
+    is_active: bool = Field(..., description="Whether the config is active")
+    created_at: datetime = Field(..., description="Timestamp when config was created")
+    updated_at: datetime = Field(..., description="Timestamp when config was last updated")
+    created_by: str = Field(..., description="Config creator identifier")
+
+    model_config = {
+        "from_attributes": True,
+    }
+
+
+class ConfigDeleteResponse(BaseModel):
+    """Response model for a deleted config."""
+    config_id: str = Field(..., description="Deleted config ID")
+
+
+class DevicePointResponse(BaseModel):
+    """Response model for a device point."""
+    id: int = Field(..., description="Primary key")
+    site_id: int = Field(..., description="Site ID")
+    device_id: int = Field(..., description="Device ID")
+    config_id: str = Field(..., description="Config ID")
+    name: str = Field(..., description="Point name")
+    address: int = Field(..., description="Point address")
+    size: int = Field(..., description="Point size")
+    data_type: str = Field(..., description="Data type")
+    scale_factor: Optional[float] = Field(None, description="Scale factor")
+    unit: Optional[str] = Field(None, description="Unit")
+    enum_value: Optional[str] = Field(None, description="Enum value if applicable")
+    bitfield_value: Optional[str] = Field(None, description="Bitfield value if applicable")
+    is_derived: bool = Field(False, description="Whether this point is derived from bitfield/enum expansion")
+    enum_detail: Optional[Dict[str, str]] = Field(None, description="Enum detail mapping")
+    bitfield_detail: Optional[Dict[str, str]] = Field(None, description="Bitfield detail mapping")
+    byte_order: str = Field("big-endian", description="Byte order for interpretation")
+
+    model_config = {
+        "from_attributes": True,
+    }
+
+
+__all__ = ["DeviceCreateRequest", "DeviceUpdate", "DeviceListItem", "DeviceResponse",
            "DeviceDeleteResponse", "DeviceWithConfigs", "SiteComprehensiveResponse",
-           "Coordinates", "SiteCreate", "SiteUpdate", "SiteResponse", "SiteDeleteResponse",
-           "DeviceConfigRegister", "DeviceConfigData",
-           "DeviceConfigUpdate", "DeviceConfigResponse", "DeviceConfigDeleteResponse"]
+           "Coordinates", "Location", "SiteCreateRequest", "SiteUpdate", "SiteResponse", "SiteDeleteResponse",
+           "ConfigPoint", "ConfigCreateRequest", "ConfigUpdate", "ConfigResponse", "ConfigDeleteResponse",
+           "DevicePointResponse"]

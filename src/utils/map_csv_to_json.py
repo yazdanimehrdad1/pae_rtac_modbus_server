@@ -136,14 +136,22 @@ def json_to_register_map(json_data: Dict[str, Any]) -> RegisterMap:
     
     for reg in registers:
         point_data = {
-            "register_name": reg.get("register_name") or reg.get("name", ""),
-            "register_address": reg.get("register_address") or reg.get("address"),
-            "data_type": reg.get("data_type", "uint16"),
-            "size": reg.get("size", 1),
-            "scale_factor": reg.get("scale_factor", 1.0),
-            "unit": reg.get("unit"),
-            "bitfield_detail": reg.get("bitfield_detail"),
-            "enum_detail": reg.get("enum_detail"),
+            "name": (
+                reg.get("name")
+                or reg.get("register_name")
+                or reg.get("point_name", "")
+            ),
+            "address": (
+                reg.get("address")
+                or reg.get("register_address")
+                or reg.get("point_address")
+            ),
+            "data_type": reg.get("data_type", reg.get("point_data_type", "uint16")),
+            "size": reg.get("size", reg.get("point_size", 1)),
+            "scale_factor": reg.get("scale_factor", reg.get("point_scale_factor", 1.0)),
+            "unit": reg.get("unit", reg.get("point_unit")),
+            "bitfield_detail": reg.get("bitfield_detail", reg.get("point_bitfield_detail")),
+            "enum_detail": reg.get("enum_detail", reg.get("point_enum_detail")),
         }
 
         points.append(RegisterPoint(**point_data))

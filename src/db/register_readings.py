@@ -1,7 +1,7 @@
 """
-Register readings database operations.
+Device point readings database operations.
 
-Handles CRUD operations for register_readings time-series table.
+Handles CRUD operations for device_points_readings time-series table.
 """
 
 from datetime import datetime, timezone
@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert
 
 from db.session import get_session
-from schemas.db_models.orm_models import RegisterReadingRaw, Device
+from schemas.db_models.orm_models import DevicePointsReading, DevicePoint, Device
 from logger import get_logger
 
 logger = get_logger(__name__)
@@ -56,7 +56,7 @@ async def insert_register_reading(
         async with get_session() as session:
             # Validate that device exists
             device_result = await session.execute(
-                select(Device).where(Device.id == device_id)
+                select(Device).where(Device.device_id == device_id)
             )
             device = device_result.scalar_one_or_none()
             if device is None:
@@ -72,7 +72,7 @@ async def insert_register_reading(
             # the table should have the following foreign key: device_id
             # the table should have the following index: timestamp, register_address
             # the table should have the following constraint: device_id must be unique for each site
-            statement = insert(RegisterReadingRaw).values(
+            statement = insert(DevicePointsReading).values(
                 timestamp=timestamp,
                 device_id=device_id,
                 register_address=register_address,
@@ -84,13 +84,10 @@ async def insert_register_reading(
             )
             
             statement = statement.on_conflict_do_update(
-                index_elements=['timestamp', 'device_id', 'register_address'],
+                index_elements=['device_point_id', 'timestamp'],
                 set_=dict(
-                    value=statement.excluded.value,
-                    quality=statement.excluded.quality,
-                    register_name=statement.excluded.register_name,
-                    unit=statement.excluded.unit,
-                    scale_factor=statement.excluded.scale_factor
+                    raw_value=statement.excluded.raw_value,
+                    derived_value=statement.excluded.derived_value
                 )
             )
             
@@ -107,7 +104,9 @@ async def insert_register_reading(
 
 async def insert_register_readings_batch(
     site_id: Optional[str],
-    readings: List[Dict[str, Any]]
+    device_id: int,
+    points_readings_list: List[DevicePointsReading],
+    timestamp_dt: datetime
 ) -> int:
     """
     Insert multiple register readings in a single batch operation.
@@ -131,66 +130,47 @@ async def insert_register_readings_batch(
         ValueError: If site doesn't exist or any device doesn't belong to site
         Exception: For database errors
     """
-    if not readings:
+    if not points_readings_list:
         logger.debug("No readings to insert in batch")
         return 0
     
     try:
         async with get_session() as session:
-            # Validate all devices exist and get unique device_ids
-            device_ids = {reading['device_id'] for reading in readings}
-            devices_result = await session.execute(
-                select(Device).where(Device.id.in_(device_ids))
-            )
-            valid_devices = {device.id for device in devices_result.scalars().all()}
             
-            # Check if all device_ids are valid
-            invalid_devices = device_ids - valid_devices
-            if invalid_devices:
-                raise ValueError(
-                    f"Device(s) {sorted(invalid_devices)} not found"
-                )
-            # Prepare values for batch insert
             values = []
-            for reading in readings:
-                timestamp = reading.get('timestamp')
-                if timestamp is None:
-                    timestamp = datetime.now(timezone.utc)
-                
+            for device_point_reading in points_readings_list:
+                reading_site_id = device_point_reading.site_id if device_point_reading.site_id is not None else site_id
+                reading_device_id = device_point_reading.device_id if device_point_reading.device_id is not None else device_id
+
                 values.append({
-                    'timestamp': timestamp,
-                    'device_id': reading['device_id'],
-                    'register_address': reading['register_address'],
-                    'value': float(reading['value']),  # Ensure it's a float
-                    'quality': reading.get('quality', 'good'),
-                    'register_name': reading.get('register_name'),
-                    'unit': reading.get('unit'),
-                    'scale_factor': reading.get('scale_factor')
+                    'site_id': reading_site_id,
+                    'device_id': reading_device_id,
+                    'device_point_id': device_point_reading.device_point_id,
+                    'timestamp': device_point_reading.timestamp,
+                    'raw_value': device_point_reading.raw_value,
+                    'derived_value': device_point_reading.derived_value
                 })
             
             # Build batch INSERT query with ON CONFLICT
             # TODO: critical: we need to insert the readings into the correct table, based on the site_id
             # we need to create a new table for each site, and then insert the readings into the correct table
             # the table name should be register_readings_raw_site_id_device_id
-            # the table should have the following columns: timestamp, register_address, value, quality, register_name, unit, scale_factor
-            # the table should have the following primary key: timestamp, register_address
-            # the table should have the following foreign key: device_id
-            # the table should have the following index: timestamp, register_address
+            # the table should have the following columns: timestamp, device_point_id, raw_value, derived_value
+            # the table should have the following primary key: timestamp, device_point_id
+            # the table should have the following foreign key: device_point_id
+            # the table should have the following index: device_point_id, timestamp
             # the table should have the following constraint: device_id must be unique for each site
-            statement = insert(RegisterReadingRaw).values(values)
+            statement = insert(DevicePointsReading).values(values)
             
             statement = statement.on_conflict_do_update(
-                index_elements=['timestamp', 'device_id', 'register_address'],
+                index_elements=['device_point_id', 'timestamp'],
                 set_=dict(
-                    value=statement.excluded.value,
-                    quality=statement.excluded.quality,
-                    register_name=statement.excluded.register_name,
-                    unit=statement.excluded.unit,
-                    scale_factor=statement.excluded.scale_factor
+                    raw_value=statement.excluded.raw_value,
+                    derived_value=statement.excluded.derived_value
                 )
             )
             
-            result = await session.execute(statement)
+            await session.execute(statement)
             await session.commit()
             
             inserted_count = len(values)
@@ -233,30 +213,40 @@ async def get_all_readings(
     async with get_session() as session:
         if device_id is not None:
             device_result = await session.execute(
-                select(Device).where(Device.id == device_id)
+                select(Device).where(Device.device_id == device_id)
             )
             device = device_result.scalar_one_or_none()
             if device is None:
                 raise ValueError(f"Device with id '{device_id}' not found")
         
         # Build query with filters
-        statement = select(RegisterReadingRaw)
+        statement = (
+            select(
+                DevicePointsReading.timestamp,
+                DevicePointsReading.raw_value,
+                DevicePointsReading.derived_value,
+                DevicePointsReading.device_point_id
+            )
+            .join(DevicePoint, DevicePointsReading.device_point_id == DevicePoint.id)
+        )
         
         conditions = []
         if device_id is not None:
-            conditions.append(RegisterReadingRaw.device_id == device_id)
+            conditions.append(DevicePointsReading.device_id == device_id)
+        if site_id is not None:
+            conditions.append(DevicePointsReading.site_id == site_id)
         if register_address is not None:
-            conditions.append(RegisterReadingRaw.register_address == register_address)
+            conditions.append(DevicePoint.address == register_address)
         if start_time is not None:
-            conditions.append(RegisterReadingRaw.timestamp >= start_time)
+            conditions.append(DevicePointsReading.timestamp >= start_time)
         if end_time is not None:
-            conditions.append(RegisterReadingRaw.timestamp <= end_time)
+            conditions.append(DevicePointsReading.timestamp <= end_time)
         
         if conditions:
             statement = statement.where(and_(*conditions))
         
         # Order by timestamp descending (newest first)
-        statement = statement.order_by(RegisterReadingRaw.timestamp.desc())
+        statement = statement.order_by(DevicePointsReading.timestamp.desc())
         
         # Add LIMIT and OFFSET if provided
         if limit is not None:
@@ -265,17 +255,14 @@ async def get_all_readings(
             statement = statement.offset(offset)
         
         result = await session.execute(statement)
-        readings = result.scalars().all()
-        
+        readings = result.all()
+
         return [
             {
                 'timestamp': reading.timestamp,
-                'device_id': reading.device_id,
-                'register_address': reading.register_address,
-                'value': reading.value,
-                'quality': reading.quality,
-                'register_name': reading.register_name,
-                'unit': reading.unit
+                'device_point_id': reading.device_point_id,
+                'raw_value': reading.raw_value,
+                'derived_value': reading.derived_value
             }
             for reading in readings
         ]
@@ -302,33 +289,79 @@ async def get_latest_reading(
     """
     async with get_session() as session:
         device_result = await session.execute(
-            select(Device).where(Device.id == device_id)
+            select(Device).where(Device.device_id == device_id)
         )
         device = device_result.scalar_one_or_none()
         if device is None:
             raise ValueError(f"Device with id '{device_id}' not found")
         
-        statement = select(RegisterReadingRaw).where(
-            and_(
-                RegisterReadingRaw.device_id == device_id,
-                RegisterReadingRaw.register_address == register_address
+        from sqlalchemy import func as sql_func
+
+        rank_subquery = (
+            select(
+                DevicePointsReading.device_point_id,
+                DevicePointsReading.timestamp,
+                DevicePointsReading.raw_value,
+                DevicePointsReading.derived_value,
+                sql_func.row_number().over(
+                    partition_by=DevicePointsReading.device_point_id,
+                    order_by=DevicePointsReading.timestamp.desc()
+                ).label('rn')
             )
-        ).order_by(RegisterReadingRaw.timestamp.desc()).limit(1)
-        
+            .where(
+                and_(
+                    DevicePointsReading.device_id == device_id,
+                    DevicePointsReading.site_id == site_id
+                )
+            )
+        )
+
+        ranked = rank_subquery.subquery()
+
+        statement = (
+            select(
+                ranked.c.timestamp,
+                ranked.c.raw_value,
+                ranked.c.derived_value,
+                DevicePoint.id.label('device_point_id'),
+                DevicePoint.address,
+                DevicePoint.name,
+                DevicePoint.data_type,
+                DevicePoint.unit,
+                DevicePoint.scale_factor,
+                DevicePoint.is_derived,
+            )
+            .join(ranked, ranked.c.device_point_id == DevicePoint.id)
+            .where(
+                and_(
+                    ranked.c.rn == 1,
+                    DevicePoint.device_id == device_id,
+                    DevicePoint.site_id == site_id,
+                    DevicePoint.address == register_address
+                )
+            )
+            .limit(1)
+        )
+
         result = await session.execute(statement)
-        reading = result.scalar_one_or_none()
-        
-        if reading is None:
+        row = result.one_or_none()
+
+        if row is None:
             return None
-        
+
         return {
-            'timestamp': reading.timestamp,
-            'device_id': reading.device_id,
-            'register_address': reading.register_address,
-            'value': reading.value,
-            'quality': reading.quality,
-            'register_name': reading.register_name,
-            'unit': reading.unit
+            'timestamp': row.timestamp,
+            'device_id': device_id,
+            'site_id': site_id,
+            'device_point_id': row.device_point_id,
+            'register_address': row.address,
+            'name': row.name,
+            'data_type': row.data_type,
+            'unit': row.unit,
+            'scale_factor': row.scale_factor,
+            'is_derived': row.is_derived,
+            'raw_value': row.raw_value,
+            'derived_value': row.derived_value
         }
 
 
@@ -354,70 +387,77 @@ async def get_latest_readings_for_device(
     """
     async with get_session() as session:
         device_result = await session.execute(
-            select(Device).where(Device.id == device_id)
+            select(Device).where(Device.device_id == device_id)
         )
         device = device_result.scalar_one_or_none()
         if device is None:
             raise ValueError(f"Device with id '{device_id}' not found")
         
-        # Use window function to get latest reading per register_address
-        # This is equivalent to DISTINCT ON (register_address) ... ORDER BY register_address, timestamp DESC
+        # Use window function to rank readings by timestamp per device_point_id
         from sqlalchemy import func as sql_func
-        
-        # Use window function to rank readings by timestamp per register_address
+
         rank_subquery = (
             select(
-                RegisterReadingRaw.timestamp,
-                RegisterReadingRaw.register_address,
-                RegisterReadingRaw.value,
-                RegisterReadingRaw.quality,
-                RegisterReadingRaw.register_name,
-                RegisterReadingRaw.unit,
-                RegisterReadingRaw.scale_factor,
+                DevicePointsReading.device_point_id,
+                DevicePointsReading.timestamp,
+                DevicePointsReading.raw_value,
+                DevicePointsReading.derived_value,
                 sql_func.row_number().over(
-                    partition_by=RegisterReadingRaw.register_address,
-                    order_by=RegisterReadingRaw.timestamp.desc()
+                    partition_by=DevicePointsReading.device_point_id,
+                    order_by=DevicePointsReading.timestamp.desc()
                 ).label('rn')
             )
-            .where(RegisterReadingRaw.device_id == device_id)
-        )
-        
-        # If register_addresses is provided, filter the subquery to only include the specified register addresses
-        if register_addresses:
-            rank_subquery = rank_subquery.where(
-                RegisterReadingRaw.register_address.in_(register_addresses)
+            .where(
+                and_(
+                    DevicePointsReading.device_id == device_id,
+                    DevicePointsReading.site_id == site_id
+                )
             )
-        
-        # Create subquery alias
+        )
+
         ranked = rank_subquery.subquery()
-        
-        # Select only rows where rn = 1 (latest per register_address)
+
         statement = (
             select(
                 ranked.c.timestamp,
-                ranked.c.register_address,
-                ranked.c.value,
-                ranked.c.quality,
-                ranked.c.register_name,
-                ranked.c.unit,
-                ranked.c.scale_factor
+                ranked.c.raw_value,
+                ranked.c.derived_value,
+                DevicePoint.id.label('device_point_id'),
+                DevicePoint.address,
+                DevicePoint.name,
+                DevicePoint.data_type,
+                DevicePoint.unit,
+                DevicePoint.scale_factor,
+                DevicePoint.is_derived,
             )
-            .where(ranked.c.rn == 1)
+            .join(ranked, ranked.c.device_point_id == DevicePoint.id)
+            .where(
+                and_(
+                    ranked.c.rn == 1,
+                    DevicePoint.device_id == device_id,
+                    DevicePoint.site_id == site_id
+                )
+            )
         )
-        
+
+        if register_addresses:
+            statement = statement.where(DevicePoint.address.in_(register_addresses))
+
         result = await session.execute(statement)
         rows = result.all()
-        
+
         return [
             {
-                'timestamp': row.timestamp,
-                'register_address': row.register_address,
-                'value': row.value,
-                'quality': row.quality,
-                'register_name': row.register_name,
+                'device_point_id': row.device_point_id,
+                'register_address': row.address,
+                'name': row.name,
+                'data_type': row.data_type,
                 'unit': row.unit,
-                'scale': row.scale_factor  # Scale factor from database
+                'scale_factor': row.scale_factor,
+                'is_derived': row.is_derived,
+                'timestamp': row.timestamp,
+                'raw_value': row.raw_value,
+                'derived_value': row.derived_value
             }
             for row in rows
         ]
-

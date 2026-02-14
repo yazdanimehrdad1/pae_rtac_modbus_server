@@ -6,7 +6,7 @@ These models represent the database schema and are used for ORM operations.
 
 from datetime import datetime
 from typing import Optional, Dict, Any, TypedDict
-from sqlalchemy import String, Integer, Text, DateTime, func, Float, ForeignKey, JSON, Boolean
+from sqlalchemy import String, Integer, Text, DateTime, func, Float, ForeignKey, JSON, Boolean, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -15,15 +15,16 @@ class Base(DeclarativeBase):
     pass
 
 
-class RegisterConfig(TypedDict, total=False):
-    register_address: int
-    register_name: str
+class ConfigPointDefinition(TypedDict, total=False):
+    address: int
+    name: str
     data_type: str
     size: int
     scale_factor: float
     unit: str
     bitfield_detail: Dict[str, str]
     enum_detail: Dict[str, str]
+    byte_order: str
 
 
 class Site(Base):
@@ -37,14 +38,15 @@ class Site(Base):
     id: Mapped[int] = mapped_column(
         Integer,
         primary_key=True,
+        autoincrement=True,
         comment="Primary key, 4-digit site ID"
     )
     
-    owner: Mapped[str] = mapped_column(
+    client_id: Mapped[str] = mapped_column(
         String(255),
         nullable=False,
         index=True,
-        comment="Site owner"
+        comment="Client identifier"
     )
     
     name: Mapped[str] = mapped_column(
@@ -55,10 +57,10 @@ class Site(Base):
         comment="Site name (must be unique)"
     )
     
-    location: Mapped[str] = mapped_column(
-        String(255),
+    location: Mapped[Dict[str, Any]] = mapped_column(
+        JSON,
         nullable=False,
-        comment="Site location"
+        comment="Site location as JSON: {street: str, city: str, zip_code: int}"
     )
     
     operator: Mapped[str] = mapped_column(
@@ -127,7 +129,7 @@ class Device(Base):
     """
     __tablename__ = "devices"
     
-    id: Mapped[int] = mapped_column(
+    device_id: Mapped[int] = mapped_column(
         Integer,
         primary_key=True,
         autoincrement=True,
@@ -142,23 +144,23 @@ class Device(Base):
         comment="Unique device name/identifier"
     )
     
-    modbus_host: Mapped[str] = mapped_column(
+    host: Mapped[str] = mapped_column(
         String(255),
         nullable=False,
-        comment="Modbus device hostname or IP address"
+        comment="Device hostname or IP address"
     )
     
-    modbus_port: Mapped[int] = mapped_column(
+    port: Mapped[int] = mapped_column(
         Integer,
         nullable=False,
         default=502,
-        comment="Modbus TCP port (default: 502)"
+        comment="Device port (default: 502)"
     )
     
-    modbus_timeout: Mapped[Optional[float]] = mapped_column(
+    timeout: Mapped[Optional[float]] = mapped_column(
         Float,
         nullable=True,
-        comment="Optional Modbus timeout (seconds)"
+        comment="Optional timeout (seconds)"
     )
     
     site_id: Mapped[int] = mapped_column(
@@ -169,11 +171,11 @@ class Device(Base):
         comment="Site ID (required)"
     )
     
-    modbus_server_id: Mapped[int] = mapped_column(
+    server_address: Mapped[int] = mapped_column(
         Integer,
         nullable=False,
         default=1,
-        comment="Modbus server identifier"
+        comment="Server address"
     )
     
     description: Mapped[Optional[str]] = mapped_column(
@@ -182,16 +184,30 @@ class Device(Base):
         comment="Optional device description"
     )
     
-    main_type: Mapped[str] = mapped_column(
-        String(255),
+    type: Mapped[str] = mapped_column(
+        String(50),
         nullable=False,
-        comment="Device main type (required)"
+        comment="Device type"
+    )
+
+    protocol: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="Modbus",
+        server_default="Modbus",
+        comment="Communication protocol (Modbus or DNP)"
     )
     
-    sub_type: Mapped[Optional[str]] = mapped_column(
+    vendor: Mapped[Optional[str]] = mapped_column(
         String(255),
         nullable=True,
-        comment="Device sub type (optional)"
+        comment="Device vendor"
+    )
+    
+    model: Mapped[Optional[str]] = mapped_column(
+        String(255),
+        nullable=True,
+        comment="Device model"
     )
     
     # Polling configuration
@@ -209,12 +225,7 @@ class Device(Base):
         comment="Whether this device reads data from the edge aggregator"
     )
     
-    configs: Mapped[list[str]] = mapped_column(
-        JSON,
-        nullable=False,
-        default=list,
-        comment="Device-specific configuration entries"
-    )
+    # configs stored in configs table
     
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -231,11 +242,12 @@ class Device(Base):
         comment="Timestamp when device record was last updated"
     )
     
-    # Relationship to RegisterReadingRaw
-    register_readings: Mapped[list["RegisterReadingRaw"]] = relationship(
-        "RegisterReadingRaw",
+    # Relationship to DevicePointsReading
+    device_points_readings: Mapped[list["DevicePointsReading"]] = relationship(
+        "DevicePointsReading",
         back_populates="device",
-        cascade="all, delete-orphan"
+        cascade="all, delete-orphan",
+        primaryjoin="Device.device_id == foreign(DevicePointsReading.device_id)"
     )
 
     # Relationship to RegisterReadingTranslated
@@ -248,21 +260,21 @@ class Device(Base):
     
     
     def __repr__(self) -> str:
-        return f"<Device(id={self.id}, name='{self.name}', host='{self.modbus_host}:{self.modbus_port}')>"
+        return f"<Device(device_id={self.device_id}, name='{self.name}', host='{self.host}:{self.port}')>"
 
 
-class DeviceConfig(Base):
+class Config(Base):
     """
-    SQLAlchemy model for the device_configs table.
+    SQLAlchemy model for the configs table.
     
-    Stores device configuration payloads keyed by a config ID string.
+    Stores versioned polling configuration payloads keyed by config ID.
     """
-    __tablename__ = "device_configs"
+    __tablename__ = "configs"
     
-    id: Mapped[str] = mapped_column(
+    config_id: Mapped[str] = mapped_column(
         String(255),
         primary_key=True,
-        comment="Device config ID (e.g., siteID-deviceID-1)"
+        comment="Config ID (e.g., siteID-deviceID-1)"
     )
     
     site_id: Mapped[int] = mapped_column(
@@ -273,14 +285,21 @@ class DeviceConfig(Base):
     
     device_id: Mapped[int] = mapped_column(
         Integer,
+        ForeignKey("devices.device_id", ondelete="CASCADE"),
         nullable=False,
         comment="Device ID (database primary key)"
     )
     
-    poll_address: Mapped[int] = mapped_column(
+    poll_kind: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        comment="Register type: holding, input, or coils"
+    )
+    
+    poll_start_index: Mapped[int] = mapped_column(
         Integer,
         nullable=False,
-        comment="Start address for polling Modbus registers"
+        comment="Start index for polling Modbus registers"
     )
     
     poll_count: Mapped[int] = mapped_column(
@@ -289,16 +308,23 @@ class DeviceConfig(Base):
         comment="Number of registers to read during polling"
     )
     
-    poll_kind: Mapped[str] = mapped_column(
-        String(20),
-        nullable=False,
-        comment="Register type: holding, input, coils, or discretes"
-    )
-    
-    registers: Mapped[list[RegisterConfig]] = mapped_column(
+    points: Mapped[list[ConfigPointDefinition]] = mapped_column(
         JSON,
         nullable=False,
-        comment="Register definitions"
+        comment="Point definitions"
+    )
+    
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        comment="Whether this config is active"
+    )
+    
+    created_by: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        comment="Config creator identifier"
     )
     
     created_at: Mapped[datetime] = mapped_column(
@@ -317,17 +343,25 @@ class DeviceConfig(Base):
     )
     
     def __repr__(self) -> str:
-        return f"<DeviceConfig(id='{self.id}')>"
+        return f"<Config(config_id='{self.config_id}')>"
 
 
-class RegisterReadingRaw(Base):
+class DevicePointsReading(Base):
     """
-    SQLAlchemy model for the register_readings_raw table.
+    SQLAlchemy model for the device_points_readings table.
     
-    Represents a time-series data point for a Modbus register reading.
-    Uses composite primary key (timestamp, device_id, register_address).
+    Represents a time-series data point reading for a device point.
+    Uses composite primary key (timestamp, device_point_id).
     """
-    __tablename__ = "register_readings_raw"
+    __tablename__ = "device_points_readings"
+
+    __table_args__ = (
+        UniqueConstraint(
+            'device_point_id',
+            'timestamp',
+            name='uq_device_points_readings_point_time'
+        ),
+    )
     
     timestamp: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -336,57 +370,189 @@ class RegisterReadingRaw(Base):
         comment="Timestamp when the reading was taken (UTC)"
     )
     
+    site_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("sites.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+        comment="Site ID (denormalized from device_points)"
+    )
+
     device_id: Mapped[int] = mapped_column(
         Integer,
-        ForeignKey("devices.id", ondelete="CASCADE"),
+        ForeignKey("devices.device_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+        comment="Device ID (denormalized from device_points)"
+    )
+
+    device_point_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("device_points.id", ondelete="CASCADE"),
         primary_key=True,
         nullable=False,
-        comment="Foreign key to devices table"
+        comment="Foreign key to device_points table"
     )
     
-    register_address: Mapped[int] = mapped_column(
+    raw_value: Mapped[Optional[float]] = mapped_column(
+        Float,
+        nullable=True,
+        comment="The raw value read from the device"
+    )
+    
+    derived_value: Mapped[Optional[float]] = mapped_column(
+        Float,
+        nullable=True,
+        comment="The derived/calculated value (for bitfields, enums, scaled values)"
+    )
+    
+    # Relationship to DevicePoint
+    device_point: Mapped["DevicePoint"] = relationship("DevicePoint", back_populates="readings")
+    device: Mapped["Device"] = relationship("Device", back_populates="device_points_readings")
+    
+    def __repr__(self) -> str:
+        return (
+            f"<DevicePointsReading(timestamp={self.timestamp}, site_id={self.site_id}, "
+            f"device_id={self.device_id}, device_point_id={self.device_point_id}, "
+            f"raw_value={self.raw_value}, derived_value={self.derived_value})>"
+        )
+
+
+class DevicePoint(Base):
+    """
+    SQLAlchemy model for the device_points table.
+    
+    Represents a flattened point definition for a device.
+    """
+    __tablename__ = "device_points"
+    
+    id: Mapped[int] = mapped_column(
         Integer,
         primary_key=True,
-        nullable=False,
-        comment="Modbus register address"
+        autoincrement=True,
+        comment="Primary key"
     )
     
-    value: Mapped[float] = mapped_column(
-        Float,
+    site_id: Mapped[int] = mapped_column(
+        Integer,
         nullable=False,
-        comment="The actual register value"
+        comment="Site ID"
     )
     
-    quality: Mapped[str] = mapped_column(
+    device_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("devices.device_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+        comment="Device ID"
+    )
+    
+    config_id: Mapped[str] = mapped_column(
+        String(255),
+        ForeignKey("configs.config_id", ondelete="CASCADE"),
+        nullable=False,
+        comment="Config ID"
+    )
+    
+    address: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        comment="Point address"
+    )
+    
+    name: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        comment="Point name (must be unique per device)"
+    )
+    
+    size: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        comment="Point size"
+    )
+    
+    data_type: Mapped[str] = mapped_column(
         String(50),
         nullable=False,
-        default='good',
-        comment="Data quality flag: good, bad, uncertain, or substituted"
-    )
-    
-    register_name: Mapped[Optional[str]] = mapped_column(
-        Text,
-        nullable=True,
-        comment="Register name (denormalized from register_map for performance)"
-    )
-    
-    unit: Mapped[Optional[str]] = mapped_column(
-        Text,
-        nullable=True,
-        comment="Unit of measurement (denormalized from register_map)"
+        comment="Data type"
     )
     
     scale_factor: Mapped[Optional[float]] = mapped_column(
         Float,
         nullable=True,
-        comment="Scale factor to apply to raw value (denormalized from register_map)"
+        comment="Scale factor"
     )
     
-    # Relationship to Device
-    device: Mapped["Device"] = relationship("Device", back_populates="register_readings")
+    unit: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+        comment="Unit"
+    )
+    
+    enum_value: Mapped[Optional[str]] = mapped_column(
+        String(255),
+        nullable=True,
+        comment="Enum value if applicable"
+    )
+    
+    bitfield_value: Mapped[Optional[str]] = mapped_column(
+        String(255),
+        nullable=True,
+        comment="Bitfield value if applicable"
+    )
+    
+    is_derived: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+        comment="Whether this point is derived from bitfield/enum expansion"
+    )
+
+    enum_detail: Mapped[Optional[Dict[str, str]]] = mapped_column(
+        JSON,
+        nullable=True,
+        comment="Enum detail mapping"
+    )
+
+    bitfield_detail: Mapped[Optional[Dict[str, str]]] = mapped_column(
+        JSON,
+        nullable=True,
+        comment="Bitfield detail mapping"
+    )
+
+    byte_order: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="big-endian",
+        server_default="big-endian",
+        comment="Byte order for interpretation (e.g., big-endian, little-endian)"
+    )
+
+    # Table-level constraints
+    __table_args__ = (
+        # Primary uniqueness: point names must be unique per site/device
+        UniqueConstraint('site_id', 'device_id', 'name', name='uq_device_point_site_device_name'),
+        # Secondary uniqueness for derived points: prevent duplicate bitfield/enum expansions
+        # Note: bitfield_value and enum_value are nullable, so this only applies when they're set
+        UniqueConstraint('site_id', 'device_id', 'address', 'bitfield_value', name='uq_device_point_address_bitfield'),
+        {'comment': 'Device points with unique names per site and device, and unique address/bitfield combinations'}
+    )
+
+    # Note: Unique constraint on (device_id, name) is enforced logic-side or via separate constraint
+    # We avoid strict DB constraint here to allow logic-side custom error handling as requested,
+    # OR we can add it. User asked to check manually.
+    
+    # Relationship to DevicePointsReading
+    readings: Mapped[list["DevicePointsReading"]] = relationship(
+        "DevicePointsReading",
+        back_populates="device_point",
+        cascade="all, delete-orphan"
+    )
     
     def __repr__(self) -> str:
-        return f"<RegisterReadingRaw(timestamp={self.timestamp}, device_id={self.device_id}, register_address={self.register_address}, value={self.value})>"
+        return f"<DevicePoint(id={self.id}, name='{self.name}', device_id={self.device_id})>"
 
 
 class RegisterReadingTranslated(Base):
@@ -407,7 +573,7 @@ class RegisterReadingTranslated(Base):
     
     device_id: Mapped[int] = mapped_column(
         Integer,
-        ForeignKey("devices.id", ondelete="CASCADE"),
+        ForeignKey("devices.device_id", ondelete="CASCADE"),
         primary_key=True,
         nullable=False,
         comment="Foreign key to devices table"

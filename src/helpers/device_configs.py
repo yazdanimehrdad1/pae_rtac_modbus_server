@@ -1,272 +1,360 @@
 """Device config helper functions for DB/cache coordination."""
 
+import json
 from fastapi import HTTPException, status
 
 from cache.cache import CacheService
-from db.device_configs import create_device_config_for_device
+from db.device_configs import create_config_for_device, get_configs_for_device
 from db.devices import get_device_by_id
+from utils.exceptions import ConflictError, NotFoundError, ValidationError, InternalError
 from logger import get_logger
-from schemas.db_models.models import DeviceConfigData, DeviceConfigResponse
+from schemas.db_models.models import ConfigCreateRequest, ConfigResponse, ConfigPoint
+from db.device_configs import delete_config
+from pydantic import BaseModel, Field
 
 logger = get_logger(__name__)
 cache_service = CacheService()
 
+from schemas.api_models.validation import PointValidationError, PointAddressValidationResult
+
 MAX_MODBUS_POLL_REGISTER_COUNT = 125
 
-
-def set_register_defaults(registers: list) -> None:
-    """
-    Set default values for register fields in-place.
-    """
-    for register in registers:
-        if isinstance(register, dict):
-            if register.get("scale_factor") is None:
-                register["scale_factor"] = 1.0
-            if register.get("unit") is None:
-                register["unit"] = "unit"
-        else:
-            if getattr(register, "scale_factor", None) is None:
-                register.scale_factor = 1.0
-            if getattr(register, "unit", None) is None:
-                register.unit = "unit"
+from helpers.device_points import (
+    map_device_configs_to_device_points,
+    create_device_points,
+    validate_device_points_uniqueness
+)
 
 
-def compute_poll_range(registers: list) -> tuple[int, int, int]:
+def set_point_defaults(points: list[ConfigPoint]) -> None:
     """
-    Compute min register number, max register end, and poll count.
+    Set default values for point fields in-place.
     """
-    min_register_number = min(register.register_address for register in registers)
+    for point in points:
+        if point.scale_factor in ("", None):
+            point.scale_factor = 1.0
+        if point.unit in ("", None):
+            point.unit = "unit"
+
+
+def _get_point_attr(point: ConfigPoint, key: str, default=None):
+    if hasattr(point, key):
+        return getattr(point, key, default)
+    return default
+
+
+def compute_poll_range(points: list) -> tuple[int, int, int]:
+    """
+    Compute min point address, max point end, and poll count.
+    """
+    addresses = [_get_point_attr(point, "address") for point in points]
+    sizes = [_get_point_attr(point, "size", 1) for point in points]
+    min_register_number = min(addresses)
     max_register_end = max(
-        register.register_address + register.size - 1
-        for register in registers
+        address + size - 1
+        for address, size in zip(addresses, sizes)
     )
     poll_count = max_register_end - min_register_number + 1
     return min_register_number, max_register_end, poll_count
 
 
-def validate_duplicate_registers(registers: list) -> None:
+def validate_duplicate_points(points: list) -> None:
     """
-    Validate no duplicate register addresses exist.
+    Validate no duplicate or overlapping point address ranges exist.
     """
-    seen_addresses: dict[int, list[int]] = {}
-    duplicates: list[dict[str, int | list[int]]] = []
-    duplicate_register_addresses: list[int] = []
-    for idx, register in enumerate(registers):
-        if isinstance(register, dict):
-            register_data = register
-        elif hasattr(register, "model_dump"):
-            register_data = register.model_dump()
+    ranges: list[tuple[int, int, int]] = []  # (start, end, index)
+    for idx, point in enumerate(points):
+        if isinstance(point, dict):
+            point_data = point
+        elif hasattr(point, "model_dump"):
+            point_data = point.model_dump()
         else:
-            register_data = vars(register)
-        register_address = register_data.get("register_address")
-        if register_address is None:
+            point_data = vars(point)
+        
+        addr = point_data.get("address")
+        size = point_data.get("size", 1)
+        if addr is None:
             continue
-        seen_addresses.setdefault(register_address, []).append(idx)
-
-    for address, indices in seen_addresses.items():
-        if len(indices) > 1:
-            duplicate_register_addresses.append(address)
-            duplicates.append(
-                {
-                    "register_address": address,
-                    "indices": indices,
-                }
-            )
-
-    if duplicates:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "error": "Duplicate register addresses",
-                "message": "One or more registers share the same register_address",
-                "duplicate_register_addresses": duplicate_register_addresses,
-                "duplicates": duplicates,
-            },
-        )
+            
+        start = addr
+        end = addr + size - 1
+        
+        # Check for overlaps with previously processed points
+        for r_start, r_end, r_idx in ranges:
+            if start <= r_end and end >= r_start:
+                raise ConflictError(
+                    f"Point at index {idx} (address {start}-{end}) overlaps with point at index {r_idx} (address {r_start}-{r_end})",
+                    payload={
+                        "error_type": "Overlapping point addresses",
+                        "overlap": {
+                            "point1": {"index": r_idx, "address": r_start, "end": r_end},
+                            "point2": {"index": idx, "address": start, "end": end}
+                        }
+                    }
+                )
+        ranges.append((start, end, idx))
 
 
-def validate_register_addresses(poll_address: int, registers: list) -> None:
+def validate_point_addresses(poll_start_index: int, points: list) -> PointAddressValidationResult:
     """
-    Validate register addresses are within allowed poll range.
+    Validate point addresses are within allowed poll range.
+    Returns: PointAddressValidationResult
     """
-    validate_duplicate_registers(registers)
-    max_address = poll_address + MAX_MODBUS_POLL_REGISTER_COUNT
-    missing_fields: list[dict[str, str]] = []
-    invalid_registers: list[dict[str, int | str]] = []
-    for idx, register in enumerate(registers):
-        if isinstance(register, dict):#this is a dictionary, we are using the dictionary directly
-            register_data = register
-        elif hasattr(register, "model_dump"):#this is a pydantic model, we are using the model_dump method to convert the pydantic model to a dictionary
-            register_data = register.model_dump()
+    validate_duplicate_points(points)
+    max_address = poll_start_index + MAX_MODBUS_POLL_REGISTER_COUNT
+    result = PointAddressValidationResult()
+    for idx, point in enumerate(points):
+        if isinstance(point, dict):
+            point_data = point
+        elif hasattr(point, "model_dump"):
+            point_data = point.model_dump()
         else:
-            register_data = vars(register)
+            point_data = vars(point)
 
-        register_address = register_data.get("register_address")
-        register_size = register_data.get("size")
+        point_address = point_data.get("address")
+        point_size = point_data.get("size")
 
-        if register_address is None:
-            missing_fields.append(
-                {
-                    "index": idx,
-                    "field": "register_address",
-                    "message": f"The 'registers[{idx}].register_address' field is required",
-                }
+        if point_address is None:
+            result.missing_fields.append(
+                PointValidationError(
+                    index=idx,
+                    field="address",
+                    message=f"The 'points[{idx}].address' field is required",
+                )
             )
             continue
-        if register_size is None:
-            missing_fields.append(
-                {
-                    "index": idx,
-                    "field": "size",
-                    "message": f"The 'registers[{idx}].size' field is required",
-                }
+        if point_size is None:
+            result.missing_fields.append(
+                PointValidationError(
+                    index=idx,
+                    field="size",
+                    message=f"The 'points[{idx}].size' field is required",
+                )
             )
             continue
-        if not register_data.get("register_name"):
-            missing_fields.append(
-                {
-                    "index": idx,
-                    "field": "register_name",
-                    "message": f"The 'registers[{idx}].register_name' field is required",
-                }
+        if not point_data.get("name"):
+            result.missing_fields.append(
+                PointValidationError(
+                    index=idx,
+                    field="name",
+                    message=f"The 'points[{idx}].name' field is required",
+                )
             )
             continue
-        if not register_data.get("data_type"):
-            missing_fields.append(
-                {
-                    "index": idx,
-                    "field": "data_type",
-                    "message": f"The 'registers[{idx}].data_type' field is required",
-                }
+        if not point_data.get("data_type"):
+            result.missing_fields.append(
+                PointValidationError(
+                    index=idx,
+                    field="data_type",
+                    message=f"The 'points[{idx}].data_type' field is required",
+                )
             )
             continue
 
-        if register_address < poll_address:
-            invalid_registers.append(
-                {
-                    "index": idx,
-                    "register_address": register_address,
-                    "error": (
-                        f"register_address ({register_address}) is less than poll_address "
-                        f"({poll_address})"
+        if point_address < poll_start_index:
+            result.invalid_registers.append(
+                PointValidationError(
+                    index=idx,
+                    address=point_address,
+                    error=(
+                        f"address ({point_address}) is less than poll_start_index "
+                        f"({poll_start_index})"
                     ),
-                }
+                )
             )
             continue
 
-        max_register_address = register_address + register_size - 1
+        max_register_address = point_address + point_size - 1
         if max_register_address > max_address:
-            invalid_registers.append(
-                {
-                    "index": idx,
-                    "register_address": register_address,
-                    "size": register_size,
-                    "max_address": max_register_address,
-                    "error": (
-                        f"register_address ({register_address}) + size ({register_size}) - 1 = "
-                        f"{max_register_address} exceeds poll_address + {MAX_MODBUS_POLL_REGISTER_COUNT} "
+            result.invalid_registers.append(
+                PointValidationError(
+                    index=idx,
+                    address=point_address,
+                    size=point_size,
+                    max_address=max_register_address,
+                    error=(
+                        f"address ({point_address}) + size ({point_size}) - 1 = "
+                        f"{max_register_address} exceeds poll_start_index + {MAX_MODBUS_POLL_REGISTER_COUNT} "
                         f"({max_address})"
                     ),
-                }
+                )
             )
 
-    if missing_fields:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail={
-                "error": "Missing required field",
-                "message": "One or more registers are missing required fields",
-                "missing_fields": missing_fields,
+    return result
+
+
+def validate_config_points_fields(points: list) -> list[str]:
+    """
+    Validate the fields of the points in the config.
+    Returns: list of error messages.
+    """
+    errors = []
+    for point in points:
+        addr = point.address
+        if not point.name:
+            errors.append(f"Point name is required for point {addr}")
+        if addr is None:
+            errors.append(f"Point address is required")
+        if not point.size:
+            errors.append(f"Point size is required for point {addr}")
+        if not point.data_type:
+            errors.append(f"Point data type is required for point {addr}")
+        if point.data_type not in ["enum", "bitfield"] and point.scale_factor is None:
+            errors.append(f"Point scale factor is required for point {addr}")
+        if point.data_type not in ["enum", "bitfield"] and not point.unit:
+            errors.append(f"Point unit is required for point {addr}")
+        if point.data_type == "bitfield" and not point.bitfield_detail:
+            errors.append(f"Point bitfield detail is required for bitfield type at point {addr}")
+        if point.data_type == "enum" and not point.enum_detail:
+            errors.append(f"Point enum detail is required for enum type at point {addr}")
+            
+    return errors
+
+def validate_poll_range_consistency(
+    poll_count: int,
+    min_register_number: int,
+    max_register_end: int,
+    points: list,
+    payload_poll_start_index: int,
+    payload_poll_count: int,
+) -> str | None:
+    """
+    Validate poll count limits and consistency with payload values.
+    Returns: Error message if poll count exceeds max, else None.
+    """
+    if poll_count > MAX_MODBUS_POLL_REGISTER_COUNT:
+        return "The number of points to poll exceeds the maximum allowed, consider adding multiple configs"
+    
+    # ... logic for consistency remains a warning for now as per previous implementation
+
+    if min_register_number != payload_poll_start_index or poll_count != payload_poll_count:
+        logger.warning(
+            "Min point address or poll count does not match the config; continuing with payload values",
+            extra={
+                "min_register_number": min_register_number,
+                "max_register_end": max_register_end,
+                "computed_poll_count": poll_count,
+                "payload_poll_start_index": payload_poll_start_index,
+                "payload_poll_count": payload_poll_count,
             },
         )
+        
+    return None
 
-    if invalid_registers:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "error": "Invalid register addresses",
-                "message": "One or more registers have addresses outside the poll range",
-                "invalid_registers": invalid_registers,
-                "poll_address": poll_address,
+
+async def create_config_cache_db(
+    site_id: int,
+    device_id: int,
+    config: ConfigCreateRequest
+) -> ConfigResponse:
+    """
+    Create a config in the DB and update device cache.
+    """
+    # Basic validation (additional rules TBD)
+    if config.site_id != site_id or config.device_id != device_id:
+        raise ValidationError("Path site_id/device_id must match body")
+
+    logger.info(f"config in create_config_cache_db:\n{json.dumps(config.model_dump(), indent=4)}")
+
+    validation_result = validate_point_addresses(config.poll_start_index, config.points)
+    if validation_result.missing_fields:
+        raise ValidationError(
+            "One or more points are missing required fields",
+            payload={
+                "error_type": "Missing required field",
+                "missing_fields": [err.model_dump(exclude_none=True) for err in validation_result.missing_fields],
+            },
+        )
+    if validation_result.invalid_registers:
+        max_address = config.poll_start_index + MAX_MODBUS_POLL_REGISTER_COUNT
+        raise ValidationError(
+            "One or more points have addresses outside the poll range",
+            payload={
+                "error_type": "Invalid point addresses",
+                "invalid_registers": [err.model_dump(exclude_none=True) for err in validation_result.invalid_registers],
+                "poll_start_index": config.poll_start_index,
                 "max_address": max_address,
             },
         )
 
+    set_point_defaults(config.points)
 
-async def create_device_config_cache_db(
-    site_id: int,
-    device_id: int,
-    config: DeviceConfigData
-) -> DeviceConfigResponse:
-    """
-    Create a device config in the DB and update device cache.
-    """
-    # Basic validation (additional rules TBD)
-    if config.site_id != site_id or config.device_id != device_id:
-        raise ValueError("Path site_id/device_id must match body")
+    field_errors = validate_config_points_fields(config.points)
+    if field_errors:
+        raise ValidationError(
+            "Validation errors in point fields",
+            payload={"error_type": "Invalid point fields", "errors": field_errors}
+        )
 
-    validate_register_addresses(config.poll_address, config.registers)
-
-    set_register_defaults(config.registers)
-
-   
     min_register_number, max_register_end, poll_count = compute_poll_range(
-        config.registers
+        config.points
     )
 
-    if poll_count > MAX_MODBUS_POLL_REGISTER_COUNT:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "error": "Poll count exceeds maximum allowed",
-                "message": "The number of registers to poll exceeds the maximum allowed, consider adding multiple device configs",
+    poll_range_error = validate_poll_range_consistency(
+        poll_count=poll_count,
+        min_register_number=min_register_number,
+        max_register_end=max_register_end,
+        points=config.points,
+        payload_poll_start_index=config.poll_start_index,
+        payload_poll_count=config.poll_count
+    )
+    if poll_range_error:
+        raise ValidationError(
+            poll_range_error,
+            payload={
+                "error_type": "Poll count exceeds maximum allowed",
                 "max_poll_count": MAX_MODBUS_POLL_REGISTER_COUNT,
                 "poll_count": poll_count,
                 "min_register_number": min_register_number,
                 "max_register_end": max_register_end,
-                "registers": config.registers,
             },
         )
 
+    # TODO: You have to make sure both device_points and device_configs are created. 
+    # Maybe try to create device_points first, and if it fails, roll back the config creation
 
-    warning_detail = None
-    if min_register_number != config.poll_address or poll_count != config.poll_count:
-        warning_detail = {
-            "warning": "Poll range computed from registers differs from payload",
-            "min_register_number": min_register_number,
-            "max_register_end": max_register_end,
-            "computed_poll_count": poll_count,
-            "payload_poll_address": config.poll_address,
-            "payload_poll_count": config.poll_count,
-        }
-        logger.warning(
-            "Min register number or poll count does not match the config; continuing with payload values",
-            extra=warning_detail,
-        )
+    # Validate point uniqueness against DB before creating config
+    # device is type of DeviceWithConfigs
+    device = await get_device_by_id(device_id, site_id) 
+    
+    if not device:
+         raise NotFoundError(f"Device with id {device_id} not found")
+         
+    #device_data = device.model_dump()
+    
+    device_points_list = map_device_configs_to_device_points(config.points, device)
+    logger.info(f"device_points_list in create_config_cache_db:\n{json.dumps(device_points_list, indent=4)}")
+    device_points_uniquness_result = await validate_device_points_uniqueness(device_points_list, device)
+    logger.info(f"device_points_uniquness_result in create_config_cache_db: {device_points_uniquness_result}")
+    create_config_result = await create_config_for_device(site_id, device_id, config)
 
-    created_config = await create_device_config_for_device(site_id, device_id, config)
-    if warning_detail:
-        created_config = created_config.model_copy(update={"warnings": warning_detail})
+    # Assign the newly created config_id to the points list
+    for pt in device_points_list:
+        pt["config_id"] = create_config_result.config_id
 
-    updated_device = await get_device_by_id(device_id, site_id)
-    if updated_device is None:
-        logger.warning(
-            "Device %s not found after config creation; cache not updated",
-            device_id,
-        )
-        return created_config
+    # device points are validated, now create them
+    create_device_points_result = await create_device_points(device_points_list)
 
+    if not create_device_points_result:
+        if create_config_result:
+            await delete_config(create_config_result.config_id)
+        raise InternalError("Failed to create device points")
+    
     cache_key = f"device:site:{site_id}:device_id:{device_id}"
-    cached = await cache_service.set(
-        key=cache_key,
-        value=updated_device.model_dump(mode="json"),
+    await cache_service.delete(cache_key)
+    logger.info(
+        "Config created successfully",
+        extra={
+            "site_id": site_id,
+            "device_id": device_id,
+            "config": create_config_result,
+        },
     )
-    if not cached:
-        logger.error(
-            "Failed to update cache for device %s in site %s after config create",
-            device_id,
-            site_id,
-        )
-        raise RuntimeError("Failed to update device cache after config creation")
+    
 
-    return created_config
+    return create_config_result
+
+
+
+
+

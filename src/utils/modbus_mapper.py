@@ -5,18 +5,20 @@ Maps raw Modbus read data to register points from CSV configuration.
 This is the fundamental mapping that links register metadata with their actual read values.
 """
 
+from datetime import datetime
 from pathlib import Path
-from typing import List, Dict, Any, Union
+from typing import List, Dict, Any, Union, Optional
+import json
 import pandas as pd
 import struct
 
-from schemas.modbus_models import RegisterMap, RegisterPoint
+from schemas.db_models.orm_models import DevicePoint, DevicePointsReading
 from logger import get_logger
 
 logger = get_logger(__name__)
 
 
-def _get_attr(point: RegisterPoint, attr, default=None):
+def _get_attr(point: DevicePoint, attr, default=None):
     return getattr(point, attr, default)
 
 
@@ -33,6 +35,8 @@ class MappedRegisterData:
         address: int,
         size: int,
         value: Union[int, float],
+        value_derived: Optional[Union[int, float]] = None,
+        value_scaled: Optional[Union[int, float]] = None,
         data_type: str = "uint16",
         scale_factor: float = 1.0,
         unit: str = ""
@@ -41,6 +45,8 @@ class MappedRegisterData:
         self.address = address
         self.size = size
         self.value = value  # Raw values from Modbus read
+        self.value_derived = value_derived
+        self.value_scaled = value_scaled
         self.data_type = data_type
         self.scale_factor = scale_factor
         self.unit = unit
@@ -52,6 +58,8 @@ class MappedRegisterData:
             "address": self.address,
             "size": self.size,
             "value": self.value,
+            "value_derived": self.value_derived,
+            "value_scaled": self.value_scaled,
             "data_type": self.data_type,
             "scale_factor": self.scale_factor,
             "unit": self.unit
@@ -241,7 +249,7 @@ def convert_multi_register_value(
     register_values: List[Union[int, bool]],
     data_type: str,
     size: int,
-    byte_order: str = "big"
+    byte_order: str
 ) -> Union[int, float]:
     """
     Convert multiple 16-bit register values to a single value based on data type.
@@ -254,7 +262,7 @@ def convert_multi_register_value(
         register_values: List of register values (16-bit integers from Modbus read)
         data_type: Data type string (e.g., "uint32", "int32", "float32", "int64", "uint64", "float64")
         size: Number of registers (must match data_type requirements)
-        byte_order: Byte order - "big" (Modbus standard) or "little" (default: "big")
+        byte_order: Byte order - "big-endian" (Modbus standard) or "little-endian"
         
     Returns:
         Converted value as int or float
@@ -266,8 +274,8 @@ def convert_multi_register_value(
     if not register_values:
         raise ValueError("register_values cannot be empty")
     
-    if byte_order not in ("big", "little"):
-        raise ValueError(f"byte_order must be 'big' or 'little', got '{byte_order}'")
+    if byte_order not in ("big-endian", "little-endian"):
+        raise ValueError(f"byte_order must be 'big-endian' or 'little-endian', got '{byte_order}'")
     
     # Convert bool to int if needed
     register_values_int = [int(v) for v in register_values]
@@ -327,11 +335,12 @@ def convert_multi_register_value(
 # Main mapping function
 # ============================================================================
 
-def map_modbus_data_to_registers(
-    registers: List[RegisterPoint],
-    modbus_read_data: List[Union[int, bool]],
+def map_modbus_data_to_device_points(
+    timestamp_dt: datetime,
+    device_points_list: list[DevicePoint],
+    modbus_read_data: list[int | bool],
     poll_start_address: int
-) -> List[MappedRegisterData]:
+) -> list[DevicePointsReading]:
     """
     Map raw Modbus read data to register points from register map.
     
@@ -344,7 +353,7 @@ def map_modbus_data_to_registers(
     4. Creates a list of MappedRegisterData objects linking register info with their values
     
     Args:
-        registers: List of RegisterPoint objects
+        device_points_list: List of DevicePoint ORM objects from the database
         modbus_read_data: Raw array of values from Modbus read (e.g., [100, 200, 300, ...])
                          This is the result from modbus_client.read_registers()
         poll_start_address: The starting address of the Modbus read (used to calculate array index)
@@ -354,28 +363,52 @@ def map_modbus_data_to_registers(
         List of MappedRegisterData objects, one for each register point that was found in the read data
     """
     
-    logger.debug(f"Mapping {len(registers)} register points to Modbus read data")
+    logger.info(f"Mapping {len(device_points_list)} register points to Modbus read data")
     
-    mapped_registers_list: List[MappedRegisterData] = []
+    mapped_registers_readings_list: List[DevicePointsReading] = []
     consumed_registers: set[int] = set()
+    #TO_REMOVE
+    logger.info("this is modbus_read_data %s", json.dumps(modbus_read_data, indent=4))
+    logger.info(
+        "this is device_points_list %s",
+        json.dumps(
+            [
+                {
+                    "id": point.id,
+                    "name": point.name,
+                    "address": point.address,
+                    "size": point.size,
+                    "data_type": point.data_type,
+                    "site_id": point.site_id,
+                    "device_id": point.device_id,
+                    "is_derived": point.is_derived,
+                }
+                for point in device_points_list
+            ],
+            indent=4,
+        ),
+    )
+    logger.info("this is poll_start_address %s", poll_start_address)
 
     #TODO: see if default is necessary, given that we are setting to default at the time of creating
-    for point in registers:
-        point_name = _get_attr(point, "register_name") 
-        point_address = _get_attr(point, "register_address")
-        point_size = _get_attr(point, "size", 1)
-        point_data_type = _get_attr(point, "data_type", "uint16") 
-        point_scale_factor = _get_attr(point, "scale_factor", 1.0)
-        point_unit = _get_attr(point, "unit", ""),
-        point_bitfield_detail = _get_attr(point, "bitfield_detail", None)
-        point_enum_detail = _get_attr(point, "enum_detail", None)
+    for point in device_points_list:
+        point_name = point.name
+        point_address = point.address
+        point_size = point.size
+        point_data_type = point.data_type
+        point_scale_factor = point.scale_factor or 1.0
+        point_unit = point.unit or ""
+        point_byte_order = point.byte_order or "big-endian"
+        point_bitfield_detail = point.bitfield_detail or None
+        point_enum_detail = point.enum_detail or None
+        point_is_derived = point.is_derived or False
 
         
         #TODO: see if this is necessary, or maybe aggregate validation in a separate function
         # Skip points with missing required fields
         if point_address is None:
             logger.warning(
-                f"Skipping point '{point_name}': missing required field 'register_address'"
+                f"Skipping point '{point_name}': missing required field 'point_address'"
             )
             continue
         if point_size is None or point_size < 1:
@@ -409,15 +442,16 @@ def map_modbus_data_to_registers(
             continue
             
 
-        if point_address in consumed_registers:
+        if point_address in consumed_registers and not point_is_derived:
             logger.warning(
                 f"Skipping point '{point_name}' (address={point_address}): "
                 "starting register already consumed"
             )
             continue
 
-        point_registers = set(range(point_address, point_address + point_size))
-        consumed_registers.update(point_registers)
+        if not point_is_derived:
+            point_registers = set(range(point_address, point_address + point_size))
+            consumed_registers.update(point_registers)
 
         # Extract the value(s) for this register point
         point_values = modbus_read_data[data_index:data_index + point_size]
@@ -433,7 +467,7 @@ def map_modbus_data_to_registers(
                     register_values=point_values,
                     data_type=point_data_type,
                     size=point_size,
-                    byte_order="big"  # Modbus standard is big-endian
+                    byte_order=point_byte_order
                 )
             except ValueError as e:
                 logger.error(
@@ -449,39 +483,70 @@ def map_modbus_data_to_registers(
         # This is under development. The purpose is to store scaled and translated bitfields 
         # and enums in the database.
         ###################################################################################
-        if point_bitfield_detail is not None:
-            point_value_scaled = point_value * point_scale_factor
-        elif point_enum_detail is not None:
-            point_value_scaled = point_value
-        elif point_scale_factor is not None:
-            point_value_scaled = point_value * point_scale_factor
+        point_value_derived = None
+    
+        
+        if point_data_type == "bitfield" and point_is_derived is False:
+            point_value_derived = point_value
+            point_unit = "bit"
+        elif point_data_type == "enum" and point_is_derived is False:
+            point_value_derived = point_value
+            point_unit = "enum"
+        elif point_data_type == "single_bit" and point_is_derived is True:
+            # the value is to convert the value to binary and check if the bit from bitfield_value is 1 or 0
+            bit_index = point.bitfield_value
+            if bit_index is None:
+                logger.warning(
+                    f"Skipping single_bit derived value for '{point_name}': bitfield_value is None"
+                )
+                point_value_derived = None
+            else:
+                try:
+                    bit_index = int(bit_index)
+                except (TypeError, ValueError):
+                    logger.warning(
+                        f"Skipping single_bit derived value for '{point_name}': "
+                        f"invalid bitfield_value={bit_index!r}"
+                    )
+                    point_value_derived = None
+                else:
+                    bits = bin(point_value)[2:]
+                    if bit_index < 0 or bit_index >= len(bits):
+                        logger.warning(
+                            f"Skipping single_bit derived value for '{point_name}': "
+                            f"bitfield_value={bit_index} out of range for value={point_value}"
+                        )
+                        point_value_derived = None
+                    else:
+                        point_value_derived = int(bits[bit_index])
+        elif point_data_type == "single_enum" and point_is_derived is True:
+            point_value_derived = point_value == point.enum_value
         else:
-            point_value_scaled = point_value
+            point_value_derived = point_value * point_scale_factor
         ###################################################################################
         
         # TODO: lets again confirm the default, I think we are setting the default in many places, it should be unified
-        mapped_register = MappedRegisterData(
-            name=point_name,
-            address=point_address,
-            size=point_size,
-            value=point_value,
-            data_type=point_data_type or "uint16",
-            scale_factor=point_scale_factor or 1.0,
-            unit=point_unit or ""
+        mapped_register_reading = DevicePointsReading(
+            timestamp=timestamp_dt,
+            site_id=point.site_id,
+            device_id=point.device_id,
+            device_point_id=point.id,
+            raw_value=point_value,
+            derived_value=point_value_derived
         )
         
-        mapped_registers_list.append(mapped_register)
+        mapped_registers_readings_list.append(mapped_register_reading)
         logger.debug(
             f"Mapped register '{point_name}' (address={point_address}, index={data_index}): "
             f"value={point_value}"
         )
     
     logger.info(
-        f"Mapped {len(mapped_registers_list)} out of {len(registers)} register points "
+        f"Mapped {len(mapped_registers_readings_list)} out of {len(device_points_list)} register points "
         f"from Modbus read data (start_address={poll_start_address}, read_count={len(modbus_read_data)})"
     )
     
-    return mapped_registers_list
+    return mapped_registers_readings_list
 
 
 
