@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
 
 from db.connection import get_async_session_factory
-from schemas.db_models.models import SiteCreateRequest, SiteUpdate, SiteResponse
+from schemas.db_models.models import SiteCreateRequest, SiteUpdateRequest, SiteResponse
 from schemas.db_models.orm_models import Device, Site
 from utils.exceptions import ConflictError, NotFoundError, ValidationError, InternalError
 from logger import get_logger
@@ -197,7 +197,7 @@ async def get_site_by_id(site_id: int) -> Optional[SiteResponse]:
         )
 
 
-async def update_site(site_id: int, site_update: SiteUpdate) -> SiteResponse:
+async def update_site(site_id: int, site_update: SiteUpdateRequest) -> SiteResponse:
     """
     Update a site in the database.
     

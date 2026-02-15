@@ -1,29 +1,12 @@
-from typing import Any, TypedDict, Optional
-from fastapi import HTTPException, status
+"""Device points mapping and validation functions."""
+
 from sqlalchemy import select
+
 from db.connection import get_async_session_factory
+from schemas.api_models.device_points import DevicePointData
 from schemas.db_models.orm_models import DevicePoint
-from utils.exceptions import ConflictError, NotFoundError, InternalError
 from schemas.db_models.models import DeviceWithConfigs
-
-
-class DevicePointData(TypedDict, total=False):
-    """Type definition for device point data dictionary."""
-    site_id: int
-    device_id: int
-    config_id: str
-    address: int
-    name: str
-    size: int
-    data_type: str
-    scale_factor: Optional[float]
-    unit: Optional[str]
-    enum_value: Optional[str]
-    bitfield_value: Optional[str]
-    is_derived: bool
-    bitfield_detail: Optional[dict[str, str]]
-    enum_detail: Optional[dict[str, str]]
-    byte_order: str
+from utils.exceptions import ConflictError, InternalError
 
 
 def map_device_configs_to_device_points(points: list, device: DeviceWithConfigs) -> list[DevicePointData]:
@@ -123,21 +106,21 @@ async def validate_device_points_uniqueness(device_points_list: list[dict[str, o
             .where(DevicePoint.device_id == device_id)
         )
         existing_points_db = result.all()
-        
+
         for new_point in device_points_list:
             new_start = new_point.get("address")
             new_size = new_point.get("size", 1)
             new_name = new_point.get("name")
-            
+
             if new_start is None:
                 continue
-            
+
             new_end = new_start + new_size - 1
-            
+
             for ex_addr, ex_size, ex_name in existing_points_db:
                 ex_start = ex_addr
                 ex_end = ex_addr + ex_size - 1
-                
+
                 if new_start <= ex_end and new_end >= ex_start:
                     raise ConflictError(
                         f"Point '{new_name}' (address {new_start}-{new_end}) overlaps with existing point '{ex_name}' (address {ex_start}-{ex_end})",
@@ -149,7 +132,7 @@ async def validate_device_points_uniqueness(device_points_list: list[dict[str, o
                             }
                         }
                     )
-                
+
                 if new_name == ex_name:
                     raise ConflictError(
                         f"Point named '{new_name}' already exists for this device",
@@ -161,72 +144,3 @@ async def validate_device_points_uniqueness(device_points_list: list[dict[str, o
                             }
                         }
                     )
-
-
-async def create_device_points(device_points_list: list[dict[str, object]]) -> None:
-    """
-    Create device points in the database.
-    """
-    if not device_points_list:
-        return
-    try:
-        session_factory = get_async_session_factory()
-        async with session_factory() as session:
-            # 1. Identify all unique device_ids involved (should be checking per device)
-            # Assuming all points belong to the same device based on previous logic, but let's be safe
-            # Group by device_id to batch checks
-            points_by_device: dict[int, list[dict[str, object]]] = {}
-            for point in device_points_list:
-                device_id = point.get("device_id")
-                if device_id:
-                    points_by_device.setdefault(device_id, []).append(point)
-
-            all_duplicates = []
-
-            for device_id, points in points_by_device.items():
-                names_to_check = {point["name"] for point in points if point.get("name")}
-            
-            # optimizations: fetch all existing names for this device
-            result = await session.execute(
-                select(DevicePoint.name)
-                .where(DevicePoint.device_id == device_id)
-                .where(DevicePoint.name.in_(names_to_check))
-            )
-            existing_names = set(result.scalars().all())
-            
-            if existing_names:
-                all_duplicates.extend(
-                    [name for name in names_to_check if name in existing_names]
-                )
-
-        if all_duplicates:
-            raise ConflictError(
-                "One or more points already exist for this device.",
-                payload={
-                    "error_type": "Duplicate points found",
-                    "existing_points": list(all_duplicates)
-                }
-            )
-
-        # 2. If no duplicates, create all points
-        new_points = [DevicePoint(**point) for point in device_points_list]
-        session.add_all(new_points)
-        await session.commit()
-        return True
-    except Exception as e:
-        raise InternalError(f"Failed to create device points: {str(e)}")
-
-
-async def get_device_points(site_id: int, device_id: int) -> list[DevicePoint]:
-    """
-    Get all points for a specific site and device.
-    """
-    session_factory = get_async_session_factory()
-    async with session_factory() as session:
-        result = await session.execute(
-            select(DevicePoint)
-            .where(DevicePoint.site_id == site_id)
-            .where(DevicePoint.device_id == device_id)
-            .order_by(DevicePoint.address.asc())
-        )
-        return list(result.scalars().all())

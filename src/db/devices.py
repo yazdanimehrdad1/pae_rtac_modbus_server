@@ -19,25 +19,10 @@ from schemas.db_models.models import (
 )
 from schemas.db_models.orm_models import Config, Device, Site
 from utils.exceptions import ConflictError, NotFoundError, ValidationError, InternalError
+from helpers.mappers import config_to_response
 from logger import get_logger
 
 logger = get_logger(__name__)
-
-
-def _config_to_response(config: Config) -> ConfigResponse:
-    return ConfigResponse(
-        config_id=config.config_id,
-        site_id=config.site_id,
-        device_id=config.device_id,
-        poll_kind=config.poll_kind,
-        poll_start_index=config.poll_start_index,
-        poll_count=config.poll_count,
-        points=config.points,
-        is_active=config.is_active,
-        created_at=config.created_at,
-        updated_at=config.updated_at,
-        created_by=config.created_by,
-    )
 
 
 async def create_device(device: DeviceCreateRequest, site_id: int) -> DeviceWithConfigs:
@@ -161,7 +146,7 @@ async def get_all_devices(site_id: int) -> list[DeviceWithConfigs]:
             )
             for config in configs_result.scalars().all():
                 configs_by_device.setdefault(config.device_id, []).append(
-                    _config_to_response(config)
+                    config_to_response(config)
                 )
 
         device_list: list[DeviceWithConfigs] = []
@@ -214,7 +199,7 @@ async def get_device_by_id(device_id: int, site_id: int) -> Optional[DeviceWithC
             select(Config).where(Config.device_id == device.device_id)
         )
         device_configs = [
-            _config_to_response(config)
+            config_to_response(config)
             for config in configs_result.scalars().all()
         ]
 
@@ -253,7 +238,7 @@ async def get_device_by_id_internal(device_id: int) -> Optional[DeviceWithConfig
             select(Config).where(Config.device_id == device.device_id)
         )
         device_configs = [
-            _config_to_response(config)
+            config_to_response(config)
             for config in configs_result.scalars().all()
         ]
 
@@ -369,7 +354,7 @@ async def update_device(device_id: int, device_update: DeviceUpdate, site_id: in
                 select(Config).where(Config.device_id == device.device_id)
             )
             device_configs = [
-                _config_to_response(config)
+                config_to_response(config)
                 for config in configs_result.scalars().all()
             ]
 
@@ -433,17 +418,6 @@ async def delete_device(device_id: int, site_id: int) -> Optional[DeviceResponse
                 logger.warning(f"Device with id {device_id} not found for deletion")
                 return None
 
-            config_result = await session.execute(
-                select(Config.config_id).where(Config.device_id == device_id)
-            )
-            config_ids = [row[0] for row in config_result.all()]
-            if config_ids:
-                joined_ids = ", ".join(str(config_id) for config_id in config_ids)
-                raise ConflictError(
-                    f"Device with id {device_id} has associated configs: {joined_ids}",
-                    payload={"config_ids": config_ids}
-                )
-            
             device_response = DeviceResponse(
                 device_id=device.device_id,
                 site_id=device.site_id,

@@ -116,7 +116,7 @@ class SiteCreateRequest(BaseModel):
     coordinates: Optional[Coordinates] = Field(default=None, description="Geographic coordinates")
 
 
-class SiteUpdate(BaseModel):
+class SiteUpdateRequest(BaseModel):
     """Request model for updating a site."""
     client_id: Optional[str] = Field(None, min_length=1, max_length=255, description="Client identifier")
     name: Optional[str] = Field(None, min_length=1, max_length=255, description="Site name")
@@ -279,6 +279,6 @@ class DevicePointResponse(BaseModel):
 
 __all__ = ["DeviceCreateRequest", "DeviceUpdate", "DeviceListItem", "DeviceResponse",
            "DeviceDeleteResponse", "DeviceWithConfigs", "SiteComprehensiveResponse",
-           "Coordinates", "Location", "SiteCreateRequest", "SiteUpdate", "SiteResponse", "SiteDeleteResponse",
+           "Coordinates", "Location", "SiteCreateRequest", "SiteUpdateRequest", "SiteResponse", "SiteDeleteResponse",
            "ConfigPoint", "ConfigCreateRequest", "ConfigUpdate", "ConfigResponse", "ConfigDeleteResponse",
            "DevicePointResponse"]

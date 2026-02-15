@@ -1,5 +1,6 @@
 """API request/response models."""
 
+from schemas.api_models.device_points import DevicePointData
 from schemas.api_models.models import (
     ReadRequest,
     ReadResponse,
@@ -10,6 +11,7 @@ from schemas.api_models.models import (
 )
 
 __all__ = [
+    "DevicePointData",
     "ReadRequest",
     "ReadResponse",
     "RegisterData",
