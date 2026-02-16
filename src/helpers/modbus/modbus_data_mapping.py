@@ -10,6 +10,7 @@ from schemas.db_models.orm_models import DevicePoint, DevicePointsReading
 from schemas.api_models import ModbusRegisterValues
 from logger import get_logger
 from helpers.modbus.modbus_data_converter import convert_multi_register_value
+from helpers.modbus.validation import validate_point_mapping_fields
 
 logger = get_logger(__name__)
 
@@ -49,7 +50,7 @@ def map_modbus_data_to_device_points(
     )
     logger.info("this is poll_start_address %s", poll_start_address)
 
-    for point in device_points_list:
+    for point_index, point in enumerate(device_points_list):
         point_name = point.name
         point_address = point.address
         point_size = point.size
@@ -61,34 +62,17 @@ def map_modbus_data_to_device_points(
         point_enum_detail = point.enum_detail or None
         point_is_derived = point.is_derived or False
 
-        # TODO: I don't think this validation is needed at this point, but even if its needed, it should be a separate helper function
-        if point_address is None:
-            logger.warning(
-                f"Skipping point '{point_name}': missing required field 'point_address'"
-            )
-            continue
-        if point_size is None or point_size < 1:
-            logger.warning(
-                f"Skipping point '{point_name}' (address={point_address}): "
-                f"invalid or missing 'size' field (got {point_size})"
-            )
+        if not validate_point_mapping_fields(
+            point_index,
+            point_name,
+            point_address,
+            point_size,
+            poll_start_address,
+            len(modbus_read_data),
+        ):
             continue
 
         data_index = point_address - poll_start_address
-
-        if data_index < 0:
-            logger.debug(
-                f"Skipping point '{point_name}' (address={point_address} size={point_size} ): "
-                f"address is before poll start address {poll_start_address}"
-            )
-            continue
-        if data_index + point_size > len(modbus_read_data):
-            logger.debug(
-                f"Skipping point '{point_name}' (address={point_address}, size={point_size}): "
-                f"extends beyond read data range (read {len(modbus_read_data)} values, "
-                f"need index {data_index} to {data_index + point_size - 1})"
-            )
-            continue
 
         if point_address in consumed_registers and not point_is_derived:
             logger.warning(
