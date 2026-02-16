@@ -222,3 +222,25 @@ def convert_multi_register_value(
     if data_type == "float64":
         return _convert_float64(register_values_int, byte_order)
     raise ValueError(f"Unsupported data_type: {data_type}")
+
+
+def concat_register_values(
+    register_values: List[Union[int, bool]],
+    byte_order: str
+) -> int:
+    """
+    Concatenate multiple 16-bit register values into a single integer.
+    """
+    if not register_values:
+        raise ValueError("register_values cannot be empty")
+    if byte_order not in ("big-endian", "little-endian"):
+        raise ValueError(f"byte_order must be 'big-endian' or 'little-endian', got '{byte_order}'")
+
+    register_values_int = [int(v) for v in register_values]
+    if byte_order == "little-endian":
+        register_values_int = list(reversed(register_values_int))
+
+    combined = 0
+    for value in register_values_int:
+        combined = (combined << 16) | (value & 0xFFFF)
+    return combined

@@ -131,25 +131,6 @@ async def poll_single_device_modbus(site_name: str, device: DeviceWithConfigs) -
                 )
                 continue
 
-        #TO_REMOVE
-        logger.info(
-            "this is combined_mapped_registers_list_all_configs_per_device %s",
-            json.dumps(
-                [
-                    {
-                        "timestamp": reading.timestamp,
-                        "site_id": reading.site_id,
-                        "device_id": reading.device_id,
-                        "device_point_id": reading.device_point_id,
-                        "raw_value": reading.raw_value,
-                        "derived_value": reading.derived_value,
-                    }
-                    for reading in combined_mapped_registers_list_all_configs_per_device
-                ],
-                default=str,
-                indent=4,
-            ),
-        )
 
         if not combined_mapped_registers_list_all_configs_per_device or last_polling_config is None:
             if last_read_error:

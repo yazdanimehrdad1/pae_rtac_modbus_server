@@ -86,7 +86,6 @@ async def insert_register_reading(
             statement = statement.on_conflict_do_update(
                 index_elements=['device_point_id', 'timestamp'],
                 set_=dict(
-                    raw_value=statement.excluded.raw_value,
                     derived_value=statement.excluded.derived_value
                 )
             )
@@ -147,7 +146,6 @@ async def insert_register_readings_batch(
                     'device_id': reading_device_id,
                     'device_point_id': device_point_reading.device_point_id,
                     'timestamp': device_point_reading.timestamp,
-                    'raw_value': device_point_reading.raw_value,
                     'derived_value': device_point_reading.derived_value
                 })
             
@@ -155,7 +153,7 @@ async def insert_register_readings_batch(
             # TODO: critical: we need to insert the readings into the correct table, based on the site_id
             # we need to create a new table for each site, and then insert the readings into the correct table
             # the table name should be register_readings_raw_site_id_device_id
-            # the table should have the following columns: timestamp, device_point_id, raw_value, derived_value
+            # the table should have the following columns: timestamp, device_point_id, derived_value
             # the table should have the following primary key: timestamp, device_point_id
             # the table should have the following foreign key: device_point_id
             # the table should have the following index: device_point_id, timestamp
@@ -165,7 +163,6 @@ async def insert_register_readings_batch(
             statement = statement.on_conflict_do_update(
                 index_elements=['device_point_id', 'timestamp'],
                 set_=dict(
-                    raw_value=statement.excluded.raw_value,
                     derived_value=statement.excluded.derived_value
                 )
             )
@@ -223,7 +220,6 @@ async def get_all_readings(
         statement = (
             select(
                 DevicePointsReading.timestamp,
-                DevicePointsReading.raw_value,
                 DevicePointsReading.derived_value,
                 DevicePointsReading.device_point_id
             )
@@ -261,7 +257,6 @@ async def get_all_readings(
             {
                 'timestamp': reading.timestamp,
                 'device_point_id': reading.device_point_id,
-                'raw_value': reading.raw_value,
                 'derived_value': reading.derived_value
             }
             for reading in readings
@@ -301,7 +296,6 @@ async def get_latest_reading(
             select(
                 DevicePointsReading.device_point_id,
                 DevicePointsReading.timestamp,
-                DevicePointsReading.raw_value,
                 DevicePointsReading.derived_value,
                 sql_func.row_number().over(
                     partition_by=DevicePointsReading.device_point_id,
@@ -321,7 +315,6 @@ async def get_latest_reading(
         statement = (
             select(
                 ranked.c.timestamp,
-                ranked.c.raw_value,
                 ranked.c.derived_value,
                 DevicePoint.id.label('device_point_id'),
                 DevicePoint.address,
@@ -360,7 +353,6 @@ async def get_latest_reading(
             'unit': row.unit,
             'scale_factor': row.scale_factor,
             'is_derived': row.is_derived,
-            'raw_value': row.raw_value,
             'derived_value': row.derived_value
         }
 
@@ -400,7 +392,6 @@ async def get_latest_readings_for_device(
             select(
                 DevicePointsReading.device_point_id,
                 DevicePointsReading.timestamp,
-                DevicePointsReading.raw_value,
                 DevicePointsReading.derived_value,
                 sql_func.row_number().over(
                     partition_by=DevicePointsReading.device_point_id,
@@ -420,7 +411,6 @@ async def get_latest_readings_for_device(
         statement = (
             select(
                 ranked.c.timestamp,
-                ranked.c.raw_value,
                 ranked.c.derived_value,
                 DevicePoint.id.label('device_point_id'),
                 DevicePoint.address,
@@ -456,7 +446,6 @@ async def get_latest_readings_for_device(
                 'scale_factor': row.scale_factor,
                 'is_derived': row.is_derived,
                 'timestamp': row.timestamp,
-                'raw_value': row.raw_value,
                 'derived_value': row.derived_value
             }
             for row in rows

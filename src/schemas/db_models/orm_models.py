@@ -394,12 +394,6 @@ class DevicePointsReading(Base):
         comment="Foreign key to device_points table"
     )
     
-    raw_value: Mapped[Optional[float]] = mapped_column(
-        Float,
-        nullable=True,
-        comment="The raw value read from the device"
-    )
-    
     derived_value: Mapped[Optional[float]] = mapped_column(
         Float,
         nullable=True,
@@ -414,7 +408,7 @@ class DevicePointsReading(Base):
         return (
             f"<DevicePointsReading(timestamp={self.timestamp}, site_id={self.site_id}, "
             f"device_id={self.device_id}, device_point_id={self.device_point_id}, "
-            f"raw_value={self.raw_value}, derived_value={self.derived_value})>"
+            f"derived_value={self.derived_value})>"
         )
 
 

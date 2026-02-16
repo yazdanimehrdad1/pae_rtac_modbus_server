@@ -189,7 +189,6 @@ async def get_multiple_registers_time_series(
             for reading in readings:
                 readings_by_point.setdefault(reading["device_point_id"], []).append({
                     "timestamp": reading["timestamp"],
-                    "raw_value": reading["raw_value"],
                     "derived_value": reading["derived_value"]
                 })
 

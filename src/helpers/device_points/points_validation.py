@@ -24,46 +24,6 @@ def map_device_configs_to_device_points(
         enum_detail = point.enum_detail or {}
         bitfield_detail = point.bitfield_detail or {}
 
-        if data_type == "enum":
-            for enum_value, enum_name in enum_detail.items():
-                device_points_list.append(
-                    {
-                        "site_id": device.site_id,
-                        "device_id": device.device_id,
-                        "config_id": config_id,
-                        "address": point.address,
-                        "name": f"{base_name}_{enum_name}".lower(),
-                        "size": point.size,
-                        "data_type": "single_enum",
-                        "scale_factor": point.scale_factor,
-                        "unit": point.unit,
-                        "enum_value": enum_value,
-                        "is_derived": True,
-                        "bitfield_detail": bitfield_detail,
-                        "enum_detail": enum_detail,
-                        "byte_order": point.byte_order,
-                    }
-                )
-        elif data_type == "bitfield":
-            for bitfield_value, bitfield_name in bitfield_detail.items():
-                device_points_list.append(
-                    {
-                        "site_id": device.site_id,
-                        "device_id": device.device_id,
-                        "config_id": config_id,
-                        "address": point.address,
-                        "name": f"{base_name}_{bitfield_name}".lower(),
-                        "size": point.size,
-                        "data_type": "single_bit",
-                        "scale_factor": point.scale_factor,
-                        "unit": point.unit,
-                        "bitfield_value": bitfield_value,
-                        "is_derived": True,
-                        "bitfield_detail": bitfield_detail,
-                        "enum_detail": enum_detail,
-                        "byte_order": point.byte_order,
-                    }
-                )
 
 
         # The base point record (non-derived)
@@ -72,8 +32,8 @@ def map_device_configs_to_device_points(
                 "site_id": device.site_id,
                 "device_id": device.device_id,
                 "config_id": config_id,
-                "name": base_name.lower(),
                 "address": point.address,
+                "name": base_name.lower(),
                 "size": point.size,
                 "data_type": data_type,
                 "scale_factor": point.scale_factor,
