@@ -1,6 +1,6 @@
 """API request/response models."""
 
-from schemas.api_models.types import DevicePointData
+from schemas.api_models.types import DevicePointData, ModbusRegisterValues, PollResult
 from schemas.api_models.requests import (
     ReadRequest,
     DeviceCreateRequest,
@@ -33,6 +33,8 @@ from schemas.api_models.responses import (
 
 __all__ = [
     "DevicePointData",
+    "ModbusRegisterValues",
+    "PollResult",
     "ReadRequest",
     "ReadResponse",
     "RegisterData",

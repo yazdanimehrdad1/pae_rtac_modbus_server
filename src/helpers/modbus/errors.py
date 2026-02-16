@@ -27,24 +27,15 @@ def translate_modbus_error(
 ) -> Tuple[int, str]:
     """
     Translate Modbus exceptions into appropriate HTTP status codes and messages.
-    
-    Args:
-        error: The exception raised during Modbus operation
-        host: Modbus server hostname or IP address (for error messages)
-        port: Modbus server port (for error messages)
-        
-    Returns:
-        Tuple of (HTTP status code, error message)
     """
     if isinstance(error, ConnectionException):
         error_host = host or AGGREGATOR_MODBUS_HOST
         error_port = port or AGGREGATOR_MODBUS_PORT
         return (
-            503,  # HTTP_503_SERVICE_UNAVAILABLE
+            503,
             f"Failed to connect to Modbus server at {error_host}:{error_port}"
         )
-    elif isinstance(error, ExceptionResponse):
-        # Modbus protocol errors (invalid address, illegal value, etc.)
+    if isinstance(error, ExceptionResponse):
         error_code = error.exception_code
         error_messages = {
             1: "Illegal function - The function code received is not supported",
@@ -53,19 +44,18 @@ def translate_modbus_error(
             4: "Server device failure - The server encountered an error processing the request",
         }
         message = error_messages.get(error_code, f"Modbus error code: {error_code}")
-        return 400, message  # HTTP_400_BAD_REQUEST
-    elif isinstance(error, ModbusException):
+        return 400, message
+    if isinstance(error, ModbusException):
         return (
-            400,  # HTTP_400_BAD_REQUEST
+            400,
             f"Modbus error: {str(error)}"
         )
-    elif isinstance(error, TimeoutError):
+    if isinstance(error, TimeoutError):
         return (
-            504,  # HTTP_504_GATEWAY_TIMEOUT
+            504,
             f"Request timed out after {MODBUS_TIMEOUT_S}s"
         )
-    else:
-        return (
-            500,  # HTTP_500_INTERNAL_SERVER_ERROR
-            f"Unexpected error: {str(error)}"
-        )
+    return (
+        500,
+        f"Unexpected error: {str(error)}"
+    )
