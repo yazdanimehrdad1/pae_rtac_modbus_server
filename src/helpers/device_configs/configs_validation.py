@@ -1,6 +1,6 @@
 """Validation functions for device config points."""
 
-from schemas.db_models.models import ConfigPoint
+from schemas.api_models import ConfigPoint
 from schemas.api_models.validation import PointValidationError, PointAddressValidationResult
 from utils.exceptions import ConflictError
 from logger import get_logger

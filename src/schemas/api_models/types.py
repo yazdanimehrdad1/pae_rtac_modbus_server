@@ -1,6 +1,6 @@
-"""Device point data types."""
+"""Typed helpers for API models."""
 
-from typing import Optional, TypedDict
+from typing import Optional, TypedDict, TypeAlias
 
 
 class DevicePointData(TypedDict, total=False):
@@ -20,3 +20,17 @@ class DevicePointData(TypedDict, total=False):
     bitfield_detail: Optional[dict[str, str]]
     enum_detail: Optional[dict[str, str]]
     byte_order: str
+
+
+class PollResult(TypedDict, total=False):
+    """Result of polling a single device."""
+    device_name: str
+    success: bool
+    cache_successful: int
+    cache_failed: int
+    db_successful: int
+    db_failed: int
+    error: Optional[str]
+
+
+ModbusRegisterValues: TypeAlias = list[int | bool]

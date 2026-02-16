@@ -6,7 +6,7 @@ from cache.cache import CacheService
 from db.devices import create_device, delete_device, get_all_devices, get_device_by_id, update_device
 from utils.exceptions import NotFoundError, InternalError
 from logger import get_logger
-from schemas.db_models.models import DeviceCreateRequest, DeviceUpdate, DeviceWithConfigs
+from schemas.api_models import DeviceCreateRequest, DeviceUpdate, DeviceWithConfigs
 
 logger = get_logger(__name__)
 cache_service = CacheService()

@@ -6,7 +6,7 @@ from sqlalchemy import select
 
 from db.connection import get_async_session_factory
 from logger import get_logger
-from schemas.db_models.models import (
+from schemas.api_models import (
     ConfigResponse,
     Coordinates,
     DeviceWithConfigs,

@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from db.connection import get_async_session_factory
-from schemas.db_models.models import (
+from schemas.api_models import (
     ConfigResponse,
     DeviceCreateRequest,
     DeviceUpdate,

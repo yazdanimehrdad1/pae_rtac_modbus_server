@@ -1,4 +1,4 @@
-"""Modbus register configuration models."""
+"""Modbus register point models."""
 
 from typing import Literal, Optional, Dict
 from pydantic import BaseModel, Field, field_validator
@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field, field_validator
 class RegisterPoint(BaseModel):
     """
     Schema for a single Modbus register point.
-    
+
     Represents one register or group of registers to read from a Modbus device.
     """
     register_address: int = Field(..., ge=0, le=65535, description="Modbus register address")
@@ -34,7 +34,7 @@ class RegisterPoint(BaseModel):
     enum_detail: Optional[Dict[str, str]] = Field(
         default=None, description="Enum detail mapping (optional)"
     )
-    
+
     @field_validator("size")
     @classmethod
     def validate_size_for_type(cls, v: int, info) -> int:
@@ -48,16 +48,3 @@ class RegisterPoint(BaseModel):
             if data_type in ["int64", "uint64", "float64"] and v < 4:
                 raise ValueError(f"Data type {data_type} requires at least 4 registers")
         return v
-
-#TODO: remove this
-class RegisterMap(BaseModel):
-    """Container for a collection of register points."""
-    points: list[RegisterPoint] = Field(..., description="List of register points to read")
-
-    def get_point_by_name(self, name: str) -> Optional[RegisterPoint]:
-        """Get a point by its register_name."""
-        for p in self.points:
-            if p.register_name == name:
-                return p
-        return None
-

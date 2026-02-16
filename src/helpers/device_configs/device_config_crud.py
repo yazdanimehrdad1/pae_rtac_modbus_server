@@ -7,7 +7,7 @@ from db.device_configs import create_config_for_device, delete_config
 from db.devices import get_device_by_id
 from utils.exceptions import NotFoundError, ValidationError, InternalError
 from logger import get_logger
-from schemas.db_models.models import ConfigCreateRequest, ConfigResponse
+from schemas.api_models import ConfigCreateRequest, ConfigResponse
 from helpers.device_configs.configs_validation import (
     MAX_MODBUS_POLL_REGISTER_COUNT,
     set_point_defaults,
@@ -103,13 +103,11 @@ async def create_config_cache_db(
     if not device:
          raise NotFoundError(f"Device with id {device_id} not found")
 
-    device_points_list = map_device_configs_to_device_points(config.points, device)
-    device_points_uniquness_result = await validate_device_points_uniqueness(device_points_list, device)
     create_config_result = await create_config_for_device(site_id, device_id, config)
+    device_points_list = map_device_configs_to_device_points(config.points, device, create_config_result.config_id)
+    await validate_device_points_uniqueness(device_points_list, device)
 
-    # Assign the newly created config_id to the points list
-    for pt in device_points_list:
-        pt["config_id"] = create_config_result.config_id
+
 
     # device points are validated, now create them
     create_device_points_result = await create_device_points(device_points_list)

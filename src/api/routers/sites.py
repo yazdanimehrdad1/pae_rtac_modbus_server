@@ -3,7 +3,7 @@
 from typing import List
 from fastapi import APIRouter, HTTPException, status
 
-from schemas.db_models.models import (
+from schemas.api_models import (
     SiteComprehensiveResponse,
     SiteCreateRequest,
     SiteUpdateRequest,

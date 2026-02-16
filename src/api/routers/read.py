@@ -134,7 +134,7 @@ async def read_main_sel_751_data():
         if cached_device is not None:
             # Device found in cache, reconstruct Pydantic model from dict
             logger.debug(f"Device '{device_name}' found in cache")
-            from schemas.db_models.models import DeviceResponse
+            from schemas.api_models import DeviceResponse
             device = DeviceResponse(**cached_device)
         else:
             # Not in cache, query database

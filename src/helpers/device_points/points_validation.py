@@ -3,66 +3,65 @@
 from sqlalchemy import select
 
 from db.connection import get_async_session_factory
-from schemas.api_models.device_points import DevicePointData
+from schemas.api_models import ConfigPoint, DevicePointData, DeviceWithConfigs
 from schemas.db_models.orm_models import DevicePoint
-from schemas.db_models.models import DeviceWithConfigs
 from utils.exceptions import ConflictError, InternalError
 
 
-def map_device_configs_to_device_points(points: list, device: DeviceWithConfigs) -> list[DevicePointData]:
+def map_device_configs_to_device_points(
+    points: list[ConfigPoint],
+    device: DeviceWithConfigs,
+    config_id: str
+) -> list[DevicePointData]:
     """
     Map points into Device_Points rows.
     """
     device_points_list: list[DevicePointData] = []
     for point in points:
-        # TODO: make sure points are passed as a model and not dict when calling this function
-        if isinstance(point, dict): # point is a dict
-            point_data = point
-        elif hasattr(point, "model_dump"): # point is a model
-            point_data = point.model_dump()
-        else:
-            point_data = vars(point)
+        base_name = point.name.lower()
+        config_id = config_id
+        data_type = point.data_type
+        enum_detail = point.enum_detail or {}
+        bitfield_detail = point.bitfield_detail or {}
 
-        base_name = point_data.get("name", "").lower()
-
-        if point_data.get("data_type") == "enum":
-            for enum_value, enum_name in point_data.get("enum_detail", {}).items():
+        if data_type == "enum":
+            for enum_value, enum_name in enum_detail.items():
                 device_points_list.append(
                     {
                         "site_id": device.site_id,
                         "device_id": device.device_id,
-                        "config_id": point_data.get("config_id"),
-                        "address": point_data.get("address"),
+                        "config_id": config_id,
+                        "address": point.address,
                         "name": f"{base_name}_{enum_name}".lower(),
-                        "size": point_data.get("size"),
+                        "size": point.size,
                         "data_type": "single_enum",
-                        "scale_factor": point_data.get("scale_factor"),
-                        "unit": point_data.get("unit"),
+                        "scale_factor": point.scale_factor,
+                        "unit": point.unit,
                         "enum_value": enum_value,
                         "is_derived": True,
-                        "bitfield_detail": point_data.get("bitfield_detail"),
-                        "enum_detail": point_data.get("enum_detail"),
-                        "byte_order": point_data.get("byte_order", "big-endian"),
+                        "bitfield_detail": bitfield_detail,
+                        "enum_detail": enum_detail,
+                        "byte_order": point.byte_order,
                     }
                 )
-        elif point_data.get("data_type") == "bitfield":
-            for bitfield_value, bitfield_name in point_data.get("bitfield_detail", {}).items():
+        elif data_type == "bitfield":
+            for bitfield_value, bitfield_name in bitfield_detail.items():
                 device_points_list.append(
                     {
                         "site_id": device.site_id,
                         "device_id": device.device_id,
-                        "config_id": point_data.get("config_id"),
-                        "address": point_data.get("address"),
+                        "config_id": config_id,
+                        "address": point.address,
                         "name": f"{base_name}_{bitfield_name}".lower(),
-                        "size": point_data.get("size"),
+                        "size": point.size,
                         "data_type": "single_bit",
-                        "scale_factor": point_data.get("scale_factor"),
-                        "unit": point_data.get("unit"),
+                        "scale_factor": point.scale_factor,
+                        "unit": point.unit,
                         "bitfield_value": bitfield_value,
                         "is_derived": True,
-                        "bitfield_detail": point_data.get("bitfield_detail"),
-                        "enum_detail": point_data.get("enum_detail"),
-                        "byte_order": point_data.get("byte_order", "big-endian"),
+                        "bitfield_detail": bitfield_detail,
+                        "enum_detail": enum_detail,
+                        "byte_order": point.byte_order,
                     }
                 )
 
@@ -72,16 +71,16 @@ def map_device_configs_to_device_points(points: list, device: DeviceWithConfigs)
             {
                 "site_id": device.site_id,
                 "device_id": device.device_id,
-                "config_id": point_data.get("config_id"),
+                "config_id": config_id,
                 "name": base_name.lower(),
-                "address": point_data.get("address"),
-                "size": point_data.get("size"),
-                "data_type": point_data.get("data_type"),
-                "scale_factor": point_data.get("scale_factor"),
-                "unit": point_data.get("unit"),
-                "enum_detail": point_data.get("enum_detail"),
-                "bitfield_detail": point_data.get("bitfield_detail"),
-                "byte_order": point_data.get("byte_order", "big-endian"),
+                "address": point.address,
+                "size": point.size,
+                "data_type": data_type,
+                "scale_factor": point.scale_factor,
+                "unit": point.unit,
+                "enum_detail": enum_detail,
+                "bitfield_detail": bitfield_detail,
+                "byte_order": point.byte_order,
                 "is_derived": False,
             }
         )

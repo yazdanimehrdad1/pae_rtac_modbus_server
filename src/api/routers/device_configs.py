@@ -8,7 +8,7 @@ from db.device_configs import (
     delete_config,
 )
 from helpers.device_configs import create_config_cache_db
-from schemas.db_models.models import (
+from schemas.api_models import (
     ConfigCreateRequest,
     ConfigResponse,
     ConfigDeleteResponse,

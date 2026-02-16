@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, status
 from typing import List
 
 from helpers.device_points import get_device_points
-from schemas.db_models.models import DevicePointResponse
+from schemas.api_models import DevicePointResponse
 
 router = APIRouter(
     prefix="/device-points",

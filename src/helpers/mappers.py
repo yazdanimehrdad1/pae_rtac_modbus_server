@@ -1,6 +1,6 @@
 """ORM-to-Pydantic mappers for response models."""
 
-from schemas.db_models.models import ConfigResponse
+from schemas.api_models import ConfigResponse
 from schemas.db_models.orm_models import Config
 
 

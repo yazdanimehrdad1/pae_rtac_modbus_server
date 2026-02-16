@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
 
 from db.connection import get_async_session_factory
-from schemas.db_models.models import SiteCreateRequest, SiteUpdateRequest, SiteResponse
+from schemas.api_models import SiteCreateRequest, SiteUpdateRequest, SiteResponse
 from schemas.db_models.orm_models import Device, Site
 from utils.exceptions import ConflictError, NotFoundError, ValidationError, InternalError
 from logger import get_logger
@@ -73,11 +73,11 @@ async def create_site(site: SiteCreateRequest) -> SiteResponse:
             # Convert coordinates/location back to models if present
             coordinates = None
             if new_site.coordinates:
-                from schemas.db_models.models import Coordinates
+                from schemas.api_models import Coordinates
                 coordinates = Coordinates(lat=new_site.coordinates["lat"], lng=new_site.coordinates["lng"])
             location = None
             if new_site.location:
-                from schemas.db_models.models import Location
+                from schemas.api_models import Location
                 location = Location(**new_site.location)
             
             return SiteResponse(
@@ -125,11 +125,11 @@ async def get_all_sites() -> List[SiteResponse]:
             # Convert coordinates/location to models if present
             coordinates = None
             if site.coordinates:
-                from schemas.db_models.models import Coordinates
+                from schemas.api_models import Coordinates
                 coordinates = Coordinates(lat=site.coordinates["lat"], lng=site.coordinates["lng"])
             location = None
             if site.location:
-                from schemas.db_models.models import Location
+                from schemas.api_models import Location
                 location = Location(**site.location)
             
             site_responses.append(SiteResponse(
@@ -173,11 +173,11 @@ async def get_site_by_id(site_id: int) -> Optional[SiteResponse]:
         # Convert coordinates/location to models if present
         coordinates = None
         if site.coordinates:
-            from schemas.db_models.models import Coordinates
+            from schemas.api_models import Coordinates
             coordinates = Coordinates(lat=site.coordinates["lat"], lng=site.coordinates["lng"])
         location = None
         if site.location:
-            from schemas.db_models.models import Location
+            from schemas.api_models import Location
             location = Location(**site.location)
         
         return SiteResponse(
@@ -256,11 +256,11 @@ async def update_site(site_id: int, site_update: SiteUpdateRequest) -> SiteRespo
             # Convert coordinates/location to models if present
             coordinates = None
             if site.coordinates:
-                from schemas.db_models.models import Coordinates
+                from schemas.api_models import Coordinates
                 coordinates = Coordinates(lat=site.coordinates["lat"], lng=site.coordinates["lng"])
             location = None
             if site.location:
-                from schemas.db_models.models import Location
+                from schemas.api_models import Location
                 location = Location(**site.location)
             
             return SiteResponse(
@@ -333,11 +333,11 @@ async def delete_site(site_id: int) -> Optional[SiteResponse]:
             # Convert coordinates/location to models if present
             coordinates = None
             if site.coordinates:
-                from schemas.db_models.models import Coordinates
+                from schemas.api_models import Coordinates
                 coordinates = Coordinates(lat=site.coordinates["lat"], lng=site.coordinates["lng"])
             location = None
             if site.location:
-                from schemas.db_models.models import Location
+                from schemas.api_models import Location
                 location = Location(**site.location)
             
             # Store site data before deletion
