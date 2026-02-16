@@ -77,22 +77,26 @@ def map_modbus_data_to_device_points(
 
         data_index = point_address - poll_start_address
 
-        point_registers = set(range(point_address, point_address + point_size))
-        if consumed_registers.intersection(point_registers):
-            logger.warning(
-                f"Skipping point '{point_name}' (address={point_address}, size={point_size}): "
-                "registers already processed"
-            )
-            continue
-
-        consumed_registers.update(point_registers)
-
-        point_values = modbus_read_data[data_index:data_index + point_size]
-
-        # here the point_value_derived, is the derived value based on the data type and size
         if point_size == 1:
-            point_value_derived = point_values[0]
+            if point_address in consumed_registers:
+                logger.warning(
+                    f"Skipping point '{point_name}' (address={point_address}, size={point_size}): "
+                    "register already processed"
+                )
+                continue
+            consumed_registers.add(point_address)
+            point_value_derived = modbus_read_data[data_index]
         else:
+            point_registers = set(range(point_address, point_address + point_size))
+            if consumed_registers.intersection(point_registers):
+                logger.warning(
+                    f"Skipping point '{point_name}' (address={point_address}, size={point_size}): "
+                    "registers already processed"
+                )
+                continue
+
+            consumed_registers.update(point_registers)
+            point_values = modbus_read_data[data_index:data_index + point_size]
             try:
                 point_value_derived = convert_multi_register_value(
                     register_values=point_values,
