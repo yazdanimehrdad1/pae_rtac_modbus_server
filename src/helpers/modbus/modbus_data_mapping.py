@@ -3,7 +3,7 @@ Modbus data mapping helpers.
 """
 
 from datetime import datetime
-from typing import List, Optional
+from typing import List
 import json
 
 from schemas.db_models.orm_models import DevicePoint, DevicePointsReading
@@ -58,12 +58,7 @@ def map_modbus_data_to_device_points(
         point_address = point.address
         point_size = point.size
         point_data_type = point.data_type
-        point_scale_factor = point.scale_factor or 1.0
-        point_unit = point.unit or ""
         point_byte_order = point.byte_order or "big-endian"
-        point_bitfield_detail = point.bitfield_detail or None
-        point_enum_detail = point.enum_detail or None
-        point_is_derived = point.is_derived or False
 
         if not validate_point_mapping_fields(
             point_index,

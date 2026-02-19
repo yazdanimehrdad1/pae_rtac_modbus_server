@@ -6,8 +6,7 @@ Handles CRUD operations for device_points_readings time-series table.
 
 from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
-from sqlalchemy import select, and_, func
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, and_
 from sqlalchemy.dialects.postgresql import insert
 
 from db.session import get_session
