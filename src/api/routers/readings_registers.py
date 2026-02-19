@@ -40,6 +40,11 @@ async def get_device_latest_readings(
     try:
         # Verify device exists (cache-first lookup)
         device = await get_device_cache_db(site_id, device_id)
+        if device is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Device '{device_id}' not found for site '{site_id}'"
+            )
         
         # Parse register_addresses if provided
         register_list = None
@@ -113,6 +118,11 @@ async def get_multiple_registers_time_series(
     try:
         # Verify device exists (cache-first lookup)
         device = await get_device_cache_db(site_id, device_id)
+        if device is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Device '{device_id}' not found for site '{site_id}'"
+            )
         
         # Get point metadata for this device
         device_points = await get_device_points(site_id, device_id)
@@ -232,85 +242,4 @@ async def get_multiple_registers_time_series(
             detail="Failed to retrieve time-series data"
         )
 
-
-# @router.get("")
-# async def get_readings(
-#     site_id: int = Query(..., description="Site ID (4-digit number) - required"),
-#     device_id: int = Query(..., description="Device ID - required"),
-#     register_address: Optional[int] = Query(None, description="Filter by register address"),
-#     start_time: Optional[str] = Query(None, description="Start time in ISO format (e.g., '2025-01-18T08:00:00Z')"),
-#     end_time: Optional[str] = Query(None, description="End time in ISO format (e.g., '2025-01-18T09:00:00Z')"),
-#     limit: Optional[int] = Query(100, ge=1, le=10000, description="Maximum number of readings to return")
-# ):
-#     """
-#     Get all register readings with optional filters.
-    
-#     Args:
-#         site_id: Site ID (UUID) - required
-#         device_id: Device ID - required
-#         register_address: Optional filter by register address
-#         start_time: Optional start time (ISO format)
-#         end_time: Optional end time (ISO format)
-#         limit: Maximum number of readings to return (default: 100, max: 10000)
-        
-#     Returns:
-#         List of readings matching the filters
-        
-#     Raises:
-#         HTTPException: If invalid time format
-#     """
-#     try:
-#         # Parse time strings to datetime objects
-#         start_dt = None
-#         end_dt = None
-        
-#         if start_time:
-#             try:
-#                 start_dt = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
-#             except ValueError:
-#                 raise HTTPException(
-#                     status_code=status.HTTP_400_BAD_REQUEST,
-#                     detail=f"Invalid start_time format. Expected ISO format (e.g., '2025-01-18T08:00:00Z')"
-#                 )
-        
-#         if end_time:
-#             try:
-#                 end_dt = datetime.fromisoformat(end_time.replace('Z', '+00:00'))
-#             except ValueError:
-#                 raise HTTPException(
-#                     status_code=status.HTTP_400_BAD_REQUEST,
-#                     detail=f"Invalid end_time format. Expected ISO format (e.g., '2025-01-18T09:00:00Z')"
-#                 )
-        
-#         # Get readings
-#         try:
-#             readings = await get_all_readings(
-#                 site_id=site_id,
-#                 device_id=device_id,
-#                 register_address=register_address,
-#                 start_time=start_dt,
-#                 end_time=end_dt,
-#                 limit=limit
-#             )
-#         except ValueError as e:
-#             raise HTTPException(
-#                 status_code=status.HTTP_404_NOT_FOUND,
-#                 detail=str(e)
-#             )
-        
-#         return {
-#             "site_id": site_id,
-#             "readings": readings,
-#             "count": len(readings),
-#             "limit": limit
-#         }
-        
-#     except HTTPException:
-#         raise
-#     except Exception as e:
-#         logger.error(f"Error getting readings: {e}", exc_info=True)
-#         raise HTTPException(
-#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-#             detail="Failed to retrieve readings"
-#         )
 

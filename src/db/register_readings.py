@@ -206,60 +206,64 @@ async def get_all_readings(
     Raises:
         ValueError: If device doesn't exist
     """
-    async with get_session() as session:
-        if device_id is not None:
-            device_result = await session.execute(
-                select(Device).where(Device.device_id == device_id)
-            )
-            device = device_result.scalar_one_or_none()
-            if device is None:
-                raise ValueError(f"Device with id '{device_id}' not found")
-        
-        # Build query with filters
-        statement = (
-            select(
-                DevicePointsReading.timestamp,
-                DevicePointsReading.derived_value,
-                DevicePointsReading.device_point_id
-            )
-            .join(DevicePoint, DevicePointsReading.device_point_id == DevicePoint.id)
-        )
-        
-        conditions = []
-        if device_id is not None:
-            conditions.append(DevicePointsReading.device_id == device_id)
-        if site_id is not None:
-            conditions.append(DevicePointsReading.site_id == site_id)
-        if register_address is not None:
-            conditions.append(DevicePoint.address == register_address)
-        if start_time is not None:
-            conditions.append(DevicePointsReading.timestamp >= start_time)
-        if end_time is not None:
-            conditions.append(DevicePointsReading.timestamp <= end_time)
-        
-        if conditions:
-            statement = statement.where(and_(*conditions))
-        
-        # Order by timestamp descending (newest first)
-        statement = statement.order_by(DevicePointsReading.timestamp.desc())
-        
-        # Add LIMIT and OFFSET if provided
-        if limit is not None:
-            statement = statement.limit(limit)
-        if offset is not None:
-            statement = statement.offset(offset)
-        
-        result = await session.execute(statement)
-        readings = result.all()
+    try:
+        async with get_session() as session:
+            if device_id is not None:
+                device_result = await session.execute(
+                    select(Device).where(Device.device_id == device_id)
+                )
+                device = device_result.scalar_one_or_none()
+                if device is None:
+                    raise ValueError(f"Device with id '{device_id}' not found")
 
-        return [
-            {
-                'timestamp': reading.timestamp,
-                'device_point_id': reading.device_point_id,
-                'derived_value': reading.derived_value
-            }
-            for reading in readings
-        ]
+            # Build query with filters
+            statement = (
+                select(
+                    DevicePointsReading.timestamp,
+                    DevicePointsReading.derived_value,
+                    DevicePointsReading.device_point_id
+                )
+                .join(DevicePoint, DevicePointsReading.device_point_id == DevicePoint.id)
+            )
+
+            conditions = []
+            if device_id is not None:
+                conditions.append(DevicePointsReading.device_id == device_id)
+            if site_id is not None:
+                conditions.append(DevicePointsReading.site_id == site_id)
+            if register_address is not None:
+                conditions.append(DevicePoint.address == register_address)
+            if start_time is not None:
+                conditions.append(DevicePointsReading.timestamp >= start_time)
+            if end_time is not None:
+                conditions.append(DevicePointsReading.timestamp <= end_time)
+
+            if conditions:
+                statement = statement.where(and_(*conditions))
+
+            # Order by timestamp descending (newest first)
+            statement = statement.order_by(DevicePointsReading.timestamp.desc())
+
+            # Add LIMIT and OFFSET if provided
+            if limit is not None:
+                statement = statement.limit(limit)
+            if offset is not None:
+                statement = statement.offset(offset)
+
+            result = await session.execute(statement)
+            readings = result.all()
+
+            return [
+                {
+                    'timestamp': reading.timestamp,
+                    'device_point_id': reading.device_point_id,
+                    'derived_value': reading.derived_value
+                }
+                for reading in readings
+            ]
+    except Exception as e:
+        logger.error("Error fetching register readings: %s", e, exc_info=True)
+        raise
 
 
 async def get_latest_reading(

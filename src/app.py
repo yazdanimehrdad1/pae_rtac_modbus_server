@@ -10,9 +10,21 @@ from fastapi.responses import JSONResponse
 from config import settings
 from logger import setup_logging, get_logger
 from scheduler.engine import start_scheduler, stop_scheduler
+from api.middlewear.time_range import validate_time_range
 
 # Router imports
-from api.routers import health, read, cache, devices, register_readings, sites, csv_exports, device_configs, device_points
+from api.routers import (
+    health,
+    readings_device,
+    readings_raw_modbus,
+    cache,
+    devices,
+    readings_registers,
+    sites,
+    csv_exports,
+    device_configs,
+    device_points,
+)
 
 # Cache connection imports
 from cache.connection import (
@@ -49,13 +61,16 @@ def create_app() -> FastAPI:
         description="Modbus TCP service for polling and storing time-series data",
         version="1.0.0"
     )
+
+    app.middleware("http")(validate_time_range)
     
     # Mount routers with /api prefix
     app.include_router(health.router, prefix="/api", tags=["health"])
-    app.include_router(read.router, prefix="/api", tags=["modbus"])
+    app.include_router(readings_device.router, prefix="/api", tags=["modbus"])
+    app.include_router(readings_raw_modbus.router, prefix="/api", tags=["raw-modbus"])
     app.include_router(cache.router, prefix="/api", tags=["cache"])
     app.include_router(devices.router, prefix="/api", tags=["devices"])
-    app.include_router(register_readings.router, prefix="/api", tags=["register_readings"])
+    app.include_router(readings_registers.router, prefix="/api", tags=["register_readings"])
     app.include_router(sites.router, prefix="/api", tags=["sites"])
     app.include_router(csv_exports.router, prefix="/api", tags=["csv-exports"])
     app.include_router(device_configs.router, prefix="/api", tags=["configs"])
