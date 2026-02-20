@@ -13,7 +13,7 @@ def _parse_iso_datetime(value: str) -> Optional[datetime]:
     except ValueError:
         return None
 
-
+# TODO : take care of datetime format
 async def validate_time_range(request: Request, call_next):
     start_time = request.query_params.get("start_time")
     end_time = request.query_params.get("end_time")
