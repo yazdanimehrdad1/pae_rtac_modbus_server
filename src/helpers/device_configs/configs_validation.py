@@ -212,7 +212,7 @@ def validate_poll_range_consistency(
 
     if min_register_number != payload_poll_start_index or poll_count != payload_poll_count:
         logger.warning(
-            "Min point address or poll count does not match the config; continuing with payload values",
+            "Min point address or poll count does not match the config; overriding with computed values",
             extra={
                 "min_register_number": min_register_number,
                 "max_register_end": max_register_end,

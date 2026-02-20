@@ -72,6 +72,8 @@ async def create_config_cache_db(
     min_register_number, max_register_end, poll_count = compute_poll_range(
         config.points
     )
+    config.poll_start_index = min_register_number
+    config.poll_count = poll_count
 
     poll_range_error = validate_poll_range_consistency(
         poll_count=poll_count,
