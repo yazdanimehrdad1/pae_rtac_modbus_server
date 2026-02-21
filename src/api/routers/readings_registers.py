@@ -33,7 +33,7 @@ async def get_device_latest_readings(
         register_addresses: Optional comma-separated list of register addresses to filter
         
     Returns:
-        List of latest readings, one per register
+        Dictionary with readings grouped by register address
         
     Raises:
         HTTPException: If device not found
@@ -48,6 +48,10 @@ async def get_device_latest_readings(
                 detail=f"Device '{device_id}' not found for site '{site_id}'"
             )
         
+        # Get point metadata for this device
+        device_points = await get_device_points(site_id, device_id)
+        points_by_address = {point.address: point for point in device_points}
+
         # Parse register_addresses if provided
         register_list = None
         if register_addresses:
@@ -58,6 +62,8 @@ async def get_device_latest_readings(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Invalid register_addresses format. Expected comma-separated integers (e.g., '100,101,102')"
                 )
+        else:
+            register_list = sorted(points_by_address.keys())
         
         # Get latest readings
         try:
@@ -69,12 +75,51 @@ async def get_device_latest_readings(
                 detail=str(e)
             )
         
+        readings_by_point: Dict[int, List[Dict[str, Any]]] = {}
+        for reading in readings:
+            readings_by_point.setdefault(reading["device_point_id"], []).append({
+                "timestamp": reading["timestamp"],
+                "derived_value": reading["derived_value"]
+            })
+
+        result: Dict[str, Dict[str, Any]] = {}
+        total_readings_count = 0
+        for register_address in register_list:
+            address_points = [p for p in device_points if p.address == register_address]
+            if not address_points:
+                logger.warning(
+                    "No DevicePoint metadata found for device %s, address %s",
+                    device_id,
+                    register_address
+                )
+                continue
+
+            base_point = next((p for p in address_points if not p.is_derived), address_points[0])
+            entry: Dict[str, Any] = {
+                "device_point_id": base_point.id,
+                "register_address": base_point.address,
+                "name": base_point.name,
+                "data_type": base_point.data_type,
+                "unit": base_point.unit,
+                "scale_factor": base_point.scale_factor,
+                "is_derived": base_point.is_derived
+            }
+
+            for point in address_points:
+                series_key = f"{point.name}_reads"
+                series = readings_by_point.get(point.id, [])
+                entry[series_key] = series
+                total_readings_count += len(series)
+
+            result[str(register_address)] = entry
+
         return {
             "site_id": site_id,
             "device_id": device_id,
             "device_name": device.name,
-            "readings": readings,
-            "count": len(readings)
+            "register_addresses": register_list,
+            "readings": result,
+            "count": total_readings_count
         }
         
     except HTTPException:

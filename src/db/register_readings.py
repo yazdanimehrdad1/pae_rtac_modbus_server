@@ -5,7 +5,7 @@ Handles CRUD operations for device_points_readings time-series table.
 """
 
 from datetime import datetime, timezone
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, TypedDict
 from sqlalchemy import select, and_, func as sql_func
 from sqlalchemy.dialects.postgresql import insert
 
@@ -15,6 +15,12 @@ from helpers.devices import get_device_cache_db
 from logger import get_logger
 
 logger = get_logger(__name__)
+
+
+class DevicePointReadingDict(TypedDict):
+    timestamp: datetime
+    device_point_id: int
+    derived_value: Optional[float]
 
 
 async def insert_register_reading(
@@ -188,7 +194,7 @@ async def get_all_readings(
     end_time: Optional[datetime] = None,
     limit: Optional[int] = None,
     offset: Optional[int] = None
-) -> List[Dict[str, Any]]:
+) -> List[DevicePointReadingDict]:
     """
     Get all register readings with optional filters.
     
