@@ -7,7 +7,8 @@ from fastapi import APIRouter, HTTPException, status, Query
 from db.register_readings import (
     get_all_readings,
     get_latest_reading,
-    get_latest_readings_for_device
+    get_latest_readings_for_device,
+    get_latest_readings_for_device_n
 )
 from helpers.device_points import get_device_points
 from helpers.devices import get_device_cache_db
@@ -38,6 +39,7 @@ async def get_device_latest_readings(
         HTTPException: If device not found
     """
     try:
+        # verify the params:
         # Verify device exists (cache-first lookup)
         device = await get_device_cache_db(site_id, device_id)
         if device is None:
@@ -75,6 +77,65 @@ async def get_device_latest_readings(
             "count": len(readings)
         }
         
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting latest readings for device {device_id}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve latest readings"
+        )
+
+
+@router.get("/site/{site_id}/device/{device_id}/latest-n")
+async def get_device_latest_readings_n(
+    site_id: int,
+    device_id: int,
+    latest_n: int = Query(1, ge=1, description="Number of latest readings per point to return"),
+    register_addresses: Optional[str] = Query(None, description="Comma-separated list of register addresses (e.g., '100,101,102')")
+):
+    """
+    Get latest N readings per register (or specific registers) of a device.
+    """
+    try:
+        device = await get_device_cache_db(site_id, device_id)
+        if device is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Device '{device_id}' not found for site '{site_id}'"
+            )
+
+        register_list = None
+        if register_addresses:
+            try:
+                register_list = [int(addr.strip()) for addr in register_addresses.split(',')]
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid register_addresses format. Expected comma-separated integers (e.g., '100,101,102')"
+                )
+
+        try:
+            readings = await get_latest_readings_for_device_n(
+                device_id=device_id,
+                site_id=site_id,
+                latest_n=latest_n,
+                register_addresses=register_list,
+            )
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=str(e)
+            )
+
+        return {
+            "site_id": site_id,
+            "device_id": device_id,
+            "device_name": device.name,
+            "latest_n": latest_n,
+            "readings": readings,
+            "count": len(readings)
+        }
     except HTTPException:
         raise
     except Exception as e:

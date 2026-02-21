@@ -6,11 +6,12 @@ Handles CRUD operations for device_points_readings time-series table.
 
 from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, func as sql_func
 from sqlalchemy.dialects.postgresql import insert
 
 from db.session import get_session
 from schemas.db_models.orm_models import DevicePointsReading, DevicePoint, Device
+from helpers.devices import get_device_cache_db
 from logger import get_logger
 
 logger = get_logger(__name__)
@@ -293,8 +294,6 @@ async def get_latest_reading(
         if device is None:
             raise ValueError(f"Device with id '{device_id}' not found")
         
-        from sqlalchemy import func as sql_func
-
         rank_subquery = (
             select(
                 DevicePointsReading.device_point_id,
@@ -389,8 +388,6 @@ async def get_latest_readings_for_device(
             raise ValueError(f"Device with id '{device_id}' not found")
         
         # Use window function to rank readings by timestamp per device_point_id
-        from sqlalchemy import func as sql_func
-
         rank_subquery = (
             select(
                 DevicePointsReading.device_point_id,
@@ -435,6 +432,101 @@ async def get_latest_readings_for_device(
 
         if register_addresses:
             statement = statement.where(DevicePoint.address.in_(register_addresses))
+
+        result = await session.execute(statement)
+        rows = result.all()
+
+        return [
+            {
+                'device_point_id': row.device_point_id,
+                'register_address': row.address,
+                'name': row.name,
+                'data_type': row.data_type,
+                'unit': row.unit,
+                'scale_factor': row.scale_factor,
+                'is_derived': row.is_derived,
+                'timestamp': row.timestamp,
+                'derived_value': row.derived_value
+            }
+            for row in rows
+        ]
+
+
+async def get_latest_readings_for_device_n(
+    device_id: int,
+    site_id: Optional[str],
+    latest_n: int,
+    register_addresses: Optional[List[int]] = None
+) -> List[Dict[str, Any]]:
+    """
+    Get latest N readings per register (or specific registers) of a device.
+
+    Args:
+        device_id: Device ID
+        site_id: Optional Site ID (unused)
+        latest_n: Number of latest readings per point to return
+        register_addresses: Optional list of specific register addresses.
+                          If None, returns latest for all registers of the device.
+
+    Returns:
+        List of latest reading dictionaries, one per register reading
+
+    Raises:
+        ValueError: If device doesn't exist
+    """
+    async with get_session() as session:
+        device = await get_device_cache_db(site_id, device_id)
+        if device is None:
+            raise ValueError(f"Device with id '{device_id}' not found")
+
+        rank_subquery = (
+            select(
+                DevicePointsReading.device_point_id,
+                DevicePointsReading.timestamp,
+                DevicePointsReading.derived_value,
+                sql_func.row_number().over(
+                    partition_by=DevicePointsReading.device_point_id,
+                    order_by=DevicePointsReading.timestamp.desc()
+                ).label('rn')
+            )
+            .where(
+                and_(
+                    DevicePointsReading.device_id == device_id,
+                    DevicePointsReading.site_id == site_id
+                )
+            )
+        )
+
+        ranked = rank_subquery.subquery()
+
+        statement = (
+            select(
+                ranked.c.timestamp,
+                ranked.c.derived_value,
+                DevicePoint.id.label('device_point_id'),
+                DevicePoint.address,
+                DevicePoint.name,
+                DevicePoint.data_type,
+                DevicePoint.unit,
+                DevicePoint.scale_factor,
+                DevicePoint.is_derived,
+            )
+            .join(ranked, ranked.c.device_point_id == DevicePoint.id)
+            .where(
+                and_(
+                    ranked.c.rn <= latest_n,
+                    DevicePoint.device_id == device_id,
+                    DevicePoint.site_id == site_id
+                )
+            )
+        )
+
+        if register_addresses:
+            statement = statement.where(DevicePoint.address.in_(register_addresses))
+        statement = statement.order_by(
+            DevicePoint.id,
+            ranked.c.timestamp.desc()
+        )
 
         result = await session.execute(statement)
         rows = result.all()

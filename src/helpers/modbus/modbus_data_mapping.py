@@ -31,26 +31,26 @@ def map_modbus_data_to_device_points(
 
     mapped_registers_readings_list: List[DevicePointsReading] = []
     consumed_registers: set[int] = set()
-    logger.info("this is modbus_read_data %s", json.dumps(modbus_read_data, indent=4))
-    logger.info(
-        "this is device_points_list %s",
-        json.dumps(
-            [
-                {
-                    "id": point.id,
-                    "name": point.name,
-                    "address": point.address,
-                    "size": point.size,
-                    "data_type": point.data_type,
-                    "site_id": point.site_id,
-                    "device_id": point.device_id,
-                    "is_derived": point.is_derived,
-                }
-                for point in device_points_list
-            ],
-            indent=4,
-        ),
-    )
+    #logger.info("this is modbus_read_data %s", json.dumps(modbus_read_data, indent=4))
+    # logger.info(
+    #     "this is device_points_list %s",
+    #     json.dumps(
+    #         [
+    #             {
+    #                 "id": point.id,
+    #                 "name": point.name,
+    #                 "address": point.address,
+    #                 "size": point.size,
+    #                 "data_type": point.data_type,
+    #                 "site_id": point.site_id,
+    #                 "device_id": point.device_id,
+    #                 "is_derived": point.is_derived,
+    #             }
+    #             for point in device_points_list
+    #         ],
+    #         indent=4,
+    #     ),
+    # )
     logger.info("this is poll_start_address %s", poll_start_address)
 
     for point_index, point in enumerate(device_points_list):
