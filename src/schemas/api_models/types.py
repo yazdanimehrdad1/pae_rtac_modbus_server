@@ -1,6 +1,7 @@
 """Typed helpers for API models."""
 
-from typing import Optional, TypedDict, TypeAlias
+from datetime import datetime
+from typing import Optional, TypedDict, TypeAlias, Union
 
 
 class DevicePointData(TypedDict, total=False):
@@ -34,3 +35,37 @@ class PollResult(TypedDict, total=False):
 
 
 ModbusRegisterValues: TypeAlias = list[int | bool]
+
+
+class BitfieldEntry(TypedDict, total=False):
+    value: int
+    detail: str
+
+
+BitfieldDetailMap: TypeAlias = dict[str, str]
+BitfieldPayload: TypeAlias = dict[str, BitfieldEntry]
+
+
+class EnumEntry(TypedDict, total=False):
+    value: int
+    detail: str
+
+
+EnumDetailMap: TypeAlias = dict[str, str]
+EnumPayload: TypeAlias = dict[str, EnumEntry]
+
+
+CalculatedValue: TypeAlias = Union[BitfieldPayload, EnumPayload, float]
+
+
+class MergedPointMetadataToReading(TypedDict):
+    device_point_id: int
+    register_address: int
+    name: str
+    data_type: str
+    unit: Optional[str]
+    scale_factor: Optional[float]
+    is_derived: bool
+    timestamp: datetime
+    derived_value: Optional[float]
+    calculated_value: Optional[CalculatedValue]
