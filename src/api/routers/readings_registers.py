@@ -14,6 +14,7 @@ from db.register_readings import get_latest_reading
 from helpers.device_points import get_device_points
 from helpers.devices import get_device_cache_db
 from logger import get_logger
+from utils.exceptions import NotFoundError
 
 router = APIRouter(prefix="/register_readings", tags=["register_readings"])
 logger = get_logger(__name__)
@@ -80,6 +81,11 @@ async def get_device_latest_readings(
             "count": total_readings_count
         }
         
+    except NotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e),
+        )
     except HTTPException:
         raise
     except Exception as e:
@@ -129,6 +135,11 @@ async def get_device_latest_readings_n(
             "readings": readings,
             "count": len(readings)
         }
+    except NotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e),
+        )
     except HTTPException:
         raise
     except Exception as e:
@@ -206,6 +217,11 @@ async def get_multiple_registers_time_series(
             "count": total_timeseries_count
         }
         
+    except NotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e),
+        )
     except HTTPException:
         raise
     except Exception as e:
