@@ -29,16 +29,34 @@ class LatestDevicePointReadingDict(TypedDict):
     register_address: int
     name: str
     data_type: str
+    size: int
     unit: Optional[str]
     scale_factor: Optional[float]
     is_derived: bool
     timestamp: datetime
     derived_value: Optional[float]
+    bitfield_detail: Optional[dict[str, str]]
+    enum_detail: Optional[dict[str, str]]
 
 
 class LatestDevicePointReadingWithDeviceDict(LatestDevicePointReadingDict):
     device_id: int
     site_id: str
+
+
+class TimeSeriesDevicePointReadingDict(TypedDict):
+    timestamp: datetime
+    derived_value: Optional[float]
+    device_point_id: int
+    register_address: int
+    name: str
+    data_type: str
+    size: int
+    unit: Optional[str]
+    scale_factor: Optional[float]
+    is_derived: bool
+    bitfield_detail: Optional[dict[str, str]]
+    enum_detail: Optional[dict[str, str]]
 
 
 async def insert_register_reading(
@@ -212,7 +230,7 @@ async def get_all_readings(
     end_time: Optional[datetime] = None,
     limit: Optional[int] = None,
     offset: Optional[int] = None
-) -> List[DevicePointReadingDict]:
+) -> List[TimeSeriesDevicePointReadingDict]:
     """
     Get all register readings with optional filters.
     
@@ -226,7 +244,7 @@ async def get_all_readings(
         offset: Optional number of readings to skip (for pagination)
         
     Returns:
-        List of reading dictionaries, ordered by timestamp descending (newest first)
+        List of reading dictionaries, ordered by timestamp ascending (oldest first)
         
     Raises:
         ValueError: If device doesn't exist
@@ -246,7 +264,16 @@ async def get_all_readings(
                 select(
                     DevicePointsReading.timestamp,
                     DevicePointsReading.derived_value,
-                    DevicePointsReading.device_point_id
+                    DevicePoint.id.label("device_point_id"),
+                    DevicePoint.address,
+                    DevicePoint.name,
+                    DevicePoint.data_type,
+                    DevicePoint.size,
+                    DevicePoint.unit,
+                    DevicePoint.scale_factor,
+                    DevicePoint.is_derived,
+                    DevicePoint.bitfield_detail,
+                    DevicePoint.enum_detail,
                 )
                 .join(DevicePoint, DevicePointsReading.device_point_id == DevicePoint.id)
             )
@@ -266,8 +293,8 @@ async def get_all_readings(
             if conditions:
                 statement = statement.where(and_(*conditions))
 
-            # Order by timestamp descending (newest first)
-            statement = statement.order_by(DevicePointsReading.timestamp.desc())
+            # Order by timestamp ascending (oldest first)
+            statement = statement.order_by(DevicePointsReading.timestamp.asc())
 
             # Add LIMIT and OFFSET if provided
             if limit is not None:
@@ -281,8 +308,17 @@ async def get_all_readings(
             return [
                 {
                     'timestamp': reading.timestamp,
+                    'derived_value': reading.derived_value,
                     'device_point_id': reading.device_point_id,
-                    'derived_value': reading.derived_value
+                    'register_address': reading.address,
+                    'name': reading.name,
+                    'data_type': reading.data_type,
+                    'size': reading.size,
+                    'unit': reading.unit,
+                    'scale_factor': reading.scale_factor,
+                    'is_derived': reading.is_derived,
+                    'bitfield_detail': reading.bitfield_detail,
+                    'enum_detail': reading.enum_detail,
                 }
                 for reading in readings
             ]
@@ -419,9 +455,12 @@ async def get_latest_readings_for_device(
                 DevicePoint.address,
                 DevicePoint.name,
                 DevicePoint.data_type,
+                DevicePoint.size,
                 DevicePoint.unit,
                 DevicePoint.scale_factor,
                 DevicePoint.is_derived,
+                DevicePoint.bitfield_detail,
+                DevicePoint.enum_detail,
             )
             .join(DevicePoint, DevicePointsReading.device_point_id == DevicePoint.id)
             .where(
@@ -451,11 +490,14 @@ async def get_latest_readings_for_device(
                 'register_address': row.address,
                 'name': row.name,
                 'data_type': row.data_type,
+                'size': row.size,
                 'unit': row.unit,
                 'scale_factor': row.scale_factor,
                 'is_derived': row.is_derived,
                 'timestamp': row.timestamp,
-                'derived_value': row.derived_value
+                'derived_value': row.derived_value,
+                'bitfield_detail': row.bitfield_detail,
+                'enum_detail': row.enum_detail,
             }
             for row in rows
         ]

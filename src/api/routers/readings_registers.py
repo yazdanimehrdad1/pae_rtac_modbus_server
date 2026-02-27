@@ -5,12 +5,12 @@ from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, HTTPException, status, Query
 
 from api.controllers.read import parse_register_addresses_from_query_param
-from api.controllers.reads import points_latest_readings_response_controller
-from db.register_readings import (
-    get_all_readings,
-    get_latest_reading,
-    get_latest_readings_for_device_n
+from api.controllers.reads import (
+    points_latest_readings_n_response_controller,
+    points_latest_readings_response_controller,
+    points_time_series_response_controller,
 )
+from db.register_readings import get_latest_reading
 from helpers.device_points import get_device_points
 from helpers.devices import get_device_cache_db
 from logger import get_logger
@@ -108,28 +108,18 @@ async def get_device_latest_readings_n(
                 detail=f"Device '{device_id}' not found for site '{site_id}'"
             )
 
-        register_list = None
-        if register_addresses:
-            try:
-                register_list = [int(addr.strip()) for addr in register_addresses.split(',')]
-            except ValueError:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Invalid register_addresses format. Expected comma-separated integers (e.g., '100,101,102')"
-                )
-
-        try:
-            readings = await get_latest_readings_for_device_n(
-                device_id=device_id,
-                site_id=site_id,
-                latest_n=latest_n,
-                register_addresses=register_list,
-            )
-        except ValueError as e:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=str(e)
-            )
+        device_points = await get_device_points(device.device_id)
+        points_by_address = {point.address: point for point in device_points}
+        register_list = parse_register_addresses_from_query_param(
+            register_addresses,
+            points_by_address,
+        )
+        readings = await points_latest_readings_n_response_controller(
+            device_id=device_id,
+            site_id=site_id,
+            latest_n=latest_n,
+            register_list=register_list,
+        )
 
         return {
             "site_id": site_id,
@@ -192,101 +182,20 @@ async def get_multiple_registers_time_series(
         device_points = await get_device_points(device.device_id)
         points_by_address = {point.address: point for point in device_points}
 
-        # Parse register addresses (optional)
-        if register_addresses:
-            try:
-                register_list = [int(addr.strip()) for addr in register_addresses.split(',')]
-            except ValueError:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Invalid register_addresses format. Expected comma-separated integers (e.g., '100,101,102')"
-                )
-        else:
-            register_list = sorted(points_by_address.keys())
+        register_list = parse_register_addresses_from_query_param(
+            register_addresses,
+            points_by_address,
+        )
 
-        # Parse time strings to datetime objects
-        start_dt = None
-        end_dt = None
-        
-        if start_time:
-            try:
-                start_dt = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
-            except ValueError:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Invalid start_time format. Expected ISO format (e.g., '2025-01-18T08:00:00Z')"
-                )
-        
-        if end_time:
-            try:
-                end_dt = datetime.fromisoformat(end_time.replace('Z', '+00:00'))
-            except ValueError:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Invalid end_time format. Expected ISO format (e.g., '2025-01-18T09:00:00Z')"
-                )
-        
-        # Get readings for each register
-        result: Dict[str, Dict[str, Any]] = {}
-        for register_address in register_list:
-            try:
-                readings = await get_all_readings(
-                    site_id=site_id,
-                    device_id=device_id,
-                    register_address=register_address,
-                    start_time=start_dt,
-                    end_time=end_dt,
-                    limit=limit
-                )
-            except ValueError as e:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=str(e)
-                )
-
-            address_points = [p for p in device_points if p.address == register_address]
-            if not address_points:
-                logger.warning(
-                    "No DevicePoint metadata found for device %s, address %s",
-                    device_id,
-                    register_address
-                )
-                continue
-
-            # Prefer the non-derived (base) point for metadata when available
-            base_point = next((p for p in address_points if not p.is_derived), address_points[0])
-
-            # Reverse order for time-series (oldest first)
-            readings.reverse()
-
-            readings_by_point: Dict[int, List[Dict[str, Any]]] = {}
-            for reading in readings:
-                readings_by_point.setdefault(reading["device_point_id"], []).append({
-                    "timestamp": reading["timestamp"],
-                    "derived_value": reading["derived_value"]
-                })
-
-            entry: Dict[str, Any] = {
-                "device_point_id": base_point.id,
-                "register_address": base_point.address,
-                "name": base_point.name,
-                "data_type": base_point.data_type,
-                "unit": base_point.unit,
-                "scale_factor": base_point.scale_factor,
-                "is_derived": base_point.is_derived
-            }
-
-            for point in address_points:
-                series_key = f"{point.name}_timeseries"
-                entry[series_key] = readings_by_point.get(point.id, [])
-
-            result[str(register_address)] = entry
-        
-        total_timeseries_count = 0
-        for entry in result.values():
-            for key, value in entry.items():
-                if key.endswith("_timeseries"):
-                    total_timeseries_count += len(value)
+        result, total_timeseries_count = await points_time_series_response_controller(
+            device_id=device_id,
+            site_id=site_id,
+            device_points=device_points,
+            register_list=register_list,
+            start_time=start_time,
+            end_time=end_time,
+            limit=limit,
+        )
 
         return {
             "site_id": site_id,

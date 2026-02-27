@@ -1,17 +1,9 @@
 """Middleware for validating time range query params."""
 
-from datetime import datetime
-from typing import Optional
-
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
-
-def _parse_iso_datetime(value: str) -> Optional[datetime]:
-    try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        return None
+from helpers.date_time import parse_iso_datetime
 
 # TODO : take care of datetime format
 async def validate_time_range(request: Request, call_next):
@@ -19,8 +11,8 @@ async def validate_time_range(request: Request, call_next):
     end_time = request.query_params.get("end_time")
 
     if start_time and end_time:
-        start_dt = _parse_iso_datetime(start_time)
-        end_dt = _parse_iso_datetime(end_time)
+        start_dt = parse_iso_datetime(start_time)
+        end_dt = parse_iso_datetime(end_time)
         if start_dt is None or end_dt is None:
             return JSONResponse(
                 status_code=400,
