@@ -1,7 +1,10 @@
 """Typed helpers for API models."""
 
 from datetime import datetime
-from typing import Optional, TypedDict, TypeAlias, Union
+from typing import Optional, TypeAlias, Union
+from typing_extensions import TypedDict
+
+from pydantic import BaseModel
 
 
 class DevicePointData(TypedDict, total=False):
@@ -68,4 +71,38 @@ class MergedPointMetadataToReading(TypedDict):
     is_derived: bool
     timestamp: datetime
     derived_value: Optional[float]
+    calculated_value: Optional[CalculatedValue]
+
+
+class LatestDevicePointReadingModel(BaseModel):
+    device_point_id: int
+    register_address: int
+    name: str
+    data_type: str
+    unit: Optional[str]
+    scale_factor: Optional[float]
+    is_derived: bool
+    timestamp: datetime
+    derived_value: Optional[float]
+    bitfield_detail: Optional[BitfieldDetailMap] = None
+    enum_detail: Optional[EnumDetailMap] = None
+    bit_count: Optional[int] = None
+
+
+class MergedPointMetadataToReadingModel(BaseModel):
+    device_point_id: int
+    register_address: int
+    name: str
+    data_type: str
+    unit: Optional[str]
+    scale_factor: Optional[float]
+    is_derived: bool
+    timestamp: datetime
+    derived_value: Optional[float]
+    calculated_value: Optional[CalculatedValue]
+
+
+class PointReadSeriesItemModel(BaseModel):
+    timestamp: datetime
+    raw_value: Optional[float] = None
     calculated_value: Optional[CalculatedValue]

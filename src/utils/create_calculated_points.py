@@ -10,11 +10,11 @@ Notes:
   - `routers/readings_device.py`
 
 High-level contract:
-- Input: a `DevicePoint` + `DevicePointsReading` (joined by device_point_id).
+- Input: a merged point+reading dict (same shape as `LatestDevicePointReadingDict`).
 - Output: `List[MergedPointMetadataToReading]` where each element is:
   {
     "device_point_id": row.device_point_id,
-    "register_address": row.address,
+    "register_address": row.register_address,
     "name": row.name,
     "data_type": row.data_type,
     "unit": row.unit,
@@ -45,8 +45,10 @@ Examples:
 
 from typing import List, Optional
 
-from schemas.db_models.orm_models import DevicePoint, DevicePointsReading
-from schemas.api_models.types import MergedPointMetadataToReading
+from schemas.api_models.types import (
+    LatestDevicePointReadingModel,
+    MergedPointMetadataToReadingModel,
+)
 from helpers.reads.calculate_reads import (
     build_bitfield_payload,
     build_enum_payload,
@@ -58,9 +60,8 @@ MAX_BITFIELD_BITS_32_BIT = 32
 
 
 def create_calculated_points(
-    device_point: DevicePoint,
-    device_point_reading: DevicePointsReading
-) -> List[MergedPointMetadataToReading]:
+    point_reading: LatestDevicePointReadingModel,
+) -> MergedPointMetadataToReadingModel:
     """
     Create derived point payload for a single DevicePoint + DevicePointsReading.
 
@@ -92,39 +93,38 @@ def create_calculated_points(
     For scaled:
     {"calculated_value": 59.9}
     """
-    derived_value = device_point_reading.derived_value
-    bit_count = min(device_point.size * BITS_PER_REGISTER_16_BIT, MAX_BITFIELD_BITS_32_BIT)
+    derived_value = point_reading.derived_value
+    bit_count = point_reading.bit_count or BITS_PER_REGISTER_16_BIT
+    bit_count = min(bit_count, MAX_BITFIELD_BITS_32_BIT)
 
     if derived_value is None:
         calculated_value = None
-    elif device_point.data_type == "bitfield":
+    elif point_reading.data_type == "bitfield":
         calculated_value = build_bitfield_payload(
             derived_value=derived_value,
-            bitfield_detail=device_point.bitfield_detail or {},
+            bitfield_detail=point_reading.bitfield_detail or {},
             bit_count=bit_count
         )
-    elif device_point.data_type == "enum":
+    elif point_reading.data_type == "enum":
         calculated_value = build_enum_payload(
             derived_value=derived_value,
-            enum_detail=device_point.enum_detail or {}
+            enum_detail=point_reading.enum_detail or {}
         )
     else:
         calculated_value = build_scaled_payload(
             derived_value=derived_value,
-            scale_factor=device_point.scale_factor
+            scale_factor=point_reading.scale_factor
         )
 
-    merged: MergedPointMetadataToReading = {
-        "device_point_id": device_point.id,
-        "register_address": device_point.address,
-        "name": device_point.name,
-        "data_type": device_point.data_type,
-        "unit": device_point.unit,
-        "scale_factor": device_point.scale_factor,
-        "is_derived": device_point.is_derived,
-        "timestamp": device_point_reading.timestamp,
-        "derived_value": derived_value,
-        "calculated_value": calculated_value,
-    }
-
-    return [merged]
+    return MergedPointMetadataToReadingModel(
+        device_point_id=point_reading.device_point_id,
+        register_address=point_reading.register_address,
+        name=point_reading.name,
+        data_type=point_reading.data_type,
+        unit=point_reading.unit,
+        scale_factor=point_reading.scale_factor,
+        is_derived=point_reading.is_derived,
+        timestamp=point_reading.timestamp,
+        derived_value=derived_value,
+        calculated_value=calculated_value,
+    )

@@ -5,7 +5,8 @@ These models represent the database schema and are used for ORM operations.
 """
 
 from datetime import datetime
-from typing import Optional, Dict, Any, TypedDict
+from typing import Optional, Dict, Any
+from typing_extensions import TypedDict
 from sqlalchemy import String, Integer, Text, DateTime, func, Float, ForeignKey, JSON, Boolean, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 

@@ -3,8 +3,13 @@ from typing import Any, Dict, List, Tuple
 from fastapi import HTTPException, status
 
 from db.register_readings import get_latest_readings_for_device
-from log_config import get_logger
+from logger import get_logger
+from schemas.api_models.types import (
+    LatestDevicePointReadingModel,
+    PointReadSeriesItemModel,
+)
 from schemas.db_models.orm_models import DevicePoint
+from utils.create_calculated_points import create_calculated_points
 
 logger = get_logger(__name__)
 
@@ -26,13 +31,16 @@ async def points_latest_readings_response_controller(
             detail=str(exc),
         ) from exc
 
-    readings_by_point: Dict[int, List[Dict[str, Any]]] = {}
+    readings_by_point: Dict[int, List[PointReadSeriesItemModel]] = {}
     for reading in readings:
-        readings_by_point.setdefault(reading["device_point_id"], []).append(
-            {
-                "timestamp": reading["timestamp"],
-                "derived_value": reading["derived_value"],
-            }
+        reading_model = LatestDevicePointReadingModel(**reading)
+        calculated_point = create_calculated_points(reading_model)
+        readings_by_point.setdefault(reading_model.device_point_id, []).append(
+            PointReadSeriesItemModel(
+                timestamp=calculated_point.timestamp,
+                raw_value=reading.get("raw_value", reading_model.derived_value),
+                calculated_value=calculated_point.calculated_value,
+            )
         )
 
     result: Dict[str, Dict[str, Any]] = {}
@@ -55,9 +63,9 @@ async def points_latest_readings_response_controller(
             "scale_factor": base_point.scale_factor,
         }
 
-        series_key = f"{base_point.name}_reads"
+        series_key = f"{base_point.name}_latest"
         series = readings_by_point.get(base_point.id, [])
-        entry[series_key] = series
+        entry[series_key] = [item.model_dump() for item in series]
         total_readings_count += len(series)
 
         result[str(register_address)] = entry

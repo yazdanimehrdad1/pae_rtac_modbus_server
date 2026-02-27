@@ -5,7 +5,8 @@ Handles CRUD operations for device_points_readings time-series table.
 """
 
 from datetime import datetime, timezone
-from typing import List, Optional, Dict, Any, TypedDict
+from typing import List, Optional, Dict, Any
+from typing_extensions import TypedDict
 from sqlalchemy import select, and_, func as sql_func
 from sqlalchemy.dialects.postgresql import insert
 
@@ -409,32 +410,32 @@ async def get_latest_readings_for_device(
         if device is None:
             raise ValueError(f"Device with id '{device_id}' not found")
         
-        # Use window function to rank readings by timestamp per device_point_id
-        rank_subquery = (
+        # Step 1: rank readings per point (latest = rn == 1).
+        base_read_filter = and_(
+            DevicePointsReading.device_id == device_id,
+            DevicePointsReading.site_id == site_id,
+        )
+        latest_per_point_rank = sql_func.row_number().over(
+            partition_by=DevicePointsReading.device_point_id,
+            order_by=DevicePointsReading.timestamp.desc(),
+        )
+        ranked_readings = (
             select(
                 DevicePointsReading.device_point_id,
                 DevicePointsReading.timestamp,
                 DevicePointsReading.derived_value,
-                sql_func.row_number().over(
-                    partition_by=DevicePointsReading.device_point_id,
-                    order_by=DevicePointsReading.timestamp.desc()
-                ).label('rn')
+                latest_per_point_rank.label("rn"),
             )
-            .where(
-                and_(
-                    DevicePointsReading.device_id == device_id,
-                    DevicePointsReading.site_id == site_id
-                )
-            )
+            .where(base_read_filter)
+            .subquery()
         )
 
-        ranked = rank_subquery.subquery()
-
+        # Step 2: join latest readings to point metadata.
         statement = (
             select(
-                ranked.c.timestamp,
-                ranked.c.derived_value,
-                DevicePoint.id.label('device_point_id'),
+                ranked_readings.c.timestamp,
+                ranked_readings.c.derived_value,
+                DevicePoint.id.label("device_point_id"),
                 DevicePoint.address,
                 DevicePoint.name,
                 DevicePoint.data_type,
@@ -442,12 +443,15 @@ async def get_latest_readings_for_device(
                 DevicePoint.scale_factor,
                 DevicePoint.is_derived,
             )
-            .join(ranked, ranked.c.device_point_id == DevicePoint.id)
+            .join(
+                ranked_readings,
+                ranked_readings.c.device_point_id == DevicePoint.id,
+            )
             .where(
                 and_(
-                    ranked.c.rn == 1,
+                    ranked_readings.c.rn == 1,
                     DevicePoint.device_id == device_id,
-                    DevicePoint.site_id == site_id
+                    DevicePoint.site_id == site_id,
                 )
             )
         )
