@@ -61,15 +61,14 @@ async def create_device_points(device_points_list: list[dict[str, object]]) -> N
         raise InternalError(f"Failed to create device points: {str(e)}")
 
 
-async def get_device_points(site_id: int, device_id: int) -> list[DevicePoint]:
+async def get_device_points(device_id: int) -> list[DevicePoint]:
     """
-    Get all points for a specific site and device.
+    Get all points for a specific device.
     """
     session_factory = get_async_session_factory()
     async with session_factory() as session:
         result = await session.execute(
             select(DevicePoint)
-            .where(DevicePoint.site_id == site_id)
             .where(DevicePoint.device_id == device_id)
             .order_by(DevicePoint.address.asc())
         )

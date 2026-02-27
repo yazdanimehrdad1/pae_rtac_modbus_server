@@ -70,7 +70,7 @@ async def poll_single_device_modbus(site_name: str, device: DeviceWithConfigs) -
     last_read_error: Optional[str] = None
 
     try:
-        device_points_all = await get_device_points(device.site_id, device.device_id)
+        device_points_all = await get_device_points(device.device_id)
         timestamp = datetime.now(timezone.utc).isoformat()
         timestamp_dt = datetime.now(timezone.utc)
 

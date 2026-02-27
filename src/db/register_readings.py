@@ -23,6 +23,23 @@ class DevicePointReadingDict(TypedDict):
     derived_value: Optional[float]
 
 
+class LatestDevicePointReadingDict(TypedDict):
+    device_point_id: int
+    register_address: int
+    name: str
+    data_type: str
+    unit: Optional[str]
+    scale_factor: Optional[float]
+    is_derived: bool
+    timestamp: datetime
+    derived_value: Optional[float]
+
+
+class LatestDevicePointReadingWithDeviceDict(LatestDevicePointReadingDict):
+    device_id: int
+    site_id: str
+
+
 async def insert_register_reading(
     device_id: int,
     site_id: Optional[str],
@@ -275,15 +292,15 @@ async def get_all_readings(
 
 async def get_latest_reading(
     device_id: int,
-    site_id: Optional[str],
+    site_id: str,
     register_address: int
-) -> Optional[Dict[str, Any]]:
+) -> Optional[LatestDevicePointReadingWithDeviceDict]:
     """
     Get the latest reading for a specific register.
     
     Args:
         device_id: Device ID
-        site_id: Optional Site ID (unused)
+        site_id: Site ID (unused)
         register_address: Register address
         
     Returns:
@@ -367,17 +384,16 @@ async def get_latest_reading(
 
 async def get_latest_readings_for_device(
     device_id: int,
-    site_id: Optional[str],
-    register_addresses: Optional[List[int]] = None
-) -> List[Dict[str, Any]]:
+    site_id: str,
+    register_addresses: List[int]
+) -> List[LatestDevicePointReadingDict]:
     """
     Get latest readings for all registers (or specific registers) of a device.
     
     Args:
         device_id: Device ID
-        site_id: Optional Site ID (unused)
-        register_addresses: Optional list of specific register addresses.
-                          If None, returns latest for all registers of the device.
+        site_id: Site ID (unused)
+        register_addresses: List of specific register addresses.
         
     Returns:
         List of latest reading dictionaries, one per register
@@ -463,7 +479,7 @@ async def get_latest_readings_for_device_n(
     site_id: Optional[str],
     latest_n: int,
     register_addresses: Optional[List[int]] = None
-) -> List[Dict[str, Any]]:
+) -> List[LatestDevicePointReadingDict]:
     """
     Get latest N readings per register (or specific registers) of a device.
 

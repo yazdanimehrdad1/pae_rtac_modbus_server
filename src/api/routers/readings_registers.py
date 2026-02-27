@@ -4,10 +4,11 @@ from datetime import datetime
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, HTTPException, status, Query
 
+from api.controllers.read import parse_register_addresses_from_query_param
+from api.controllers.reads import points_latest_readings_response_controller
 from db.register_readings import (
     get_all_readings,
     get_latest_reading,
-    get_latest_readings_for_device,
     get_latest_readings_for_device_n
 )
 from helpers.device_points import get_device_points
@@ -49,76 +50,33 @@ async def get_device_latest_readings(
             )
         
         # Get point metadata for this device
-        device_points = await get_device_points(site_id, device_id)
+        device_points = await get_device_points(device_id=device.device_id)
+
+        # Example: {1400: <DevicePoint id=10 address=1400 name="M_FREQ" ...>, 1401: <DevicePoint id=11 address=1401 name="M_FREQS" ...>}
+        # Values are full DevicePoint objects (string shows __repr__-style summary)
+        #TODO: this can also be retreived from cache
         points_by_address = {point.address: point for point in device_points}
 
         # Parse register_addresses if provided
-        register_list = None
-        if register_addresses:
-            try:
-                register_list = [int(addr.strip()) for addr in register_addresses.split(',')]
-            except ValueError:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Invalid register_addresses format. Expected comma-separated integers (e.g., '100,101,102')"
-                )
-        else:
-            register_list = sorted(points_by_address.keys())
-        
-        # Get latest readings
-        try:
-            readings = await get_latest_readings_for_device(device_id, site_id, register_list)
-        except ValueError as e:
-            # Site doesn't exist or device doesn't belong to site
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=str(e)
-            )
-        
-        readings_by_point: Dict[int, List[Dict[str, Any]]] = {}
-        for reading in readings:
-            readings_by_point.setdefault(reading["device_point_id"], []).append({
-                "timestamp": reading["timestamp"],
-                "derived_value": reading["derived_value"]
-            })
+        register_list = parse_register_addresses_from_query_param(
+            register_addresses,
+            points_by_address,
+        )
 
-        result: Dict[str, Dict[str, Any]] = {}
-        total_readings_count = 0
-        for register_address in register_list:
-            address_points = [p for p in device_points if p.address == register_address]
-            if not address_points:
-                logger.warning(
-                    "No DevicePoint metadata found for device %s, address %s",
-                    device_id,
-                    register_address
-                )
-                continue
 
-            base_point = next((p for p in address_points if not p.is_derived), address_points[0])
-            entry: Dict[str, Any] = {
-                "device_point_id": base_point.id,
-                "register_address": base_point.address,
-                "name": base_point.name,
-                "data_type": base_point.data_type,
-                "unit": base_point.unit,
-                "scale_factor": base_point.scale_factor,
-                "is_derived": base_point.is_derived
-            }
 
-            for point in address_points:
-                series_key = f"{point.name}_reads"
-                series = readings_by_point.get(point.id, [])
-                entry[series_key] = series
-                total_readings_count += len(series)
-
-            result[str(register_address)] = entry
-
+        points_latest_readings, total_readings_count = await points_latest_readings_response_controller(
+            device_id=device_id,
+            site_id=site_id,
+            points_by_address=points_by_address,
+            register_list=register_list,
+        )
         return {
             "site_id": site_id,
             "device_id": device_id,
             "device_name": device.name,
             "register_addresses": register_list,
-            "readings": result,
+            "readings": points_latest_readings,
             "count": total_readings_count
         }
         
@@ -231,7 +189,7 @@ async def get_multiple_registers_time_series(
             )
         
         # Get point metadata for this device
-        device_points = await get_device_points(site_id, device_id)
+        device_points = await get_device_points(device.device_id)
         points_by_address = {point.address: point for point in device_points}
 
         # Parse register addresses (optional)
