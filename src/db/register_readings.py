@@ -410,31 +410,11 @@ async def get_latest_readings_for_device(
         if device is None:
             raise ValueError(f"Device with id '{device_id}' not found")
         
-        # Step 1: rank readings per point (latest = rn == 1).
-        base_read_filter = and_(
-            DevicePointsReading.device_id == device_id,
-            DevicePointsReading.site_id == site_id,
-        )
-        latest_per_point_rank = sql_func.row_number().over(
-            partition_by=DevicePointsReading.device_point_id,
-            order_by=DevicePointsReading.timestamp.desc(),
-        )
-        ranked_readings = (
-            select(
-                DevicePointsReading.device_point_id,
-                DevicePointsReading.timestamp,
-                DevicePointsReading.derived_value,
-                latest_per_point_rank.label("rn"),
-            )
-            .where(base_read_filter)
-            .subquery()
-        )
-
-        # Step 2: join latest readings to point metadata.
+        # Use DISTINCT ON to grab the latest row per device_point_id.
         statement = (
             select(
-                ranked_readings.c.timestamp,
-                ranked_readings.c.derived_value,
+                DevicePointsReading.timestamp,
+                DevicePointsReading.derived_value,
                 DevicePoint.id.label("device_point_id"),
                 DevicePoint.address,
                 DevicePoint.name,
@@ -443,16 +423,19 @@ async def get_latest_readings_for_device(
                 DevicePoint.scale_factor,
                 DevicePoint.is_derived,
             )
-            .join(
-                ranked_readings,
-                ranked_readings.c.device_point_id == DevicePoint.id,
-            )
+            .join(DevicePoint, DevicePointsReading.device_point_id == DevicePoint.id)
             .where(
                 and_(
-                    ranked_readings.c.rn == 1,
+                    DevicePointsReading.device_id == device_id,
+                    DevicePointsReading.site_id == site_id,
                     DevicePoint.device_id == device_id,
                     DevicePoint.site_id == site_id,
                 )
+            )
+            .distinct(DevicePointsReading.device_point_id)
+            .order_by(
+                DevicePointsReading.device_point_id,
+                DevicePointsReading.timestamp.desc(),
             )
         )
 
