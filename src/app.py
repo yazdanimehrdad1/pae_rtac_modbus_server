@@ -5,7 +5,6 @@ Creates and configures the FastAPI app instance with routers, middleware, and li
 """
 
 from fastapi import FastAPI
-from fastapi.responses import JSONResponse
 
 from config import settings
 from logger import setup_logging, get_logger

@@ -6,9 +6,7 @@ Provides high-level caching operations with TTL support and key prefixing.
 
 import json
 from typing import Any, Optional
-from datetime import timedelta
 
-import redis.asyncio as aioredis
 
 from cache.connection import get_redis_client
 from config import settings

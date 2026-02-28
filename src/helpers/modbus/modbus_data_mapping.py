@@ -4,7 +4,6 @@ Modbus data mapping helpers.
 
 from datetime import datetime
 from typing import List
-import json
 
 from schemas.db_models.orm_models import DevicePoint, DevicePointsReading
 from schemas.api_models import ModbusRegisterValues

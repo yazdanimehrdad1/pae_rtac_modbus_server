@@ -1,12 +1,10 @@
 """APScheduler engine initialization and lifecycle management."""
 
-import asyncio
 import time
 from typing import Optional, Callable, Any
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
-from apscheduler.triggers.cron import CronTrigger
 
 from config import settings
 from logger import get_logger

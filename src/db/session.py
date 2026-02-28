@@ -5,10 +5,8 @@ Provides helper functions for working with async database sessions.
 """
 
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator, AsyncContextManager
+from typing import AsyncContextManager
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, delete
-from sqlalchemy.orm import selectinload
 
 from db.connection import get_async_session_factory
 from logger import get_logger

@@ -7,8 +7,7 @@ Uses SQLAlchemy 2.0+ async ORM.
 
 from datetime import datetime, timezone
 from typing import Optional, List
-from sqlalchemy import select, update
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from db.connection import get_async_session_factory

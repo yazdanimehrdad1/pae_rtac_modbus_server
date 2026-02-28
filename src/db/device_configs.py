@@ -11,7 +11,7 @@ from sqlalchemy.exc import IntegrityError
 from db.session import get_session
 from schemas.api_models import ConfigCreateRequest, ConfigUpdate, ConfigResponse
 from schemas.db_models.orm_models import Config, Device
-from utils.exceptions import ConflictError, NotFoundError, InternalError
+from utils.exceptions import ConflictError, NotFoundError
 from logger import get_logger
 
 logger = get_logger(__name__)

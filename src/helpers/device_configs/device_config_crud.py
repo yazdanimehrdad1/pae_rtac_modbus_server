@@ -1,6 +1,5 @@
 """Device config CRUD helper functions for DB/cache coordination."""
 
-import json
 
 from cache.cache import CacheService
 from db.device_configs import create_config_for_device, delete_config

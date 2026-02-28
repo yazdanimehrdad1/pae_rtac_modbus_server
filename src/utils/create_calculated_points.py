@@ -43,7 +43,6 @@ Examples:
   calculated_value = 123.4
 """
 
-from typing import List, Optional
 
 from schemas.api_models.types import (
     LatestDevicePointReadingModel,

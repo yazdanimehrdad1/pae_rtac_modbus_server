@@ -1,7 +1,6 @@
 """Register readings endpoints."""
 
-from datetime import datetime
-from typing import List, Optional, Dict, Any
+from typing import Optional
 from fastapi import APIRouter, HTTPException, status, Query
 
 from api.controllers.read import parse_register_addresses_from_query_param
@@ -10,7 +9,6 @@ from api.controllers.reads import (
     points_latest_readings_response_controller,
     points_time_series_response_controller,
 )
-from db.register_readings import get_latest_reading
 from helpers.device_points import get_device_points
 from helpers.devices import get_device_cache_db
 from logger import get_logger

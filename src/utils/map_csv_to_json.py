@@ -5,13 +5,12 @@ Converts register map CSV files to JSON format.
 """
 
 from pathlib import Path
-from typing import Dict, List, Any, Optional
+from typing import Dict, Any
 from datetime import datetime
 
 import pandas as pd
 
 from schemas.modbus_models import RegisterMap, RegisterPoint
-from db.connection import get_db_pool
 from logger import get_logger
 
 logger = get_logger(__name__)

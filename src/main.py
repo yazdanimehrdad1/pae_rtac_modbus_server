@@ -5,7 +5,6 @@ Uvicorn ASGI server with lifecycle hooks.
 """
 
 import uvicorn
-from app import app
 from config import settings
 from logger import get_logger
 

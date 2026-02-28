@@ -5,7 +5,7 @@ Handles CRUD operations for device_points_readings time-series table.
 """
 
 from datetime import datetime, timezone
-from typing import List, Optional, Dict, Any
+from typing import List, Optional
 from typing_extensions import TypedDict
 from sqlalchemy import select, and_, func as sql_func
 from sqlalchemy.dialects.postgresql import insert

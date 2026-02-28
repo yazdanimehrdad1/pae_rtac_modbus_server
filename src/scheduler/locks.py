@@ -4,10 +4,8 @@ Redis-based distributed locking for scheduler leader election and job execution.
 
 import asyncio
 import os
-import time
 from typing import Optional
 
-import redis.asyncio as aioredis
 
 from cache.connection import get_redis_client, check_redis_health
 from config import settings
