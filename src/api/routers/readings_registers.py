@@ -118,20 +118,21 @@ async def get_device_latest_readings_n(
             register_addresses,
             points_by_address,
         )
-        readings = await points_latest_readings_n_response_controller(
+        readings, count = await points_latest_readings_n_response_controller(
             device_id=device_id,
             site_id=site_id,
             latest_n=latest_n,
             register_list=register_list,
+            points_by_address=points_by_address,
         )
 
         return {
             "site_id": site_id,
             "device_id": device_id,
             "device_name": device.name,
-            "latest_n": latest_n,
+            "register_addresses": register_list,
             "readings": readings,
-            "count": len(readings)
+            "count": count
         }
     except NotFoundError as e:
         raise HTTPException(

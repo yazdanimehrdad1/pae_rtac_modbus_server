@@ -10,10 +10,10 @@ from schemas.api_models import (
     DeviceWithConfigs,
     DeviceDeleteResponse,
 )
-from db.devices import get_all_devices
 from helpers.devices import (
     create_device_cache_db,
     delete_device_cache_db,
+    get_devices_cache_db,
     get_device_cache_db,
     update_device_cache_db,
 )
@@ -35,7 +35,7 @@ async def get_all_devices_endpoint(site_id: int):
         HTTPException: If database error occurs
     """
     try:
-        devices = await get_all_devices(site_id)
+        devices = await get_devices_cache_db(site_id)
     except AppError as e:
         detail = {"error": type(e).__name__, "message": e.message}
         if e.payload:

@@ -194,7 +194,8 @@ async def points_latest_readings_n_response_controller(
     site_id: int,
     latest_n: int,
     register_list: Optional[List[int]],
-) -> List[Dict[str, Any]]:
+    points_by_address: Dict[int, DevicePoint],
+) -> Tuple[Dict[str, Dict[str, Any]], int]:
     try:
         readings = await get_latest_readings_for_device_n(
             device_id=device_id,
@@ -208,4 +209,58 @@ async def points_latest_readings_n_response_controller(
             detail=str(exc),
         ) from exc
 
-    return readings
+    points_by_id = {point.id: point for point in points_by_address.values()}
+
+    readings_by_point: Dict[int, List[PointReadSeriesItemModel]] = {}
+    for reading in readings:
+        point = points_by_id.get(reading["device_point_id"])
+        if point is None:
+            continue
+        reading_model = LatestDevicePointReadingModel(
+            device_point_id=point.id,
+            register_address=point.address,
+            name=point.name,
+            data_type=point.data_type,
+            unit=point.unit,
+            scale_factor=point.scale_factor,
+            is_derived=point.is_derived,
+            timestamp=reading["timestamp"],
+            derived_value=reading["derived_value"],
+            bitfield_detail=point.bitfield_detail,
+            enum_detail=point.enum_detail,
+        )
+        calculated_point = create_calculated_points(reading_model)
+        readings_by_point.setdefault(point.id, []).append(
+            PointReadSeriesItemModel(
+                timestamp=calculated_point.timestamp,
+                raw_value=reading.get("raw_value", reading_model.derived_value),
+                calculated_value=calculated_point.calculated_value,
+            )
+        )
+
+    result: Dict[str, Dict[str, Any]] = {}
+    total_count = 0
+    for register_address in (register_list or []):
+        base_point = points_by_address.get(register_address)
+        if base_point is None:
+            logger.warning(
+                "No DevicePoint metadata found for device %s, address %s",
+                device_id,
+                register_address,
+            )
+            continue
+        entry: Dict[str, Any] = {
+            "device_point_id": base_point.id,
+            "register_address": base_point.address,
+            "name": base_point.name,
+            "data_type": base_point.data_type,
+            "unit": base_point.unit,
+            "scale_factor": base_point.scale_factor,
+        }
+        series_key = f"{base_point.name}_latest_n"
+        series = readings_by_point.get(base_point.id, [])
+        entry[series_key] = [item.model_dump() for item in series]
+        total_count += len(series)
+        result[str(register_address)] = entry
+
+    return result, total_count
