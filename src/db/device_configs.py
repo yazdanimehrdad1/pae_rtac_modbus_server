@@ -84,7 +84,7 @@ async def create_config_for_device(
 
             config_row = Config(
                 config_id=config_id,
-                site_id=payload["site_id"],
+                site_id=payload["site_id"],#TODO: this can be removed Device-config -> Device -> Site relationship has this already.
                 device_id=payload["device_id"],
                 poll_kind=payload["poll_kind"],
                 poll_start_index=payload["poll_start_index"],

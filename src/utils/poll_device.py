@@ -17,6 +17,90 @@ from helpers.workers.device_poll import get_enabled_devices_to_poll, read_device
 
 logger = get_logger(__name__)
 
+async def poll_modbus_registers_per_site(site_id: int) -> None:
+    """
+    Scheduled job to poll Modbus registers for all enabled devices.
+    
+    This job:
+    1. Gets list of devices to poll (from database, filtered by poll_enabled)
+    2. For each device:
+       - Loads register map (cache first and DB second)
+       - Reads Modbus registers using device-specific polling config
+       - Maps register data to register points
+       - Stores data in Redis cache and database
+    3. Handles errors per device (isolated - one device failure doesn't stop others)
+    4. Logs summary statistics
+    """
+    logger.info("Starting Modbus polling job")
+
+    try:
+        complete_site_data = await get_complete_site_data(site_id)
+        if complete_site_data is None:
+            logger.warning(f"Site with id {site_id} not found")
+            return
+
+        site_name = complete_site_data.name
+        devices_list = complete_site_data.devices #TODO: this can be optimized to only query devices with poll_enabled=true in the first place, instead of getting all devices and filtering in python
+
+        if not devices_list:
+            logger.warning("No devices for site with id {site_id}")
+            return
+
+        enabled_devices_to_poll = await get_enabled_devices_to_poll(devices_list)
+
+        results: List[PollResult] = await asyncio.gather(
+            *[poll_single_device_modbus(site_name, device) for device in enabled_devices_to_poll],
+            return_exceptions=True
+        )
+
+        processed_results: List[PollResult] = []
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                device_name = enabled_devices_to_poll[i].name if i < len(enabled_devices_to_poll) else "unknown"
+                logger.error(f"Unexpected error polling device '{device_name}': {result}", exc_info=True)
+                processed_results.append({
+                    "device_name": device_name,
+                    "success": False,
+                    "cache_successful": 0,
+                    "cache_failed": 0,
+                    "db_successful": 0,
+                    "db_failed": 0,
+                    "error": str(result)
+                })
+            else:
+                processed_results.append(result)
+
+        results = processed_results
+
+        successful_devices = sum(1 for r in results if r.get("success", False))
+        failed_devices = len(results) - successful_devices
+        total_cache_successful = sum(r.get("cache_successful", 0) for r in results)
+        total_cache_failed = sum(r.get("cache_failed", 0) for r in results)
+        total_db_successful = sum(r.get("db_successful", 0) for r in results)
+        total_db_failed = sum(r.get("db_failed", 0) for r in results)
+
+        logger.info(
+            f"Modbus polling job completed: "
+            f"{successful_devices} device(s) successful, {failed_devices} device(s) failed | "
+            f"Cache: {total_cache_successful} successful, {total_cache_failed} failed | "
+            f"Database: {total_db_successful} successful, {total_db_failed} failed"
+        )
+
+        for result in results:
+            if not result.get("success", False):
+                logger.warning(
+                    f"Device '{result.get('device_name', 'unknown')}' polling failed: "
+                    f"{result.get('error', 'Unknown error')}"
+                )
+
+    except Exception as e:
+        logger.error(
+            f"Error in Modbus polling job: {e}",
+            exc_info=True
+        )
+        # Don't re-raise - let scheduler handle retry on next interval
+
+
 # TODO: eventually the device points should be queried as part of this function, and determines the polls range itself
 #  Inorder to do this we need to add register_type:holding, input, coils, discretes to the polling config and update the read_device_registers function to use it
 # Infact you can redefine the polling config in a helper function and and do the for loop as you are doing in the first TRY                                                                    
@@ -79,6 +163,7 @@ async def poll_single_device_modbus(site_name: str, device: DeviceWithConfigs) -
                 poll_count=config.poll_count,
                 poll_kind=config.poll_kind,
             )
+            # TODO: If the poll_count is greater than the max allowed by Modbus, we should split it into multiple polls and aggregate the results before mapping to points and storing in DB. This is to avoid Modbus read errors due to too many registers being read at once.
             try:
                 modbus_data_readings_per_config = await read_device_registers(
                     device_without_configs,
@@ -139,6 +224,9 @@ async def poll_single_device_modbus(site_name: str, device: DeviceWithConfigs) -
             logger.warning(result["error"])
             return result
 
+        # TODO: I think here there should be two types of DB storing
+        # 1: Storing raw registers for short term (maybe upto 1 week) for debugging and site development process.
+        # 2: Storing the mapped/calculated points for long term and historian purposes. This will be the data that is used by the frontend and other consumers.
         db_successful, db_failed = await store_device_data_in_db(
                 device.device_id,
                 device.site_id,
@@ -180,87 +268,3 @@ async def poll_single_device_modbus(site_name: str, device: DeviceWithConfigs) -
         )
 
     return result
-
-
-async def poll_modbus_registers_per_site(site_id: int) -> None:
-    """
-    Scheduled job to poll Modbus registers for all enabled devices.
-    
-    This job:
-    1. Gets list of devices to poll (from database, filtered by poll_enabled)
-    2. For each device:
-       - Loads register map (cache first and DB second)
-       - Reads Modbus registers using device-specific polling config
-       - Maps register data to register points
-       - Stores data in Redis cache and database
-    3. Handles errors per device (isolated - one device failure doesn't stop others)
-    4. Logs summary statistics
-    """
-    logger.info("Starting Modbus polling job")
-
-    try:
-        complete_site_data = await get_complete_site_data(site_id)
-        if complete_site_data is None:
-            logger.warning(f"Site with id {site_id} not found")
-            return
-
-        site_name = complete_site_data.name
-        devices_list = complete_site_data.devices
-
-        if not devices_list:
-            logger.warning("No devices for site with id {site_id}")
-            return
-
-        enabled_devices_to_poll = await get_enabled_devices_to_poll(devices_list)
-
-        results: List[PollResult] = await asyncio.gather(
-            *[poll_single_device_modbus(site_name, device) for device in enabled_devices_to_poll],
-            return_exceptions=True
-        )
-
-        processed_results: List[PollResult] = []
-        for i, result in enumerate(results):
-            if isinstance(result, Exception):
-                device_name = enabled_devices_to_poll[i].name if i < len(enabled_devices_to_poll) else "unknown"
-                logger.error(f"Unexpected error polling device '{device_name}': {result}", exc_info=True)
-                processed_results.append({
-                    "device_name": device_name,
-                    "success": False,
-                    "cache_successful": 0,
-                    "cache_failed": 0,
-                    "db_successful": 0,
-                    "db_failed": 0,
-                    "error": str(result)
-                })
-            else:
-                processed_results.append(result)
-
-        results = processed_results
-
-        successful_devices = sum(1 for r in results if r.get("success", False))
-        failed_devices = len(results) - successful_devices
-        total_cache_successful = sum(r.get("cache_successful", 0) for r in results)
-        total_cache_failed = sum(r.get("cache_failed", 0) for r in results)
-        total_db_successful = sum(r.get("db_successful", 0) for r in results)
-        total_db_failed = sum(r.get("db_failed", 0) for r in results)
-
-        logger.info(
-            f"Modbus polling job completed: "
-            f"{successful_devices} device(s) successful, {failed_devices} device(s) failed | "
-            f"Cache: {total_cache_successful} successful, {total_cache_failed} failed | "
-            f"Database: {total_db_successful} successful, {total_db_failed} failed"
-        )
-
-        for result in results:
-            if not result.get("success", False):
-                logger.warning(
-                    f"Device '{result.get('device_name', 'unknown')}' polling failed: "
-                    f"{result.get('error', 'Unknown error')}"
-                )
-
-    except Exception as e:
-        logger.error(
-            f"Error in Modbus polling job: {e}",
-            exc_info=True
-        )
-        # Don't re-raise - let scheduler handle retry on next interval
