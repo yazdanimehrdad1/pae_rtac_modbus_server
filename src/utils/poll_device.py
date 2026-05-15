@@ -2,7 +2,7 @@
 
 import asyncio
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import List
 
 from helpers.modbus import translate_modbus_error
 from pymodbus.exceptions import ConnectionException
@@ -16,6 +16,8 @@ from helpers.device_points import get_device_points
 from helpers.workers.device_poll import get_enabled_devices_to_poll, read_device_registers
 
 logger = get_logger(__name__)
+
+_MODBUS_MAX_REGISTERS_PER_READ = 125
 
 async def poll_modbus_registers_per_site(site_id: int) -> None:
     """
@@ -101,9 +103,112 @@ async def poll_modbus_registers_per_site(site_id: int) -> None:
         # Don't re-raise - let scheduler handle retry on next interval
 
 
+async def _read_config_registers(
+    device: DeviceListItem,
+    polling_config: PollingConfig,
+) -> list:
+    """
+    Read Modbus registers in chunks of _MODBUS_MAX_REGISTERS_PER_READ.
+
+    Returns the aggregated register list, or [] if any chunk returns no data.
+    """
+    start_address = int(polling_config.poll_address)
+    total_count = polling_config.poll_count
+
+    if total_count <= _MODBUS_MAX_REGISTERS_PER_READ:
+        return await read_device_registers(device, polling_config)
+
+    combined = []
+    offset = 0
+    while offset < total_count:
+        chunk_count = min(_MODBUS_MAX_REGISTERS_PER_READ, total_count - offset)
+        chunk_config = PollingConfig(
+            poll_address=start_address + offset,
+            poll_count=chunk_count,
+            poll_kind=polling_config.poll_kind,
+        )
+        chunk_data = await read_device_registers(device, chunk_config)
+        if not chunk_data:
+            logger.warning(
+                "Chunked read returned no data at address=%s, count=%s — aborting poll",
+                start_address + offset,
+                chunk_count,
+            )
+            return []
+        combined.extend(chunk_data)
+        offset += chunk_count
+
+    return combined
+
+
+async def _poll_all_device_configs(
+    configs,
+    device_without_configs: DeviceListItem,
+    device_name: str,
+) -> dict[int, int | bool]:
+    """
+    Poll every config block for a device and return a register map.
+
+    Keys are absolute Modbus register addresses; values are the raw readings.
+    Multiple configs are merged into a single map.
+    """
+    register_map: dict[int, int | bool] = {}
+
+    for config in configs:
+        polling_config = PollingConfig(
+            poll_address=config.poll_start_index,
+            poll_count=config.poll_count,
+            poll_kind=config.poll_kind,
+        )
+        try:
+            modbus_data = await _read_config_registers(device_without_configs, polling_config)
+
+            if not modbus_data:
+                logger.info(
+                    "No Modbus data readings for device '%s' (config_id='%s')",
+                    device_name,
+                    config.config_id,
+                )
+                continue
+
+            start_address = int(polling_config.poll_address)
+            register_map.update({
+                start_address + i: v
+                for i, v in enumerate(modbus_data)
+            })
+
+        except Exception as e:
+            if isinstance(e, ConnectionException):
+                logger.warning(
+                    f"Error reading device registers: {e}, polling_config: {polling_config}"
+                )
+            else:
+                logger.error(
+                    f"Error reading device registers: {e}, polling_config: {polling_config}",
+                    exc_info=True,
+                )
+            if device_without_configs.read_from_aggregator:
+                error_host = settings.modbus_host
+                error_port = settings.modbus_port
+            else:
+                error_host = device_without_configs.host
+                error_port = device_without_configs.port
+            status_code, error_message = translate_modbus_error(
+                e,
+                host=error_host,
+                port=error_port,
+            )
+            logger.warning(
+                f"Error polling device '{device_name}': "
+                f"status_code={status_code}, error_message={error_message}"
+            )
+
+    return register_map
+
+
 # TODO: eventually the device points should be queried as part of this function, and determines the polls range itself
 #  Inorder to do this we need to add register_type:holding, input, coils, discretes to the polling config and update the read_device_registers function to use it
-# Infact you can redefine the polling config in a helper function and and do the for loop as you are doing in the first TRY                                                                    
+# Infact you can redefine the polling config in a helper function and and do the for loop as you are doing in the first TRY
 async def poll_single_device_modbus(site_name: str, device: DeviceWithConfigs) -> PollResult:
     """
     Poll a single device: load register map, read registers, map data, and store in cache/DB.
@@ -148,73 +253,21 @@ async def poll_single_device_modbus(site_name: str, device: DeviceWithConfigs) -
     total_cache_failed = 0
     total_db_successful = 0
     total_db_failed = 0
-    combined_mapped_registers_list_all_configs_per_device = []
-    last_polling_config = None
-    last_read_error: Optional[str] = None
-
     try:
         device_points_all = await get_device_points(device.device_id)
-        timestamp = datetime.now(timezone.utc).isoformat()
+        # timestamp = datetime.now(timezone.utc).isoformat()
         timestamp_dt = datetime.now(timezone.utc)
 
-        for config in device.configs:
-            polling_config = PollingConfig(
-                poll_address=config.poll_start_index,
-                poll_count=config.poll_count,
-                poll_kind=config.poll_kind,
-            )
-            # TODO: If the poll_count is greater than the max allowed by Modbus, we should split it into multiple polls and aggregate the results before mapping to points and storing in DB. This is to avoid Modbus read errors due to too many registers being read at once.
-            try:
-                modbus_data_readings_per_config = await read_device_registers(
-                    device_without_configs,
-                    polling_config
-                )
 
-                if not modbus_data_readings_per_config:
-                    logger.info(
-                        "No Modbus data readings for device '%s' (config_id='%s')",
-                        device_name,
-                        config.config_id
-                    )
-                    continue
+        register_map = await _poll_all_device_configs(
+            device.configs, device_without_configs, device_name
+        )
 
-                device_points = [
-                    point for point in device_points_all
-                    if point.config_id == config.config_id
-                ]
-
-                mapped_registers_readings_list = map_modbus_data_to_device_points(
-                    timestamp_dt=timestamp_dt,
-                    device_points_list=device_points,
-                    modbus_read_data=modbus_data_readings_per_config,
-                    poll_start_address=int(polling_config.poll_address)
-                )
-                combined_mapped_registers_list_all_configs_per_device.extend(mapped_registers_readings_list)
-                last_polling_config = polling_config
-
-            except Exception as e:
-                if isinstance(e, ConnectionException):
-                    logger.warning(f"Error reading device registers: {e}, polling_config: {polling_config}")
-                else:
-                    logger.error(f"Error reading device registers: {e}, polling_config: {polling_config}", exc_info=True)
-                if device.read_from_aggregator:
-                    error_host = settings.modbus_host
-                    error_port = settings.modbus_port
-                else:
-                    error_host = device.host
-                    error_port = device.port
-                status_code, error_message = translate_modbus_error(
-                    e,
-                    host=error_host,
-                    port=error_port
-                )
-                result["error"] = f"status_code={status_code}, error_message={error_message}"
-                last_read_error = result["error"]
-                logger.warning(
-                    f"Error polling device '{device_name}': {result['error']}"
-                )
-                continue
-
+        mapped_raw_registers_to_device_points_all = map_modbus_data_to_device_points(
+            timestamp_dt=timestamp_dt,
+            device_points_list=device_points_all,
+            register_map=register_map,
+        )
 
         if not combined_mapped_registers_list_all_configs_per_device or last_polling_config is None:
             if last_read_error:
