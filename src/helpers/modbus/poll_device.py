@@ -1,8 +1,26 @@
 """Polling helpers for Modbus data collection."""
 
 import asyncio
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import List
+
+
+@dataclass
+class FailedConfig:
+    config_id: str
+    status_code: int
+    error_message: str
+
+
+@dataclass
+class ConfigPollResult:
+    register_map: dict[int, int | bool]
+    failed_configs: list[FailedConfig] = field(default_factory=list)
+
+    @property
+    def has_failures(self) -> bool:
+        return bool(self.failed_configs)
 
 from helpers.modbus import translate_modbus_error
 from pymodbus.exceptions import ConnectionException
@@ -11,6 +29,7 @@ from logger import get_logger
 from helpers.modbus.modbus_data_mapping import map_modbus_data_to_device_points
 from helpers.sites import get_complete_site_data
 from schemas.api_models import DeviceListItem, DeviceWithConfigs, PollResult, PollingConfig
+from schemas.api_models.types import FailedConfigInfo
 from utils.store_data_readings import store_device_data_in_db, DbStoreResult
 from helpers.device_points import get_device_points
 from helpers.workers.device_poll import get_enabled_devices_to_poll, read_device_registers
@@ -50,7 +69,7 @@ async def poll_modbus_registers_per_site(site_id: int) -> None:
             logger.warning("No devices for site with id {site_id}")
             return
 
-        enabled_devices_to_poll = await get_enabled_devices_to_poll(devices_list)
+        enabled_devices_to_poll = await get_enabled_devices_to_poll(devices_list, site_name)
 
         results: List[PollResult] = await asyncio.gather(
             *[poll_single_device_modbus(site_name, device) for device in enabled_devices_to_poll],
@@ -157,17 +176,52 @@ async def poll_single_device_modbus(site_name: str, device: DeviceWithConfigs) -
         device_points_all = await get_device_points(device.device_id)
         timestamp_dt = datetime.now(timezone.utc)
 
-        register_address_value_map_all = await _poll_all_device_configs_register_values( device.configs, device_without_configs, device_name)
+        config_poll_result: ConfigPollResult = await _poll_all_device_configs_register_values(
+            device.configs, device_without_configs, device_name, site_name
+        )
+
+        if config_poll_result.has_failures:
+            logger.warning(
+                "site_name='%s', device_name='%s': %d config(s) failed to poll: %s",
+                site_name,
+                device_name,
+                len(config_poll_result.failed_configs),
+                [f.config_id for f in config_poll_result.failed_configs],
+            )
+            result["configs_failed"] = [
+                FailedConfigInfo(
+                    config_id=f.config_id,
+                    status_code=f.status_code,
+                    error_message=f.error_message,
+                )
+                for f in config_poll_result.failed_configs
+            ]
+
+        register_address_value_map_all = config_poll_result.register_map
 
         mapped_raw_registers_to_device_points_all = map_modbus_data_to_device_points(
             timestamp_dt=timestamp_dt,
             device_points_list=device_points_all,
             register_map=register_address_value_map_all,
+            site_name=site_name,
+            device_name=device_name,
         )
 
+        # TODO: remove — dev-only inspection block
+        if settings.log_level.upper() == "DEBUG":
+            logger.debug("DEV | device_points_all: %s", device_points_all)
+            logger.debug("DEV | config_poll_result: %s", config_poll_result)
+            logger.debug("DEV | mapped_raw_registers_to_device_points_all: %s", mapped_raw_registers_to_device_points_all)
+
         if not mapped_raw_registers_to_device_points_all:
-            result["error"] = f"No device points configured for '{device_name}' — skipping DB store"
-            logger.warning(result["error"])
+            result["error"] = f"No device points configured — skipping DB store"
+            logger.warning(f"site_name='{site_name}', device_name='{device_name}': no device points configured — skipping DB store")
+            return result
+
+        has_any_value = any(r.derived_value is not None for r in mapped_raw_registers_to_device_points_all)
+        if not has_any_value:
+            result["error"] = "All readings null — complete poll failure"
+            logger.warning(f"site_name='{site_name}', device_name='{device_name}': all readings are null (complete poll failure) — skipping DB store")
             return result
 
         # TODO: I think here there should be two types of DB storing
@@ -177,11 +231,12 @@ async def poll_single_device_modbus(site_name: str, device: DeviceWithConfigs) -
                 device.device_id,
                 device.site_id,
                 mapped_raw_registers_to_device_points_all,
-                timestamp_dt
+                timestamp_dt,
+                device_name=device_name,
         )
 
-        total_db_successful += db_result.successful
-        total_db_failed += db_result.failed
+        total_db_successful = db_result.successful
+        total_db_failed = db_result.failed
 
         result["success"] = True
         result["cache_successful"] = total_cache_successful
@@ -190,9 +245,9 @@ async def poll_single_device_modbus(site_name: str, device: DeviceWithConfigs) -
         result["db_failed"] = total_db_failed
 
         logger.info(
-            f"Device '{device_name}' polling completed: "
-            f"Cache: {total_cache_successful} successful, {total_cache_failed} failed | "
-            f"Database: {total_db_successful} successful, {total_db_failed} failed"
+            f"site_name='{site_name}', device_name='{device_name}': polling completed — "
+            f"DB: {total_db_successful} stored, {total_db_failed} failed | "
+            f"Cache: {total_cache_successful} stored, {total_cache_failed} failed"
         )
 
     except Exception as e:
@@ -209,7 +264,7 @@ async def poll_single_device_modbus(site_name: str, device: DeviceWithConfigs) -
         )
         result["error"] = f"status_code={status_code}, error_message={error_message}"
         logger.error(
-            f"Error polling device '{device_name}': {result['error']}",
+            f"site_name='{site_name}', device_name='{device_name}': polling error — {result['error']}",
             exc_info=True
         )
 
@@ -219,15 +274,19 @@ async def _poll_all_device_configs_register_values(
     configs,
     device_without_configs: DeviceListItem,
     device_name: str,
-) -> dict[int, int | bool]:
+    site_name: str = "",
+) -> ConfigPollResult:
     """
-    Poll every config block for a device and return one merged register map.
+    Poll every config block for a device and return a merged register map plus
+    any configs that failed, so the caller can surface partial failures.
     """
 
     register_address_value_map: dict[int, int | bool] = {}
+    failed_configs: list[FailedConfig] = []
 
     for config in configs:
         polling_config = None  # safe default so except block can always reference it
+        config_id = str(config.config_id)
 
         try:
             polling_config = PollingConfig(
@@ -239,13 +298,16 @@ async def _poll_all_device_configs_register_values(
             config_register_address_value_map = await _read_config_registers(
                 device_without_configs,
                 polling_config,
+                site_name=site_name,
+                config_id=config_id,
             )
 
             if not config_register_address_value_map:
                 logger.info(
-                    "No Modbus data readings for device '%s' (config_id='%s')",
+                    "site_name='%s', device_name='%s', device_config_ID='%s': no register data returned",
+                    site_name,
                     device_name,
-                    config.config_id,
+                    config_id,
                 )
                 continue
 
@@ -275,27 +337,34 @@ async def _poll_all_device_configs_register_values(
 
             if isinstance(error, ConnectionException):
                 logger.warning(
-                    "Connection error polling device '%s' (config_id='%s', "
-                    "host=%s, port=%s, config=%s): [%s] %s",
-                    device_name, config.config_id, error_host, error_port,
-                    polling_config, status_code, error_message,
+                    "site_name='%s', device_name='%s', device_config_ID='%s': "
+                    "connection error (host=%s, port=%s): [%s] %s",
+                    site_name, device_name, config_id, error_host, error_port,
+                    status_code, error_message,
                 )
             else:
                 logger.error(
-                    "Unexpected error polling device '%s' (config_id='%s', "
-                    "host=%s, port=%s, config=%s): [%s] %s",
-                    device_name, config.config_id, error_host, error_port,
-                    polling_config, status_code, error_message,
+                    "site_name='%s', device_name='%s', device_config_ID='%s': "
+                    "unexpected poll error (host=%s, port=%s): [%s] %s",
+                    site_name, device_name, config_id, error_host, error_port,
+                    status_code, error_message,
                     exc_info=True,
                 )
-            # continue to the next config — one failed config does not abort the device poll
 
-    return register_address_value_map
+            failed_configs.append(FailedConfig(
+                config_id=config_id,
+                status_code=status_code,
+                error_message=error_message,
+            ))
+
+    return ConfigPollResult(register_map=register_address_value_map, failed_configs=failed_configs)
 
 
 async def _read_config_registers(
     device: DeviceListItem,
     polling_config: PollingConfig,
+    site_name: str = "",
+    config_id: str = "",
 ) -> dict[int, int | bool]:
     """
     Read Modbus registers in chunks and return a register map.
@@ -316,7 +385,7 @@ async def _read_config_registers(
     # Simple single-read case
     if total_count <= _MODBUS_MAX_REGISTERS_PER_READ:
 
-        raw_values = await read_device_registers(device, polling_config)
+        raw_values = await read_device_registers(device, polling_config, site_name=site_name, config_id=config_id)
 
         if not raw_values:
             return {}
@@ -329,16 +398,16 @@ async def _read_config_registers(
         return register_address_value_map
 
     # Chunked-read case
-    offset = 0
+    chunk_offset = 0
 
-    while offset < total_count:
+    while chunk_offset < total_count:
 
         chunk_count = min(
             _MODBUS_MAX_REGISTERS_PER_READ,
-            total_count - offset,
+            total_count - chunk_offset,
         )
 
-        chunk_start_address = start_address + offset
+        chunk_start_address = start_address + chunk_offset
 
         chunk_config = PollingConfig(
             poll_address=chunk_start_address,
@@ -346,13 +415,13 @@ async def _read_config_registers(
             poll_kind=polling_config.poll_kind,
         )
 
-        chunk_data = await read_device_registers(device, chunk_config)
+        chunk_data = await read_device_registers(device, chunk_config, site_name=site_name, config_id=config_id)
 
         if not chunk_data:
             logger.warning(
-                "Chunked read returned no data at address=%s, count=%s — aborting poll",
-                chunk_start_address,
-                chunk_count,
+                "site_name='%s', device_name='%s', device_config_ID='%s': "
+                "chunked read returned no data at address=%s, count=%s — aborting poll",
+                site_name, device.name, config_id, chunk_start_address, chunk_count,
             )
             return {}
 
@@ -362,7 +431,7 @@ async def _read_config_registers(
             for i, value in enumerate(chunk_data)
         })
 
-        offset += chunk_count
+        chunk_offset += chunk_count
 
     return register_address_value_map
 

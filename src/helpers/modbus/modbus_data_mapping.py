@@ -212,6 +212,8 @@ def map_modbus_data_to_device_points(
     timestamp_dt: datetime,
     device_points_list: list[DevicePoint],
     register_map: dict[int, int | bool],
+    site_name: str = "",
+    device_name: str = "",
 ) -> list[DevicePointsReading]:
     readings = []
 
@@ -223,12 +225,16 @@ def map_modbus_data_to_device_points(
         )
 
         if not extraction.success:
+            logger.debug(
+                "site_name='%s', device_name='%s', device_point_name='%s': "
+                "register extraction failed (%s) — %s",
+                site_name, device_name, point.name, extraction.quality, extraction.reason,
+            )
             readings.append(
                 DevicePointsReading(
                     timestamp=timestamp_dt,
                     device_point_id=point.id,
                     derived_value=None,
-                    quality=extraction.quality,
                 )
             )
             continue
@@ -238,155 +244,23 @@ def map_modbus_data_to_device_points(
             data_type=point.data_type or "uint16",
             byte_order=point.byte_order or "big",
             word_order=point.word_order or "msw_first",
-            scale=point.scale or 1.0,
-            offset=point.offset or 0.0,
+            scale=point.scale_factor or 1.0,
+            offset=point.register_offset or 0.0,
         )
+
+        if not decoded.success:
+            logger.debug(
+                "site_name='%s', device_name='%s', device_point_name='%s': "
+                "decode failed (%s) — %s",
+                site_name, device_name, point.name, decoded.quality, decoded.reason,
+            )
 
         readings.append(
             DevicePointsReading(
                 timestamp=timestamp_dt,
                 device_point_id=point.id,
                 derived_value=decoded.value,
-                quality=decoded.quality,
             )
         )
 
     return readings
-
-
-
-
-# def map_modbus_data_to_device_points(
-#     timestamp_dt: datetime,
-#     device_points_list: list[DevicePoint],
-#     modbus_read_data: ModbusRegisterValues,
-#     poll_start_address: int
-# ) -> list[DevicePointsReading]:
-#     """
-#     Map raw Modbus read data to register points from register map.
-#     """
-#     logger.info(f"Mapping {len(device_points_list)} register points to Modbus read data")
-
-#     mapped_registers_readings_list: List[DevicePointsReading] = []
-#     consumed_registers: set[int] = set()
-
-#     logger.info("this is poll_start_address %s", poll_start_address)
-
-#     for point_index, point in enumerate(device_points_list):
-#         point_name = point.name
-#         point_address = point.address
-#         point_size = point.size
-#         point_data_type = point.data_type
-#         point_byte_order = point.byte_order or "big-endian"
-
-#         if not validate_point_mapping_fields(
-#             point_index,
-#             point_name,
-#             point_address,
-#             point_size,
-#             poll_start_address,
-#             len(modbus_read_data),
-#         ):
-#             continue
-
-#         data_index = point_address - poll_start_address
-
-#         if point_size == 1:
-#             if point_address in consumed_registers:
-#                 logger.warning(
-#                     f"Skipping point '{point_name}' (address={point_address}, size={point_size}): "
-#                     "register already processed"
-#                 )
-#                 continue
-#             consumed_registers.add(point_address)
-#             point_value_derived = modbus_read_data[data_index]
-#         else:
-#             point_registers = set(range(point_address, point_address + point_size))
-#             if consumed_registers.intersection(point_registers):
-#                 logger.warning(
-#                     f"Skipping point '{point_name}' (address={point_address}, size={point_size}): "
-#                     "registers already processed"
-#                 )
-#                 continue
-
-#             consumed_registers.update(point_registers)
-#             point_values = modbus_read_data[data_index:data_index + point_size]
-#             try:
-#                 point_value_derived = convert_multi_register_value(
-#                     register_values=point_values,
-#                     data_type=point_data_type,
-#                     size=point_size,
-#                     byte_order=point_byte_order
-#                 )
-#             except ValueError:
-#                 point_value_derived = concat_register_values(
-#                     register_values=point_values,
-#                     byte_order=point_byte_order
-#                 )
-#                 logger.debug(
-#                     f"Concatenated {len(point_values)} registers for '{point_name}' "
-#                     f"(address={point_address}, size={point_size})"
-#                 )
-
-       
-
-#         mapped_register_reading = DevicePointsReading(
-#             timestamp=timestamp_dt,
-#             site_id=point.site_id,
-#             device_id=point.device_id,
-#             device_point_id=point.id,
-#             derived_value=point_value_derived
-#         )
-
-#         mapped_registers_readings_list.append(mapped_register_reading)
-#         logger.debug(
-#             f"Mapped register '{point_name}' (address={point_address}, index={data_index}): "
-#             f"value={point_value_derived}"
-#         )
-
-#     logger.info(
-#         f"Mapped {len(mapped_registers_readings_list)} out of {len(device_points_list)} register points "
-#         f"from Modbus read data (start_address={poll_start_address}, read_count={len(modbus_read_data)})"
-#     )
-
-#     return mapped_registers_readings_list
-
-# def _decode_register_value(
-#     register_values: ModbusRegisterValues,
-#     data_type: str,
-#     size: int,
-#     byte_order: str,
-#     point_name: str,
-# ) -> int | float | bool:
-#     if size == 1:
-#         return register_values[0]
-#     try:
-#         return convert_multi_register_value(
-#             register_values=register_values,
-#             data_type=data_type,
-#             size=size,
-#             byte_order=byte_order,
-#         )
-#     except ValueError:
-#         logger.debug(
-#             f"Concatenated {len(register_values)} registers for '{point_name}' "
-#             f"(size={size})"
-#         )
-#         return concat_register_values(
-#             register_values=register_values,
-#             byte_order=byte_order,
-#         )
-
-
-# def _build_device_point_reading(
-#     point: DevicePoint,
-#     timestamp: datetime,
-#     derived_value: int | float | bool,
-# ) -> DevicePointsReading:
-#     return DevicePointsReading(
-#         timestamp=timestamp,
-#         site_id=point.site_id,
-#         device_id=point.device_id,
-#         device_point_id=point.id,
-#         derived_value=derived_value,
-#     )

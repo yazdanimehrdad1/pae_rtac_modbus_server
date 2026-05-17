@@ -114,7 +114,8 @@ async def store_device_data_in_db(
     device_id: int,
     site_id: str,
     points_readings_list: List[DevicePointsReading],
-    timestamp_dt: datetime
+    timestamp_dt: datetime,
+    device_name: str = "",
 ) -> DbStoreResult:
     """
     Store device point readings in the database.
@@ -132,13 +133,13 @@ async def store_device_data_in_db(
             points_readings_list=points_readings_list,
             timestamp_dt=timestamp_dt,
         )
-        logger.info(f"Bulk insert: stored {inserted_count} readings")
+        logger.info(f"site_id='{site_id}', device_name='{device_name}': bulk insert stored {inserted_count} readings")
         return DbStoreResult(successful=inserted_count, failed=0)
 
     except Exception as e:
         logger.warning(
-            f"Bulk insert failed ({e}), falling back to one-by-one inserts "
-            f"for {len(points_readings_list)} readings",
+            f"site_id='{site_id}', device_name='{device_name}': bulk insert failed ({e}), "
+            f"falling back to one-by-one inserts for {len(points_readings_list)} readings",
             exc_info=True,
         )
 
@@ -155,5 +156,5 @@ async def store_device_data_in_db(
         else:
             failed += 1
 
-    logger.info(f"One-by-one fallback: {successful} stored, {failed} failed")
+    logger.info(f"site_id='{site_id}', device_name='{device_name}': one-by-one fallback — {successful} stored, {failed} failed")
     return DbStoreResult(successful=successful, failed=failed, used_fallback=True)

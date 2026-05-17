@@ -525,6 +525,22 @@ class DevicePoint(Base):
         comment="Byte order for interpretation (e.g., big-endian, little-endian)"
     )
 
+    word_order: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="msw_first",
+        server_default="msw_first",
+        comment="Word order for multi-register types: msw_first or lsw_first"
+    )
+
+    register_offset: Mapped[float] = mapped_column(
+        Float,
+        nullable=False,
+        default=0.0,
+        server_default="0.0",
+        comment="Linear offset applied after scaling: final = raw * scale_factor + register_offset"
+    )
+
     # Table-level constraints
     __table_args__ = (
         # Primary uniqueness: point names must be unique per site/device

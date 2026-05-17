@@ -26,6 +26,13 @@ class DevicePointData(TypedDict, total=False):
     byte_order: str
 
 
+class FailedConfigInfo(TypedDict):
+    """Details of a single config block that failed during polling."""
+    config_id: str
+    status_code: int
+    error_message: str
+
+
 class PollResult(TypedDict, total=False):
     """Result of polling a single device."""
     device_name: str
@@ -35,6 +42,7 @@ class PollResult(TypedDict, total=False):
     db_successful: int
     db_failed: int
     error: Optional[str]
+    configs_failed: list[FailedConfigInfo]
 
 
 ModbusRegisterValues: TypeAlias = list[int | bool]

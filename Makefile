@@ -184,8 +184,12 @@ apply-migration:
 run:
 	@cd src && python -m main
 
-# Seed database with sample data (in container)
+# Seed database with development mock data (copies files into running container first)
 seed-db:
+	@echo "Copying seed files into container..."
+	@docker cp tests/seed_db.py pae-rtac-server:/app/tests/seed_db.py
+	@docker cp tests/dev_mock_data.py pae-rtac-server:/app/tests/dev_mock_data.py
+	@echo "Running seed script..."
 	@docker-compose -f docker-compose.yaml exec pae-rtac-server python tests/seed_db.py
 
 stop_rm_all:
