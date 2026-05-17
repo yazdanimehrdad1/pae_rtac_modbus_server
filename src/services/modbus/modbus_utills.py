@@ -2,7 +2,7 @@
 from typing import List, Union
 
 from config import settings
-from modbus.client import ModbusClient
+from services.modbus.client import ModbusClient
 class ModbusUtils:
     def __init__(self, modbus_client: ModbusClient):
         self.modbus_client = modbus_client

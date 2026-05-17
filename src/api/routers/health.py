@@ -6,7 +6,7 @@ from fastapi import APIRouter
 from sqlalchemy import text
 
 from schemas.api_models import HealthResponse
-from modbus.client import ModbusClient
+from services.modbus.client import ModbusClient
 from cache.connection import get_redis_client
 from db.connection import check_db_health, get_async_engine, get_db_pool
 from config import settings

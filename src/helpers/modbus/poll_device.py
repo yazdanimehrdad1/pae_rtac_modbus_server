@@ -11,7 +11,7 @@ from logger import get_logger
 from helpers.modbus.modbus_data_mapping import map_modbus_data_to_device_points
 from helpers.sites import get_complete_site_data
 from schemas.api_models import DeviceListItem, DeviceWithConfigs, PollResult, PollingConfig
-from utils.store_data_readings import store_device_data_in_db
+from utils.store_data_readings import store_device_data_in_db, DbStoreResult
 from helpers.device_points import get_device_points
 from helpers.workers.device_poll import get_enabled_devices_to_poll, read_device_registers
 
@@ -36,13 +36,15 @@ async def poll_modbus_registers_per_site(site_id: int) -> None:
     logger.info("Starting Modbus polling job")
 
     try:
+        # TODO: I think this can also be obtained from cache instead of DB
         complete_site_data = await get_complete_site_data(site_id)
         if complete_site_data is None:
             logger.warning(f"Site with id {site_id} not found")
             return
-
+        #TODO: this can be optimized to only query devices with poll_enabled=true in the first place, 
+        # instead of getting all devices and filtering in python
         site_name = complete_site_data.name
-        devices_list = complete_site_data.devices #TODO: this can be optimized to only query devices with poll_enabled=true in the first place, instead of getting all devices and filtering in python
+        devices_list = complete_site_data.devices 
 
         if not devices_list:
             logger.warning("No devices for site with id {site_id}")
@@ -103,109 +105,6 @@ async def poll_modbus_registers_per_site(site_id: int) -> None:
         # Don't re-raise - let scheduler handle retry on next interval
 
 
-async def _read_config_registers(
-    device: DeviceListItem,
-    polling_config: PollingConfig,
-) -> list:
-    """
-    Read Modbus registers in chunks of _MODBUS_MAX_REGISTERS_PER_READ.
-
-    Returns the aggregated register list, or [] if any chunk returns no data.
-    """
-    start_address = int(polling_config.poll_address)
-    total_count = polling_config.poll_count
-
-    if total_count <= _MODBUS_MAX_REGISTERS_PER_READ:
-        return await read_device_registers(device, polling_config)
-
-    combined = []
-    offset = 0
-    while offset < total_count:
-        chunk_count = min(_MODBUS_MAX_REGISTERS_PER_READ, total_count - offset)
-        chunk_config = PollingConfig(
-            poll_address=start_address + offset,
-            poll_count=chunk_count,
-            poll_kind=polling_config.poll_kind,
-        )
-        chunk_data = await read_device_registers(device, chunk_config)
-        if not chunk_data:
-            logger.warning(
-                "Chunked read returned no data at address=%s, count=%s — aborting poll",
-                start_address + offset,
-                chunk_count,
-            )
-            return []
-        combined.extend(chunk_data)
-        offset += chunk_count
-
-    return combined
-
-
-async def _poll_all_device_configs(
-    configs,
-    device_without_configs: DeviceListItem,
-    device_name: str,
-) -> dict[int, int | bool]:
-    """
-    Poll every config block for a device and return a register map.
-
-    Keys are absolute Modbus register addresses; values are the raw readings.
-    Multiple configs are merged into a single map.
-    """
-    register_map: dict[int, int | bool] = {}
-
-    for config in configs:
-        polling_config = PollingConfig(
-            poll_address=config.poll_start_index,
-            poll_count=config.poll_count,
-            poll_kind=config.poll_kind,
-        )
-        try:
-            modbus_data = await _read_config_registers(device_without_configs, polling_config)
-
-            if not modbus_data:
-                logger.info(
-                    "No Modbus data readings for device '%s' (config_id='%s')",
-                    device_name,
-                    config.config_id,
-                )
-                continue
-
-            start_address = int(polling_config.poll_address)
-            register_map.update({
-                start_address + i: v
-                for i, v in enumerate(modbus_data)
-            })
-
-        except Exception as e:
-            if isinstance(e, ConnectionException):
-                logger.warning(
-                    f"Error reading device registers: {e}, polling_config: {polling_config}"
-                )
-            else:
-                logger.error(
-                    f"Error reading device registers: {e}, polling_config: {polling_config}",
-                    exc_info=True,
-                )
-            if device_without_configs.read_from_aggregator:
-                error_host = settings.modbus_host
-                error_port = settings.modbus_port
-            else:
-                error_host = device_without_configs.host
-                error_port = device_without_configs.port
-            status_code, error_message = translate_modbus_error(
-                e,
-                host=error_host,
-                port=error_port,
-            )
-            logger.warning(
-                f"Error polling device '{device_name}': "
-                f"status_code={status_code}, error_message={error_message}"
-            )
-
-    return register_map
-
-
 # TODO: eventually the device points should be queried as part of this function, and determines the polls range itself
 #  Inorder to do this we need to add register_type:holding, input, coils, discretes to the polling config and update the read_device_registers function to use it
 # Infact you can redefine the polling config in a helper function and and do the for loop as you are doing in the first TRY
@@ -254,41 +153,35 @@ async def poll_single_device_modbus(site_name: str, device: DeviceWithConfigs) -
     total_db_successful = 0
     total_db_failed = 0
     try:
+        # TODO: consider getting from cache or optimize the DB call somehow.
         device_points_all = await get_device_points(device.device_id)
-        # timestamp = datetime.now(timezone.utc).isoformat()
         timestamp_dt = datetime.now(timezone.utc)
 
-
-        register_map = await _poll_all_device_configs(
-            device.configs, device_without_configs, device_name
-        )
+        register_address_value_map_all = await _poll_all_device_configs_register_values( device.configs, device_without_configs, device_name)
 
         mapped_raw_registers_to_device_points_all = map_modbus_data_to_device_points(
             timestamp_dt=timestamp_dt,
             device_points_list=device_points_all,
-            register_map=register_map,
+            register_map=register_address_value_map_all,
         )
 
-        if not combined_mapped_registers_list_all_configs_per_device or last_polling_config is None:
-            if last_read_error:
-                result["error"] = last_read_error
-            else:
-                result["error"] = f"No configs were successfully polled for '{device_name}'"
+        if not mapped_raw_registers_to_device_points_all:
+            result["error"] = f"No device points configured for '{device_name}' — skipping DB store"
             logger.warning(result["error"])
             return result
 
         # TODO: I think here there should be two types of DB storing
         # 1: Storing raw registers for short term (maybe upto 1 week) for debugging and site development process.
         # 2: Storing the mapped/calculated points for long term and historian purposes. This will be the data that is used by the frontend and other consumers.
-        db_successful, db_failed = await store_device_data_in_db(
+        db_result: DbStoreResult = await store_device_data_in_db(
                 device.device_id,
                 device.site_id,
-                combined_mapped_registers_list_all_configs_per_device,
+                mapped_raw_registers_to_device_points_all,
                 timestamp_dt
         )
 
-        total_db_successful += db_successful
-        total_db_failed += db_failed
+        total_db_successful += db_result.successful
+        total_db_failed += db_result.failed
 
         result["success"] = True
         result["cache_successful"] = total_cache_successful
@@ -321,3 +214,155 @@ async def poll_single_device_modbus(site_name: str, device: DeviceWithConfigs) -
         )
 
     return result
+
+async def _poll_all_device_configs_register_values(
+    configs,
+    device_without_configs: DeviceListItem,
+    device_name: str,
+) -> dict[int, int | bool]:
+    """
+    Poll every config block for a device and return one merged register map.
+    """
+
+    register_address_value_map: dict[int, int | bool] = {}
+
+    for config in configs:
+        polling_config = None  # safe default so except block can always reference it
+
+        try:
+            polling_config = PollingConfig(
+                poll_address=config.poll_start_index,
+                poll_count=config.poll_count,
+                poll_kind=config.poll_kind,
+            )
+
+            config_register_address_value_map = await _read_config_registers(
+                device_without_configs,
+                polling_config,
+            )
+
+            if not config_register_address_value_map:
+                logger.info(
+                    "No Modbus data readings for device '%s' (config_id='%s')",
+                    device_name,
+                    config.config_id,
+                )
+                continue
+
+            # Merge all register blocks together
+            register_address_value_map.update(config_register_address_value_map)
+
+        except Exception as error:
+            if device_without_configs.read_from_aggregator:
+                error_host = settings.modbus_host or "unknown"
+                error_port = settings.modbus_port or "unknown"
+            else:
+                error_host = device_without_configs.host or "unknown"
+                error_port = device_without_configs.port or "unknown"
+
+            try:
+                status_code, error_message = translate_modbus_error(
+                    error,
+                    host=error_host,
+                    port=error_port,
+                )
+            except Exception as translate_error:
+                status_code = 500
+                error_message = (
+                    f"{type(error).__name__}: {error} "
+                    f"(error translation also failed: {translate_error})"
+                )
+
+            if isinstance(error, ConnectionException):
+                logger.warning(
+                    "Connection error polling device '%s' (config_id='%s', "
+                    "host=%s, port=%s, config=%s): [%s] %s",
+                    device_name, config.config_id, error_host, error_port,
+                    polling_config, status_code, error_message,
+                )
+            else:
+                logger.error(
+                    "Unexpected error polling device '%s' (config_id='%s', "
+                    "host=%s, port=%s, config=%s): [%s] %s",
+                    device_name, config.config_id, error_host, error_port,
+                    polling_config, status_code, error_message,
+                    exc_info=True,
+                )
+            # continue to the next config — one failed config does not abort the device poll
+
+    return register_address_value_map
+
+
+async def _read_config_registers(
+    device: DeviceListItem,
+    polling_config: PollingConfig,
+) -> dict[int, int | bool]:
+    """
+    Read Modbus registers in chunks and return a register map.
+
+    Example output:
+    {
+        1400: 0,
+        1401: 111,
+        1402: 50,
+    }
+    """
+
+    start_address = int(polling_config.poll_address)
+    total_count = polling_config.poll_count
+
+    register_address_value_map: dict[int, int | bool] = {}
+
+    # Simple single-read case
+    if total_count <= _MODBUS_MAX_REGISTERS_PER_READ:
+
+        raw_values = await read_device_registers(device, polling_config)
+
+        if not raw_values:
+            return {}
+
+        register_address_value_map.update({
+            start_address + i: value
+            for i, value in enumerate(raw_values)
+        })
+
+        return register_address_value_map
+
+    # Chunked-read case
+    offset = 0
+
+    while offset < total_count:
+
+        chunk_count = min(
+            _MODBUS_MAX_REGISTERS_PER_READ,
+            total_count - offset,
+        )
+
+        chunk_start_address = start_address + offset
+
+        chunk_config = PollingConfig(
+            poll_address=chunk_start_address,
+            poll_count=chunk_count,
+            poll_kind=polling_config.poll_kind,
+        )
+
+        chunk_data = await read_device_registers(device, chunk_config)
+
+        if not chunk_data:
+            logger.warning(
+                "Chunked read returned no data at address=%s, count=%s — aborting poll",
+                chunk_start_address,
+                chunk_count,
+            )
+            return {}
+
+        # Store each register using absolute register address as key
+        register_address_value_map.update({
+            chunk_start_address + i: value
+            for i, value in enumerate(chunk_data)
+        })
+
+        offset += chunk_count
+
+    return register_address_value_map
+

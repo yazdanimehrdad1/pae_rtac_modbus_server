@@ -174,53 +174,60 @@ async def insert_register_readings_batch(
     if not points_readings_list:
         logger.debug("No readings to insert in batch")
         return 0
-    
+
+    async with get_session() as session:
+        values = []
+        for r in points_readings_list:
+            values.append({
+                'site_id': r.site_id if r.site_id is not None else site_id,
+                'device_id': r.device_id if r.device_id is not None else device_id,
+                'device_point_id': r.device_point_id,
+                'timestamp': r.timestamp,
+                'derived_value': r.derived_value,
+            })
+
+        statement = insert(DevicePointsReading).values(values)
+        statement = statement.on_conflict_do_update(
+            index_elements=['device_point_id', 'timestamp'],
+            set_=dict(derived_value=statement.excluded.derived_value)
+        )
+        await session.execute(statement)
+        await session.commit()
+
+        inserted_count = len(values)
+        logger.debug(f"Batch inserted {inserted_count} register readings")
+        return inserted_count
+
+
+async def insert_register_reading_single(
+    site_id: Optional[str],
+    device_id: int,
+    reading: DevicePointsReading,
+) -> bool:
+    """
+    Insert a single DevicePointsReading. Returns True on success, False on failure.
+    Used as a per-row fallback when bulk insert fails.
+    """
     try:
         async with get_session() as session:
-            
-            values = []
-            for device_point_reading in points_readings_list:
-                reading_site_id = device_point_reading.site_id if device_point_reading.site_id is not None else site_id
-                reading_device_id = device_point_reading.device_id if device_point_reading.device_id is not None else device_id
-
-                values.append({
-                    'site_id': reading_site_id,
-                    'device_id': reading_device_id,
-                    'device_point_id': device_point_reading.device_point_id,
-                    'timestamp': device_point_reading.timestamp,
-                    'derived_value': device_point_reading.derived_value
-                })
-            
-            # Build batch INSERT query with ON CONFLICT
-            # TODO: critical: we need to insert the readings into the correct table, based on the site_id
-            # we need to create a new table for each site, and then insert the readings into the correct table
-            # the table name should be register_readings_raw_site_id_device_id
-            # the table should have the following columns: timestamp, device_point_id, derived_value
-            # the table should have the following primary key: timestamp, device_point_id
-            # the table should have the following foreign key: device_point_id
-            # the table should have the following index: device_point_id, timestamp
-            # the table should have the following constraint: device_id must be unique for each site
-            statement = insert(DevicePointsReading).values(values)
-            
+            values = {
+                'site_id': reading.site_id if reading.site_id is not None else site_id,
+                'device_id': reading.device_id if reading.device_id is not None else device_id,
+                'device_point_id': reading.device_point_id,
+                'timestamp': reading.timestamp,
+                'derived_value': reading.derived_value,
+            }
+            statement = insert(DevicePointsReading).values([values])
             statement = statement.on_conflict_do_update(
                 index_elements=['device_point_id', 'timestamp'],
-                set_=dict(
-                    derived_value=statement.excluded.derived_value
-                )
+                set_=dict(derived_value=statement.excluded.derived_value)
             )
-            
             await session.execute(statement)
             await session.commit()
-            
-            inserted_count = len(values)
-            logger.debug(f"Batch inserted {inserted_count} register readings")
-            
-            return inserted_count
-            
+            return True
     except Exception as e:
-        logger.error(f"Error in batch insert: {e}", exc_info=True)
-        # Return 0 on unexpected errors
-        return 0
+        logger.warning(f"Single insert failed for device_point_id={reading.device_point_id}: {e}")
+        return False
 
 async def get_all_readings(
     site_id: Optional[str] = None,

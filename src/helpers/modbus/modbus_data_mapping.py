@@ -88,7 +88,6 @@ def _extract_register_values(
     )
 
 
-
 def _apply_word_order(
     register_values: list[int],
     word_order: str = "msw_first",
@@ -209,48 +208,6 @@ def _decode_modbus_point_value(
         )
 
 
-def _decode_register_value(
-    register_values: ModbusRegisterValues,
-    data_type: str,
-    size: int,
-    byte_order: str,
-    point_name: str,
-) -> int | float | bool:
-    if size == 1:
-        return register_values[0]
-    try:
-        return convert_multi_register_value(
-            register_values=register_values,
-            data_type=data_type,
-            size=size,
-            byte_order=byte_order,
-        )
-    except ValueError:
-        logger.debug(
-            f"Concatenated {len(register_values)} registers for '{point_name}' "
-            f"(size={size})"
-        )
-        return concat_register_values(
-            register_values=register_values,
-            byte_order=byte_order,
-        )
-
-
-def _build_device_point_reading(
-    point: DevicePoint,
-    timestamp: datetime,
-    derived_value: int | float | bool,
-) -> DevicePointsReading:
-    return DevicePointsReading(
-        timestamp=timestamp,
-        site_id=point.site_id,
-        device_id=point.device_id,
-        device_point_id=point.id,
-        derived_value=derived_value,
-    )
-
-
-
 def map_modbus_data_to_device_points(
     timestamp_dt: datetime,
     device_points_list: list[DevicePoint],
@@ -295,6 +252,9 @@ def map_modbus_data_to_device_points(
         )
 
     return readings
+
+
+
 
 # def map_modbus_data_to_device_points(
 #     timestamp_dt: datetime,
@@ -390,3 +350,43 @@ def map_modbus_data_to_device_points(
 #     )
 
 #     return mapped_registers_readings_list
+
+# def _decode_register_value(
+#     register_values: ModbusRegisterValues,
+#     data_type: str,
+#     size: int,
+#     byte_order: str,
+#     point_name: str,
+# ) -> int | float | bool:
+#     if size == 1:
+#         return register_values[0]
+#     try:
+#         return convert_multi_register_value(
+#             register_values=register_values,
+#             data_type=data_type,
+#             size=size,
+#             byte_order=byte_order,
+#         )
+#     except ValueError:
+#         logger.debug(
+#             f"Concatenated {len(register_values)} registers for '{point_name}' "
+#             f"(size={size})"
+#         )
+#         return concat_register_values(
+#             register_values=register_values,
+#             byte_order=byte_order,
+#         )
+
+
+# def _build_device_point_reading(
+#     point: DevicePoint,
+#     timestamp: datetime,
+#     derived_value: int | float | bool,
+# ) -> DevicePointsReading:
+#     return DevicePointsReading(
+#         timestamp=timestamp,
+#         site_id=point.site_id,
+#         device_id=point.device_id,
+#         device_point_id=point.id,
+#         derived_value=derived_value,
+#     )

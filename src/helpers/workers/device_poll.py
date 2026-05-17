@@ -2,8 +2,8 @@
 
 from typing import List
 
-from modbus.client import ModbusClient
-from modbus.modbus_utills import ModbusUtils
+from services.modbus.client import ModbusClient
+from services.modbus.modbus_utills import ModbusUtils
 from logger import get_logger
 from schemas.api_models import DeviceListItem, ModbusRegisterValues, PollingConfig
 

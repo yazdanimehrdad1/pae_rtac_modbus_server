@@ -6,8 +6,8 @@ from fastapi import APIRouter, HTTPException, status
 
 from schemas.api_models import ReadRequest, SimpleReadResponse, RegisterValue
 from helpers.modbus import translate_modbus_error
-from modbus.client import ModbusClient
-from modbus.modbus_utills import ModbusUtils
+from services.modbus.client import ModbusClient
+from services.modbus.modbus_utills import ModbusUtils
 from config import settings
 
 router = APIRouter()
