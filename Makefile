@@ -187,10 +187,9 @@ run:
 # Seed database with development mock data (copies files into running container first)
 seed-db:
 	@echo "Copying seed files into container..."
-	@docker cp tests/seed_db.py pae-rtac-server:/app/tests/seed_db.py
-	@docker cp tests/dev_mock_data.py pae-rtac-server:/app/tests/dev_mock_data.py
+	@docker cp tests/seed_db/. pae-rtac-server:/app/tests/seed_db/
 	@echo "Running seed script..."
-	@docker-compose -f docker-compose.yaml exec pae-rtac-server python tests/seed_db.py
+	@docker-compose -f docker-compose.yaml exec pae-rtac-server python tests/seed_db/seed_db.py
 
 stop_rm_all:
 	docker stop $(docker ps -q) ; docker rm $(docker ps -aq) ; docker volume rm $(docker volume ls -q)

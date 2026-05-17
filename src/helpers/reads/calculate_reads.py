@@ -141,4 +141,4 @@ def build_scaled_payload(
     """
     if derived_value is None:
         return None
-    return derived_value * (scale_factor or 1.0)
+    return round(derived_value * (scale_factor or 1.0), 4)
