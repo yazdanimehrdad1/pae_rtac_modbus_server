@@ -1,7 +1,8 @@
 """Polling helpers for Modbus data collection."""
 
 import asyncio
-from dataclasses import dataclass, field
+import json
+from dataclasses import dataclass, field, asdict, is_dataclass
 from datetime import datetime, timezone
 from typing import List
 
@@ -23,7 +24,7 @@ class ConfigPollResult:
         return bool(self.failed_configs)
 
 from helpers.modbus import translate_modbus_error
-from pymodbus.exceptions import ConnectionException
+from pymodbus.exceptions import ConnectionException, ModbusException
 from config import settings
 from logger import get_logger
 from helpers.modbus.modbus_data_mapping import map_modbus_data_to_device_points
@@ -208,10 +209,15 @@ async def poll_single_device_modbus(site_name: str, device: DeviceWithConfigs) -
         )
 
         # TODO: remove — dev-only inspection block
-        if settings.log_level.upper() == "DEBUG":
-            logger.debug("DEV | device_points_all: %s", device_points_all)
-            logger.debug("DEV | config_poll_result: %s", config_poll_result)
-            logger.debug("DEV | mapped_raw_registers_to_device_points_all: %s", mapped_raw_registers_to_device_points_all)
+        def _dev_json(obj):
+            if is_dataclass(obj) and not isinstance(obj, type):
+                return asdict(obj)
+            if hasattr(obj, '__dict__'):
+                return {k: v for k, v in obj.__dict__.items() if not k.startswith('_')}
+            return str(obj)
+        logger.info("DEV | device_points_all:\n%s", json.dumps([_dev_json(p) for p in device_points_all], indent=2, default=str))
+        logger.info("DEV | config_poll_result:\n%s", json.dumps(_dev_json(config_poll_result), indent=2, default=str))
+        logger.info("DEV | mapped_raw_registers_to_device_points_all:\n%s", json.dumps([_dev_json(r) for r in mapped_raw_registers_to_device_points_all], indent=2, default=str))
 
         if not mapped_raw_registers_to_device_points_all:
             result["error"] = f"No device points configured — skipping DB store"
@@ -339,6 +345,13 @@ async def _poll_all_device_configs_register_values(
                 logger.warning(
                     "site_name='%s', device_name='%s', device_config_ID='%s': "
                     "connection error (host=%s, port=%s): [%s] %s",
+                    site_name, device_name, config_id, error_host, error_port,
+                    status_code, error_message,
+                )
+            elif isinstance(error, ModbusException):
+                logger.warning(
+                    "site_name='%s', device_name='%s', device_config_ID='%s': "
+                    "Modbus protocol error (host=%s, port=%s): [%s] %s",
                     site_name, device_name, config_id, error_host, error_port,
                     status_code, error_message,
                 )

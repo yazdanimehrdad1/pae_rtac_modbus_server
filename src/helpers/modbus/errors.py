@@ -9,7 +9,6 @@ from typing import Optional, Tuple
 
 from dotenv import load_dotenv
 from pymodbus.exceptions import ModbusException, ConnectionException
-from pymodbus.pdu import ExceptionResponse
 
 # Load environment variables from .env file
 load_dotenv()
@@ -35,16 +34,6 @@ def translate_modbus_error(
             503,
             f"Failed to connect to Modbus server at {error_host}:{error_port}"
         )
-    if isinstance(error, ExceptionResponse):
-        error_code = error.exception_code
-        error_messages = {
-            1: "Illegal function - The function code received is not supported",
-            2: "Illegal data address - The data address received is not valid",
-            3: "Illegal data value - The value in the request is not valid",
-            4: "Server device failure - The server encountered an error processing the request",
-        }
-        message = error_messages.get(error_code, f"Modbus error code: {error_code}")
-        return 400, message
     if isinstance(error, ModbusException):
         return (
             400,
