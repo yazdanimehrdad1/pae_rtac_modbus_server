@@ -14,7 +14,7 @@ from schemas.api_models.types import (
     PointReadSeriesItemModel,
 )
 from schemas.db_models.orm_models import DevicePoint
-from utils.create_calculated_points import create_calculated_points
+from helpers.device_reads.create_calculated_points import create_calculated_points
 
 logger = get_logger(__name__)
 

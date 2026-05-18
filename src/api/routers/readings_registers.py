@@ -10,7 +10,7 @@ from api.controllers.reads import (
     points_time_series_response_controller,
 )
 from helpers.device_points import get_device_points
-from helpers.devices import get_device_cache_db
+from api.controllers.devices import get_device_by_id
 from logger import get_logger
 from utils.exceptions import NotFoundError
 
@@ -41,7 +41,7 @@ async def get_device_latest_readings(
     try:
         # verify the params:
         # Verify device exists (cache-first lookup)
-        device = await get_device_cache_db(site_id, device_id)
+        device = await get_device_by_id(site_id, device_id)
         if device is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -105,7 +105,7 @@ async def get_device_latest_readings_n(
     Get latest N readings per register (or specific registers) of a device.
     """
     try:
-        device = await get_device_cache_db(site_id, device_id)
+        device = await get_device_by_id(site_id, device_id)
         if device is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -181,7 +181,7 @@ async def get_multiple_registers_time_series(
     """
     try:
         # Verify device exists (cache-first lookup)
-        device = await get_device_cache_db(site_id, device_id)
+        device = await get_device_by_id(site_id, device_id)
         if device is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,

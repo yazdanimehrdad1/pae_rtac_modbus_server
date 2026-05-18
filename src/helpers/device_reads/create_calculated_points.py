@@ -44,18 +44,20 @@ Examples:
 """
 
 
+from typing import Dict, Any
+
 from schemas.api_models.types import (
     LatestDevicePointReadingModel,
     MergedPointMetadataToReadingModel,
 )
+from schemas.modbus_models import RegisterMap, RegisterPoint
 from helpers.reads.calculate_reads import (
     build_bitfield_payload,
     build_enum_payload,
     build_scaled_payload,
 )
 
-BITS_PER_REGISTER_16_BIT = 16
-MAX_BITFIELD_BITS_32_BIT = 32
+from constants import BITS_PER_REGISTER_16_BIT, MAX_BITFIELD_BITS_32_BIT
 
 
 def create_calculated_points(
@@ -127,3 +129,40 @@ def create_calculated_points(
         derived_value=derived_value,
         calculated_value=calculated_value,
     )
+
+
+def json_to_register_map(json_data: Dict[str, Any]) -> RegisterMap:
+    """
+    Convert JSON structure (from map_csv_to_json) to RegisterMap object.
+
+    Args:
+        json_data: Dictionary with 'metadata' and 'registers' keys from map_csv_to_json
+
+    Returns:
+        RegisterMap object with RegisterPoint objects
+    """
+    registers = json_data.get("registers", [])
+    points = []
+
+    for reg in registers:
+        point_data = {
+            "name": (
+                reg.get("name")
+                or reg.get("register_name")
+                or reg.get("point_name", "")
+            ),
+            "address": (
+                reg.get("address")
+                or reg.get("register_address")
+                or reg.get("point_address")
+            ),
+            "data_type": reg.get("data_type", reg.get("point_data_type", "uint16")),
+            "size": reg.get("size", reg.get("point_size", 1)),
+            "scale_factor": reg.get("scale_factor", reg.get("point_scale_factor", 1.0)),
+            "unit": reg.get("unit", reg.get("point_unit")),
+            "bitfield_detail": reg.get("bitfield_detail", reg.get("point_bitfield_detail")),
+            "enum_detail": reg.get("enum_detail", reg.get("point_enum_detail")),
+        }
+        points.append(RegisterPoint(**point_data))
+
+    return RegisterMap(points=points)

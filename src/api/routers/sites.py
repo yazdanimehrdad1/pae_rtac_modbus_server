@@ -10,8 +10,14 @@ from schemas.api_models import (
     SiteResponse,
     SiteDeleteResponse,
 )
-from helpers.sites import get_complete_site_data
-from db.sites import create_site, get_all_sites, get_site_by_id, update_site, delete_site
+from api.controllers.sites import (
+    create_site,
+    delete_site,
+    get_all_sites,
+    get_comprehensive_site,
+    get_site_by_id,
+    update_site,
+)
 from utils.exceptions import AppError
 from logger import get_logger
 
@@ -184,7 +190,7 @@ async def get_comprehensive_site_endpoint(site_id: int):
         Comprehensive site data with devices and configs
     """
     try:
-        site = await get_complete_site_data(site_id)
+        site = await get_comprehensive_site(site_id)
     except AppError as e:
         detail = {"error": type(e).__name__, "message": e.message}
         if e.payload:

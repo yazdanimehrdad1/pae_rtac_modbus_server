@@ -31,13 +31,13 @@ from helpers.modbus.modbus_data_mapping import map_modbus_data_to_device_points
 from helpers.sites import get_complete_site_data
 from schemas.api_models import DeviceListItem, DeviceWithConfigs, PollResult, PollingConfig
 from schemas.api_models.types import FailedConfigInfo
-from utils.store_data_readings import store_device_data_in_db, DbStoreResult
+from helpers.modbus.store_data_readings import store_device_data_in_db, DbStoreResult
 from helpers.device_points import get_device_points
 from helpers.workers.device_poll import get_enabled_devices_to_poll, read_device_registers
 
-logger = get_logger(__name__)
+from constants import MODBUS_MAX_REGISTERS_PER_READ
 
-_MODBUS_MAX_REGISTERS_PER_READ = 125
+logger = get_logger(__name__)
 
 async def poll_modbus_registers_per_site(site_id: int) -> None:
     """
@@ -276,6 +276,7 @@ async def poll_single_device_modbus(site_name: str, device: DeviceWithConfigs) -
 
     return result
 
+
 async def _poll_all_device_configs_register_values(
     configs,
     device_without_configs: DeviceListItem,
@@ -396,7 +397,7 @@ async def _read_config_registers(
     register_address_value_map: dict[int, int | bool] = {}
 
     # Simple single-read case
-    if total_count <= _MODBUS_MAX_REGISTERS_PER_READ:
+    if total_count <= MODBUS_MAX_REGISTERS_PER_READ:
 
         raw_values = await read_device_registers(device, polling_config, site_name=site_name, config_id=config_id)
 
@@ -416,7 +417,7 @@ async def _read_config_registers(
     while chunk_offset < total_count:
 
         chunk_count = min(
-            _MODBUS_MAX_REGISTERS_PER_READ,
+            MODBUS_MAX_REGISTERS_PER_READ,
             total_count - chunk_offset,
         )
 

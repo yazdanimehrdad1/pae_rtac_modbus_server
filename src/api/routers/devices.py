@@ -10,12 +10,12 @@ from schemas.api_models import (
     DeviceWithConfigs,
     DeviceDeleteResponse,
 )
-from helpers.devices import (
-    create_device_cache_db,
-    delete_device_cache_db,
-    get_devices_cache_db,
-    get_device_cache_db,
-    update_device_cache_db,
+from api.controllers.devices import (
+    create_device,
+    delete_device,
+    get_all_devices,
+    get_device_by_id,
+    update_device,
 )
 from utils.exceptions import AppError
 from logger import get_logger
@@ -35,7 +35,7 @@ async def get_all_devices_endpoint(site_id: int):
         HTTPException: If database error occurs
     """
     try:
-        devices = await get_devices_cache_db(site_id)
+        devices = await get_all_devices(site_id)
     except AppError as e:
         detail = {"error": type(e).__name__, "message": e.message}
         if e.payload:
@@ -71,7 +71,7 @@ async def create_new_device(site_id: int, device: DeviceCreateRequest):
         HTTPException: If device name already exists or database error occurs
     """
     try:
-        return await create_device_cache_db(device, site_id=site_id)
+        return await create_device(device, site_id=site_id)
     except AppError as e:
         detail = {"error": type(e).__name__, "message": e.message}
         if e.payload:
@@ -100,7 +100,7 @@ async def get_device(site_id: int, device_id: int):
         HTTPException: If device not found
     """
     try:
-        return await get_device_cache_db(site_id, device_id)
+        return await get_device_by_id(site_id, device_id)
     except AppError as e:
         detail = {"error": type(e).__name__, "message": e.message}
         if e.payload:
@@ -130,7 +130,7 @@ async def update_existing_device(site_id: int, device_id: int, device_update: De
         HTTPException: If device not found, name already exists, or database error occurs
     """
     try:
-        return await update_device_cache_db(device_id, device_update, site_id=site_id)
+        return await update_device(device_id, device_update, site_id=site_id)
     except AppError as e:
         detail = {"error": type(e).__name__, "message": e.message}
         if e.payload:
@@ -159,7 +159,7 @@ async def delete_existing_device(site_id: int, device_id: int):
         HTTPException: If device not found or database error occurs
     """
     try:
-        deleted_device = await delete_device_cache_db(device_id, site_id=site_id)
+        deleted_device = await delete_device(device_id, site_id=site_id)
     except AppError as e:
         detail = {"error": type(e).__name__, "message": e.message}
         if e.payload:

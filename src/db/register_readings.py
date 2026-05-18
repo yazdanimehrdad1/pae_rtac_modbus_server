@@ -12,7 +12,7 @@ from sqlalchemy.dialects.postgresql import insert
 
 from db.session import get_session
 from schemas.db_models.orm_models import DevicePointsReading, DevicePoint, Device
-from helpers.devices import get_device_cache_db
+from db.devices import get_device_by_id
 from logger import get_logger
 
 logger = get_logger(__name__)
@@ -533,7 +533,7 @@ async def get_latest_readings_for_device_n(
         ValueError: If device doesn't exist
     """
     async with get_session() as session:
-        device = await get_device_cache_db(site_id, device_id)
+        device = await get_device_by_id(device_id, site_id)
         if device is None:
             raise ValueError(f"Device with id '{device_id}' not found")
 

@@ -2,12 +2,12 @@
 
 from fastapi import APIRouter, HTTPException, status
 
-from db.device_configs import (
+from api.controllers.device_configs import (
+    create_config,
+    delete_config,
     get_config,
     update_config,
-    delete_config,
 )
-from helpers.device_configs import create_config_cache_db
 from schemas.api_models import (
     ConfigCreateRequest,
     ConfigResponse,
@@ -25,7 +25,7 @@ logger = get_logger(__name__)
 async def create_new_config(site_id: int, device_id: int, config: ConfigCreateRequest):
     """Create a new config."""
     try:
-        return await create_config_cache_db(site_id, device_id, config)
+        return await create_config(site_id, device_id, config)
     except AppError as e:
         detail = {"error": type(e).__name__, "message": e.message}
         if e.payload:

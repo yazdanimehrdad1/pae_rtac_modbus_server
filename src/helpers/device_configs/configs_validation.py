@@ -5,9 +5,9 @@ from schemas.api_models.validation import PointValidationError, PointAddressVali
 from utils.exceptions import ConflictError
 from logger import get_logger
 
-logger = get_logger(__name__)
+from constants import MODBUS_MAX_REGISTERS_PER_READ as MAX_MODBUS_POLL_REGISTER_COUNT
 
-MAX_MODBUS_POLL_REGISTER_COUNT = 125
+logger = get_logger(__name__)
 
 
 def set_point_defaults(points: list[ConfigPoint]) -> None:

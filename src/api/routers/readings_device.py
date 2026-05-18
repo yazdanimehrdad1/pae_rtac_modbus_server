@@ -13,7 +13,7 @@ from db.device_configs import get_configs_for_device
 from cache.cache import CacheService
 from config import settings
 from logger import get_logger
-from src.utils.map_csv_to_json import json_to_register_map
+from helpers.device_reads.create_calculated_points import json_to_register_map
 
 router = APIRouter()
 

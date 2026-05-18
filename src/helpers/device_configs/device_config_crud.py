@@ -1,9 +1,7 @@
-"""Device config CRUD helper functions for DB/cache coordination."""
+"""Device config CRUD helper functions."""
 
-
-from cache.cache import CacheService
-from db.device_configs import create_config_for_device, delete_config
-from db.devices import get_device_by_id
+from db.device_configs import create_config_for_device, delete_config, get_config, update_config, get_configs_for_device
+from api.controllers.devices import get_device_by_id
 from utils.exceptions import NotFoundError, ValidationError, InternalError
 from logger import get_logger
 from schemas.api_models import ConfigCreateRequest, ConfigResponse
@@ -22,21 +20,16 @@ from helpers.device_points import (
 )
 
 logger = get_logger(__name__)
-cache_service = CacheService()
 
 
-async def create_config_cache_db(
+async def create_config_db(
     site_id: int,
     device_id: int,
     config: ConfigCreateRequest
 ) -> ConfigResponse:
-    """
-    Create a config in the DB and update device cache.
-    """
-    # Basic validation (additional rules TBD)
+    """Create a config in the DB."""
     if config.site_id != site_id or config.device_id != device_id:
         raise ValidationError("Path site_id/device_id must match body")
-
 
     validation_result = validate_point_addresses(config.poll_start_index, config.points)
     if validation_result.missing_fields:
@@ -68,9 +61,7 @@ async def create_config_cache_db(
             payload={"error_type": "Invalid point fields", "errors": field_errors}
         )
 
-    min_register_number, max_register_end, poll_count = compute_poll_range(
-        config.points
-    )
+    min_register_number, max_register_end, poll_count = compute_poll_range(config.points)
     config.poll_start_index = min_register_number
     config.poll_count = poll_count
 
@@ -97,18 +88,14 @@ async def create_config_cache_db(
     # TODO: You have to make sure both device_points and device_configs are created.
     # Maybe try to create device_points first, and if it fails, roll back the config creation
 
-    # Validate point uniqueness against DB before creating config
-    # device is type of DeviceWithConfigs
-    device = await get_device_by_id(device_id, site_id)
+    device = await get_device_by_id(site_id, device_id)
 
     if not device:
-         raise NotFoundError(f"Device with id {device_id} not found")
+        raise NotFoundError(f"Device with id {device_id} not found")
 
     create_config_result = await create_config_for_device(site_id, device_id, config)
     device_points_list = map_device_configs_to_device_points(config.points, device, create_config_result.config_id)
     await validate_device_points_uniqueness(device_points_list, device)
-
-
 
     # device points are validated, now create them
     create_device_points_result = await create_device_points(device_points_list)
@@ -118,8 +105,6 @@ async def create_config_cache_db(
             await delete_config(create_config_result.config_id)
         raise InternalError("Failed to create device points")
 
-    cache_key = f"device:site:{site_id}:device_id:{device_id}"
-    await cache_service.delete(cache_key)
     logger.info(
         "Config created successfully",
         extra={
