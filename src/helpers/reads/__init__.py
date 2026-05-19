@@ -5,7 +5,6 @@ from helpers.reads.calculate_reads import (
     normalize_detail_keys,
     build_bitfield_payload,
     build_enum_payload,
-    build_scaled_payload,
 )
 
 __all__ = [
@@ -13,5 +12,4 @@ __all__ = [
     "normalize_detail_keys",
     "build_bitfield_payload",
     "build_enum_payload",
-    "build_scaled_payload",
 ]

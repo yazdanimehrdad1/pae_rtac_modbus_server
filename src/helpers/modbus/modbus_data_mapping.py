@@ -191,7 +191,7 @@ def _decode_modbus_point_value(
             )
 
         if isinstance(value, (int, float)) and data_type != "bool":
-            value = (value * scale) + offset
+            value = round((value * scale) + offset, 5)
 
         return DecodeResult(
             success=True,

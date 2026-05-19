@@ -4,7 +4,9 @@ from db.device_configs import create_config_for_device, delete_config, get_confi
 from api.controllers.devices import get_device_by_id
 from utils.exceptions import NotFoundError, ValidationError, InternalError
 from logger import get_logger
-from schemas.api_models import ConfigCreateRequest, ConfigResponse
+from typing import Optional
+
+from schemas.api_models import ConfigCreateRequest, ConfigResponse, ConfigUpdate
 from helpers.device_configs.configs_validation import (
     MAX_MODBUS_POLL_REGISTER_COUNT,
     set_point_defaults,
@@ -115,3 +117,15 @@ async def create_config_db(
     )
 
     return create_config_result
+
+
+async def get_config_db(config_id: str) -> Optional[ConfigResponse]:
+    return await get_config(config_id)
+
+
+async def update_config_db(config_id: str, update: ConfigUpdate) -> Optional[ConfigResponse]:
+    return await update_config(config_id, update)
+
+
+async def delete_config_db(config_id: str) -> bool:
+    return await delete_config(config_id)

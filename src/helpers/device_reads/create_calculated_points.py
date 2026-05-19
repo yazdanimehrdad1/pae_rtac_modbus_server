@@ -54,7 +54,6 @@ from schemas.modbus_models import RegisterMap, RegisterPoint
 from helpers.reads.calculate_reads import (
     build_bitfield_payload,
     build_enum_payload,
-    build_scaled_payload,
 )
 
 from constants import BITS_PER_REGISTER_16_BIT, MAX_BITFIELD_BITS_32_BIT
@@ -112,10 +111,7 @@ def create_calculated_points(
             enum_detail=point_reading.enum_detail or {}
         )
     else:
-        calculated_value = build_scaled_payload(
-            derived_value=derived_value,
-            scale_factor=point_reading.scale_factor
-        )
+        calculated_value = derived_value
 
     return MergedPointMetadataToReadingModel(
         device_point_id=point_reading.device_point_id,
