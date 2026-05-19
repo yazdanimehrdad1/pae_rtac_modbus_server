@@ -42,17 +42,17 @@ async def create_config_db(
                 "missing_fields": [err.model_dump(exclude_none=True) for err in validation_result.missing_fields],
             },
         )
-    if validation_result.invalid_registers:
-        max_address = config.poll_start_index + MAX_MODBUS_POLL_REGISTER_COUNT
-        raise ValidationError(
-            "One or more points have addresses outside the poll range",
-            payload={
-                "error_type": "Invalid point addresses",
-                "invalid_registers": [err.model_dump(exclude_none=True) for err in validation_result.invalid_registers],
-                "poll_start_index": config.poll_start_index,
-                "max_address": max_address,
-            },
-        )
+    # if validation_result.invalid_registers:
+    #     max_address = config.poll_start_index + MAX_MODBUS_POLL_REGISTER_COUNT
+    #     raise ValidationError(
+    #         "One or more points have addresses outside the poll range",
+    #         payload={
+    #             "error_type": "Invalid point addresses",
+    #             "invalid_registers": [err.model_dump(exclude_none=True) for err in validation_result.invalid_registers],
+    #             "poll_start_index": config.poll_start_index,
+    #             "max_address": max_address,
+    #         },
+    #     )
 
     set_point_defaults(config.points)
 

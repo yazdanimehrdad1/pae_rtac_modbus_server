@@ -85,7 +85,7 @@ def validate_point_addresses(poll_start_index: int, points: list) -> PointAddres
     Returns: PointAddressValidationResult
     """
     validate_duplicate_points(points)
-    max_address = poll_start_index + MAX_MODBUS_POLL_REGISTER_COUNT
+    
     result = PointAddressValidationResult()
     for idx, point in enumerate(points):
         if isinstance(point, dict):
@@ -147,23 +147,7 @@ def validate_point_addresses(poll_start_index: int, points: list) -> PointAddres
                 )
             )
             continue
-
-        max_register_address = point_address + point_size - 1
-        if max_register_address > max_address:
-            result.invalid_registers.append(
-                PointValidationError(
-                    index=idx,
-                    address=point_address,
-                    size=point_size,
-                    max_address=max_register_address,
-                    error=(
-                        f"address ({point_address}) + size ({point_size}) - 1 = "
-                        f"{max_register_address} exceeds poll_start_index + {MAX_MODBUS_POLL_REGISTER_COUNT} "
-                        f"({max_address})"
-                    ),
-                )
-            )
-
+    
     return result
 
 
