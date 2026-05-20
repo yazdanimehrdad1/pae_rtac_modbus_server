@@ -11,6 +11,8 @@ the router remains unchanged.
 from typing import List, Optional
 
 import db.devices as devices_db
+from helpers.device_points.device_standardized_points import generate_standardized_points
+from helpers.device_points.device_points_crud import create_device_points
 from logger import get_logger
 from schemas.api_models import DeviceCreateRequest, DeviceUpdate, DeviceWithConfigs
 from utils.exceptions import NotFoundError
@@ -30,7 +32,11 @@ async def get_device_by_id(site_id: int, device_id: int) -> DeviceWithConfigs:
 
 
 async def create_device(device: DeviceCreateRequest, site_id: int) -> DeviceWithConfigs:
-    return await devices_db.create_device(device, site_id=site_id)
+    created = await devices_db.create_device(device, site_id=site_id)
+    standardized = generate_standardized_points(device.type, created.device_id, site_id)
+    if standardized:
+        await create_device_points(standardized)
+    return created
 
 
 async def update_device(

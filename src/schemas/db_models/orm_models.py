@@ -7,7 +7,7 @@ These models represent the database schema and are used for ORM operations.
 from datetime import datetime
 from typing import Optional, Dict, Any
 from typing_extensions import TypedDict
-from sqlalchemy import String, Integer, Text, DateTime, func, Float, ForeignKey, JSON, Boolean, UniqueConstraint
+from sqlalchemy import String, Integer, Text, DateTime, func, Float, ForeignKey, JSON, Boolean, UniqueConstraint, Enum as SAEnum
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -442,11 +442,11 @@ class DevicePoint(Base):
         comment="Device ID"
     )
     
-    config_id: Mapped[str] = mapped_column(
+    config_id: Mapped[Optional[str]] = mapped_column(
         String(255),
         ForeignKey("configs.config_id", ondelete="CASCADE"),
-        nullable=False,
-        comment="Config ID"
+        nullable=True,
+        comment="Config ID (null for STANDARDIZED and VIRTUAL points)"
     )
     
     address: Mapped[int] = mapped_column(
@@ -539,6 +539,14 @@ class DevicePoint(Base):
         default=0.0,
         server_default="0.0",
         comment="Linear offset applied after scaling: final = raw * scale_factor + register_offset"
+    )
+
+    category: Mapped[str] = mapped_column(
+        SAEnum("NATIVE", "STANDARDIZED", "VIRTUAL", name="device_point_category"),
+        nullable=False,
+        default="NATIVE",
+        server_default="NATIVE",
+        comment="Point type: NATIVE (by device), STANDARDIZED, or VIRTUAL"
     )
 
     # Table-level constraints

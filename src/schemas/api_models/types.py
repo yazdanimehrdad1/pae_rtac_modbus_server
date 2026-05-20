@@ -1,29 +1,30 @@
 """Typed helpers for API models."""
 
 from datetime import datetime
-from typing import Optional, TypeAlias, Union
+from typing import Literal, Optional, TypeAlias, Union
 from typing_extensions import TypedDict
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
-class DevicePointData(TypedDict, total=False):
-    """Type definition for device point data dictionary."""
+class DevicePointData(BaseModel):
+    """Pydantic model for a device point row to be written to the database."""
     site_id: int
     device_id: int
-    config_id: str
+    config_id: Optional[str] = None
     address: int
     name: str
     size: int
     data_type: str
-    scale_factor: Optional[float]
-    unit: Optional[str]
-    enum_value: Optional[str]
-    bitfield_value: Optional[str]
-    is_derived: bool
-    bitfield_detail: Optional[dict[str, str]]
-    enum_detail: Optional[dict[str, str]]
-    byte_order: str
+    category: Literal["NATIVE", "STANDARDIZED", "VIRTUAL"] = "NATIVE"
+    scale_factor: Optional[float] = None
+    unit: Optional[str] = None
+    is_derived: bool = False
+    bitfield_detail: Optional[dict[str, str]] = None
+    enum_detail: Optional[dict[str, str]] = None
+    byte_order: str = "big-endian"
+    word_order: str = "msw_first"
+    register_offset: float = 0.0
 
 
 class FailedConfigInfo(TypedDict):
