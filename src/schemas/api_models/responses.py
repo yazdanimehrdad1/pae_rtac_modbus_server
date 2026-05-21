@@ -77,12 +77,16 @@ class DeviceDeleteResponse(BaseModel):
     site_id: int = Field(..., description="Site ID for the deleted device")
 
 
+class DevicePoints(BaseModel):
+    """Device points grouped by category."""
+    standardized: List["DevicePointResponse"] = Field(default_factory=list)
+    native: List["DevicePointResponse"] = Field(default_factory=list)
+    virtual: List["DevicePointResponse"] = Field(default_factory=list)
+
+
 class DeviceWithConfigs(DeviceListItem):
-    """Device response with expanded configs."""
-    configs: List["ConfigResponse"] = Field(
-        default_factory=list,
-        description="Expanded configs",
-    )
+    """Device response with device points grouped by category."""
+    points: DevicePoints = Field(default_factory=DevicePoints)
 
 
 class SiteResponse(BaseModel):
@@ -167,7 +171,7 @@ class DevicePointResponse(BaseModel):
     id: int = Field(..., description="Primary key")
     site_id: int = Field(..., description="Site ID")
     device_id: int = Field(..., description="Device ID")
-    config_id: str = Field(..., description="Config ID")
+    config_id: Optional[str] = Field(None, description="Config ID")
     name: str = Field(..., description="Point name")
     address: int = Field(..., description="Point address")
     size: int = Field(..., description="Point size")
@@ -180,6 +184,7 @@ class DevicePointResponse(BaseModel):
     enum_detail: Optional[Dict[str, str]] = Field(None, description="Enum detail mapping")
     bitfield_detail: Optional[Dict[str, str]] = Field(None, description="Bitfield detail mapping")
     byte_order: str = Field("big-endian", description="Byte order for interpretation")
+    category: str = Field("NATIVE", description="Point category: NATIVE, STANDARDIZED, or VIRTUAL")
 
     model_config = {
         "from_attributes": True,

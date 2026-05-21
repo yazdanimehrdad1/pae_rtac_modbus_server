@@ -26,15 +26,18 @@ async def create_device_points(device_points_list: list[DevicePointData]) -> boo
         raise InternalError(f"Failed to create device points: {str(e)}")
 
 
-async def get_device_points(device_id: int) -> list[DevicePoint]:
+async def get_device_points(device_id: int, category: str | None = None) -> list[DevicePoint]:
     """
-    Get all points for a specific device.
+    Get all points for a specific device, optionally filtered by category.
     """
     session_factory = get_async_session_factory()
     async with session_factory() as session:
-        result = await session.execute(
+        query = (
             select(DevicePoint)
             .where(DevicePoint.device_id == device_id)
             .order_by(DevicePoint.address.asc())
         )
+        if category is not None:
+            query = query.where(DevicePoint.category == category.upper())
+        result = await session.execute(query)
         return list(result.scalars().all())
