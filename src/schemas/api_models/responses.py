@@ -77,6 +77,32 @@ class DeviceDeleteResponse(BaseModel):
     site_id: int = Field(..., description="Site ID for the deleted device")
 
 
+class ConfigResponse(BaseModel):
+    """Response model for config."""
+    config_id: str = Field(..., description="Config ID")
+    site_id: int = Field(..., description="Site ID (4-digit number)")
+    device_id: int = Field(..., description="Device ID (database primary key)")
+    poll_kind: Literal["holding", "input", "coils"] = Field(
+        ..., description="Register type"
+    )
+    poll_start_index: int = Field(..., ge=0, le=65535, description="Start index for polling")
+    poll_count: int = Field(..., ge=1, description="Number of registers to read during polling")
+    points: List[ConfigPoint] = Field(..., min_length=1, description="Point definitions")
+    is_active: bool = Field(..., description="Whether the config is active")
+    created_at: datetime = Field(..., description="Timestamp when config was created")
+    updated_at: datetime = Field(..., description="Timestamp when config was last updated")
+    created_by: str = Field(..., description="Config creator identifier")
+
+    model_config = {
+        "from_attributes": True,
+    }
+
+
+class ConfigDeleteResponse(BaseModel):
+    """Response model for a deleted config."""
+    config_id: str = Field(..., description="Deleted config ID")
+
+
 class DevicePoints(BaseModel):
     """Device points grouped by category."""
     standardized: List["DevicePointResponse"] = Field(default_factory=list)
@@ -87,6 +113,7 @@ class DevicePoints(BaseModel):
 class DeviceWithConfigs(DeviceListItem):
     """Device response with device points grouped by category."""
     points: DevicePoints = Field(default_factory=DevicePoints)
+    configs: List[ConfigResponse] = Field(default_factory=list)
 
 
 class SiteResponse(BaseModel):
@@ -140,32 +167,6 @@ class SiteComprehensiveResponse(BaseModel):
     }
 
 
-class ConfigResponse(BaseModel):
-    """Response model for config."""
-    config_id: str = Field(..., description="Config ID")
-    site_id: int = Field(..., description="Site ID (4-digit number)")
-    device_id: int = Field(..., description="Device ID (database primary key)")
-    poll_kind: Literal["holding", "input", "coils"] = Field(
-        ..., description="Register type"
-    )
-    poll_start_index: int = Field(..., ge=0, le=65535, description="Start index for polling")
-    poll_count: int = Field(..., ge=1, description="Number of registers to read during polling")
-    points: List[ConfigPoint] = Field(..., min_length=1, description="Point definitions")
-    is_active: bool = Field(..., description="Whether the config is active")
-    created_at: datetime = Field(..., description="Timestamp when config was created")
-    updated_at: datetime = Field(..., description="Timestamp when config was last updated")
-    created_by: str = Field(..., description="Config creator identifier")
-
-    model_config = {
-        "from_attributes": True,
-    }
-
-
-class ConfigDeleteResponse(BaseModel):
-    """Response model for a deleted config."""
-    config_id: str = Field(..., description="Deleted config ID")
-
-
 class DevicePointResponse(BaseModel):
     """Response model for a device point."""
     id: int = Field(..., description="Primary key")
@@ -189,3 +190,52 @@ class DevicePointResponse(BaseModel):
     model_config = {
         "from_attributes": True,
     }
+
+
+class TimeseriesPoint(BaseModel):
+    time: datetime
+    value: Optional[float]
+
+
+class PointTimeseries(BaseModel):
+    id: int
+    name: str
+    data_type: str
+    unit: Optional[str]
+    count: int
+    timeseries: List[TimeseriesPoint]
+
+
+class PointLatest(BaseModel):
+    id: int
+    name: str
+    data_type: str
+    unit: Optional[str]
+    time: Optional[datetime]
+    value: Optional[float]
+
+
+class TimeseriesMeta(BaseModel):
+    site_id: int
+    device_id: int
+    point_ids: Optional[List[int]]
+    total_count: int
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+
+
+class LatestMeta(BaseModel):
+    site_id: int
+    device_id: int
+    point_ids: Optional[List[int]]
+    total_count: int
+
+
+class TimeseriesResponse(BaseModel):
+    meta: TimeseriesMeta
+    readings: Dict[str, PointTimeseries]
+
+
+class LatestResponse(BaseModel):
+    meta: LatestMeta
+    readings: Dict[str, PointLatest]
