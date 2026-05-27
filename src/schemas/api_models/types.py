@@ -19,7 +19,6 @@ class DevicePointData(BaseModel):
     category: Literal["NATIVE", "STANDARDIZED", "VIRTUAL"] = "NATIVE"
     scale_factor: Optional[float] = None
     unit: Optional[str] = None
-    is_derived: bool = False
     bitfield_detail: Optional[dict[str, str]] = None
     enum_detail: Optional[dict[str, str]] = None
     byte_order: str = "big-endian"
@@ -77,7 +76,6 @@ class MergedPointMetadataToReading(TypedDict):
     data_type: str
     unit: Optional[str]
     scale_factor: Optional[float]
-    is_derived: bool
     timestamp: datetime
     derived_value: Optional[float]
     calculated_value: Optional[CalculatedValue]
@@ -90,7 +88,6 @@ class LatestDevicePointReadingModel(BaseModel):
     data_type: str
     unit: Optional[str]
     scale_factor: Optional[float]
-    is_derived: bool
     timestamp: datetime
     derived_value: Optional[float]
     bitfield_detail: Optional[BitfieldDetailMap] = None
@@ -105,7 +102,6 @@ class MergedPointMetadataToReadingModel(BaseModel):
     data_type: str
     unit: Optional[str]
     scale_factor: Optional[float]
-    is_derived: bool
     timestamp: datetime
     derived_value: Optional[float]
     calculated_value: Optional[CalculatedValue]

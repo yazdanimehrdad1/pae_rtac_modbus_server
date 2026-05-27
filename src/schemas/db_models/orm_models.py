@@ -140,9 +140,8 @@ class Device(Base):
     name: Mapped[str] = mapped_column(
         String(255),
         nullable=False,
-        unique=True,
         index=True,
-        comment="Unique device name/identifier"
+        comment="Device name (must be unique per site)"
     )
     
     host: Mapped[str] = mapped_column(
@@ -243,6 +242,10 @@ class Device(Base):
         comment="Timestamp when device record was last updated"
     )
     
+    __table_args__ = (
+        UniqueConstraint('name', 'site_id', name='uq_devices_name_site_id'),
+    )
+
     # Relationship to DevicePointsReading
     device_points_readings: Mapped[list["DevicePointsReading"]] = relationship(
         "DevicePointsReading",
@@ -257,9 +260,7 @@ class Device(Base):
         back_populates="device",
         cascade="all, delete-orphan"
     )
-    
-    
-    
+
     def __repr__(self) -> str:
         return f"<Device(device_id={self.device_id}, name='{self.name}', host='{self.host}:{self.port}')>"
 
@@ -485,26 +486,6 @@ class DevicePoint(Base):
         comment="Unit"
     )
     
-    enum_value: Mapped[Optional[str]] = mapped_column(
-        String(255),
-        nullable=True,
-        comment="Enum value if applicable"
-    )
-    
-    bitfield_value: Mapped[Optional[str]] = mapped_column(
-        String(255),
-        nullable=True,
-        comment="Bitfield value if applicable"
-    )
-    
-    is_derived: Mapped[bool] = mapped_column(
-        Boolean,
-        nullable=False,
-        default=False,
-        server_default="false",
-        comment="Whether this point is derived from bitfield/enum expansion"
-    )
-
     enum_detail: Mapped[Optional[Dict[str, str]]] = mapped_column(
         JSON,
         nullable=True,
@@ -551,12 +532,7 @@ class DevicePoint(Base):
 
     # Table-level constraints
     __table_args__ = (
-        # Primary uniqueness: point names must be unique per site/device
         UniqueConstraint('site_id', 'device_id', 'name', name='uq_device_point_site_device_name'),
-        # Secondary uniqueness for derived points: prevent duplicate bitfield/enum expansions
-        # Note: bitfield_value and enum_value are nullable, so this only applies when they're set
-        UniqueConstraint('site_id', 'device_id', 'address', 'bitfield_value', name='uq_device_point_address_bitfield'),
-        {'comment': 'Device points with unique names per site and device, and unique address/bitfield combinations'}
     )
 
     # Note: Unique constraint on (device_id, name) is enforced logic-side or via separate constraint

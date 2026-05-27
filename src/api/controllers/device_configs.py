@@ -14,6 +14,7 @@ from typing import Optional
 from helpers.device_configs.device_config_crud import (
     create_config_helper,
     get_config_db,
+    get_configs_for_device_db,
     update_config_db,
     delete_config_db,
 )
@@ -39,3 +40,7 @@ async def update_config(config_id: str, update: ConfigUpdate) -> Optional[Config
 
 async def delete_config(config_id: str) -> bool:
     return await delete_config_db(config_id)
+
+
+async def get_device_configs(device_id: int, site_id: int) -> list[ConfigResponse]:
+    return await get_configs_for_device_db(device_id, site_id)

@@ -43,7 +43,6 @@ async def get_latest_readings_by_point_ids(
                 DevicePoint.size,
                 DevicePoint.unit,
                 DevicePoint.scale_factor,
-                DevicePoint.is_derived,
                 DevicePoint.bitfield_detail,
                 DevicePoint.enum_detail,
             )
@@ -65,7 +64,6 @@ async def get_latest_readings_by_point_ids(
                 "size": row.size,
                 "unit": row.unit,
                 "scale_factor": row.scale_factor,
-                "is_derived": row.is_derived,
                 "timestamp": row.timestamp,
                 "derived_value": row.derived_value,
                 "bitfield_detail": row.bitfield_detail,
@@ -112,7 +110,6 @@ async def get_timeseries_by_point_ids(
                 DevicePoint.size,
                 DevicePoint.unit,
                 DevicePoint.scale_factor,
-                DevicePoint.is_derived,
                 DevicePoint.bitfield_detail,
                 DevicePoint.enum_detail,
             )
@@ -136,7 +133,6 @@ async def get_timeseries_by_point_ids(
                 "size": row.size,
                 "unit": row.unit,
                 "scale_factor": row.scale_factor,
-                "is_derived": row.is_derived,
                 "bitfield_detail": row.bitfield_detail,
                 "enum_detail": row.enum_detail,
             }

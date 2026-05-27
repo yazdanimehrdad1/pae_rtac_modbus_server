@@ -11,7 +11,7 @@ the router remains unchanged.
 from typing import List, Optional
 
 import db.sites as sites_db
-from helpers.sites import get_complete_site_data
+from helpers.sites import get_complete_site_data_with_points
 from logger import get_logger
 from schemas.api_models import (
     SiteComprehensiveResponse,
@@ -44,4 +44,4 @@ async def delete_site(site_id: int) -> Optional[SiteResponse]:
 
 
 async def get_comprehensive_site(site_id: int) -> Optional[SiteComprehensiveResponse]:
-    return await get_complete_site_data(site_id)
+    return await get_complete_site_data_with_points(site_id)

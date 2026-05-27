@@ -54,13 +54,13 @@ async def create_device(device: DeviceCreateRequest, site_id: int) -> DeviceWith
     session_factory = get_async_session_factory()
     async with session_factory() as session:
         try:
-            # Check if device name already exists
+            # Check if device name already exists within this site
             existing_device_result = await session.execute(
-                select(Device).where(Device.name == device.name)
+                select(Device).where(Device.name == device.name, Device.site_id == site_id)
             )
             existing_device = existing_device_result.scalar_one_or_none()
             if existing_device is not None:
-                raise ConflictError(f"Device with name '{device.name}' already exists")
+                raise ConflictError(f"Device with name '{device.name}' already exists in site {site_id}")
             
             site_result = await session.execute(
                 select(Site).where(Site.id == site_id)
@@ -126,8 +126,8 @@ async def create_device(device: DeviceCreateRequest, site_id: int) -> DeviceWith
             # Check if it's a unique constraint violation
             error_text = str(e).lower()
             if "unique" in error_text or "duplicate" in error_text or "already exists" in error_text:
-                logger.warning(f"Device name '{device.name}' already exists")
-                raise ConflictError(f"Device with name '{device.name}' already exists") from e
+                logger.warning(f"Device name '{device.name}' already exists in site {site_id}")
+                raise ConflictError(f"Device with name '{device.name}' already exists in site {site_id}") from e
             else:
                 logger.error(f"Database integrity error creating device: {e}")
                 raise ValidationError(f"Database integrity error: {e}") from e
@@ -393,8 +393,8 @@ async def update_device(device_id: int, device_update: DeviceUpdate, site_id: in
             await session.rollback()
             # Check if it's a unique constraint violation
             if "unique" in str(e).lower() or "duplicate" in str(e).lower():
-                logger.warning(f"Device name already exists")
-                raise ConflictError("Device with this name already exists") from e
+                logger.warning(f"Device name already exists in site {site_id}")
+                raise ConflictError(f"Device with this name already exists in site {site_id}") from e
             else:
                 logger.error(f"Database integrity error updating device: {e}")
                 raise ValidationError(f"Database integrity error: {e}") from e

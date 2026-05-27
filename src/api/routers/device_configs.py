@@ -6,6 +6,7 @@ from api.controllers.device_configs import (
     create_config,
     delete_config,
     get_config,
+    get_device_configs,
     update_config,
 )
 from schemas.api_models import (
@@ -14,11 +15,25 @@ from schemas.api_models import (
     ConfigDeleteResponse,
     ConfigUpdate,
 )
+from typing import List
 from utils.exceptions import AppError
 from logger import get_logger
 
 router = APIRouter(prefix="/configs", tags=["configs"])
 logger = get_logger(__name__)
+
+
+@router.get("/site/{site_id}/device/{device_id}", response_model=List[ConfigResponse])
+async def get_device_configs_endpoint(site_id: int, device_id: int):
+    """Get all configs for a device."""
+    try:
+        return await get_device_configs(device_id, site_id)
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An internal server error occurred"
+        )
 
 
 @router.post("/site/{site_id}/device/{device_id}", response_model=ConfigResponse, status_code=status.HTTP_201_CREATED)

@@ -31,7 +31,6 @@ def map_device_configs_to_device_points(
             enum_detail=point.enum_detail or {},
             bitfield_detail=point.bitfield_detail or {},
             byte_order=point.byte_order,
-            is_derived=False,
         )
         for point in points
     ]

@@ -32,7 +32,6 @@ class LatestDevicePointReadingDict(TypedDict):
     size: int
     unit: Optional[str]
     scale_factor: Optional[float]
-    is_derived: bool
     timestamp: datetime
     derived_value: Optional[float]
     bitfield_detail: Optional[dict[str, str]]
@@ -54,7 +53,6 @@ class TimeSeriesDevicePointReadingDict(TypedDict):
     size: int
     unit: Optional[str]
     scale_factor: Optional[float]
-    is_derived: bool
     bitfield_detail: Optional[dict[str, str]]
     enum_detail: Optional[dict[str, str]]
 
@@ -278,7 +276,6 @@ async def get_all_readings(
                     DevicePoint.size,
                     DevicePoint.unit,
                     DevicePoint.scale_factor,
-                    DevicePoint.is_derived,
                     DevicePoint.bitfield_detail,
                     DevicePoint.enum_detail,
                 )
@@ -323,7 +320,6 @@ async def get_all_readings(
                     'size': reading.size,
                     'unit': reading.unit,
                     'scale_factor': reading.scale_factor,
-                    'is_derived': reading.is_derived,
                     'bitfield_detail': reading.bitfield_detail,
                     'enum_detail': reading.enum_detail,
                 }
@@ -391,7 +387,6 @@ async def get_latest_reading(
                 DevicePoint.data_type,
                 DevicePoint.unit,
                 DevicePoint.scale_factor,
-                DevicePoint.is_derived,
             )
             .join(ranked, ranked.c.device_point_id == DevicePoint.id)
             .where(
@@ -421,7 +416,6 @@ async def get_latest_reading(
             'data_type': row.data_type,
             'unit': row.unit,
             'scale_factor': row.scale_factor,
-            'is_derived': row.is_derived,
             'derived_value': row.derived_value
         }
 
@@ -465,7 +459,6 @@ async def get_latest_readings_for_device(
                 DevicePoint.size,
                 DevicePoint.unit,
                 DevicePoint.scale_factor,
-                DevicePoint.is_derived,
                 DevicePoint.bitfield_detail,
                 DevicePoint.enum_detail,
             )
@@ -500,7 +493,6 @@ async def get_latest_readings_for_device(
                 'size': row.size,
                 'unit': row.unit,
                 'scale_factor': row.scale_factor,
-                'is_derived': row.is_derived,
                 'timestamp': row.timestamp,
                 'derived_value': row.derived_value,
                 'bitfield_detail': row.bitfield_detail,
@@ -567,7 +559,6 @@ async def get_latest_readings_for_device_n(
                 DevicePoint.data_type,
                 DevicePoint.unit,
                 DevicePoint.scale_factor,
-                DevicePoint.is_derived,
             )
             .join(ranked, ranked.c.device_point_id == DevicePoint.id)
             .where(
@@ -597,7 +588,6 @@ async def get_latest_readings_for_device_n(
                 'data_type': row.data_type,
                 'unit': row.unit,
                 'scale_factor': row.scale_factor,
-                'is_derived': row.is_derived,
                 'timestamp': row.timestamp,
                 'derived_value': row.derived_value
             }

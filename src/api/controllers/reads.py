@@ -147,7 +147,6 @@ async def points_time_series_response_controller(
                 data_type=point.data_type,
                 unit=point.unit,
                 scale_factor=point.scale_factor,
-                is_derived=point.is_derived,
                 timestamp=reading["timestamp"],
                 derived_value=reading["derived_value"],
                 bitfield_detail=point.bitfield_detail,
@@ -169,7 +168,6 @@ async def points_time_series_response_controller(
             "data_type": base_point.data_type,
             "unit": base_point.unit,
             "scale_factor": base_point.scale_factor,
-            "is_derived": base_point.is_derived,
         }
 
         address_points = [p for p in device_points if p.address == register_address]
@@ -223,7 +221,6 @@ async def points_latest_readings_n_response_controller(
             data_type=point.data_type,
             unit=point.unit,
             scale_factor=point.scale_factor,
-            is_derived=point.is_derived,
             timestamp=reading["timestamp"],
             derived_value=reading["derived_value"],
             bitfield_detail=point.bitfield_detail,

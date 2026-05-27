@@ -86,3 +86,7 @@ async def update_config_db(config_id: str, update: ConfigUpdate) -> Optional[Con
 
 async def delete_config_db(config_id: str) -> bool:
     return await delete_config(config_id)
+
+
+async def get_configs_for_device_db(device_id: int, site_id: Optional[int] = None) -> list[ConfigResponse]:
+    return await get_configs_for_device(device_id, site_id)

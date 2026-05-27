@@ -28,7 +28,7 @@ from pymodbus.exceptions import ConnectionException, ModbusException
 from config import settings
 from logger import get_logger
 from helpers.modbus.modbus_data_mapping import map_modbus_data_to_device_points
-from helpers.sites import get_complete_site_data
+from helpers.sites import get_complete_site_data_with_configs
 from schemas.api_models import DeviceListItem, DeviceWithConfigs, PollResult, PollingConfig
 from schemas.api_models.types import FailedConfigInfo
 from helpers.modbus.store_data_readings import store_device_data_in_db, DbStoreResult
@@ -57,7 +57,7 @@ async def poll_modbus_registers_per_site(site_id: int) -> None:
 
     try:
         # TODO: I think this can also be obtained from cache instead of DB
-        complete_site_data = await get_complete_site_data(site_id)
+        complete_site_data = await get_complete_site_data_with_configs(site_id)
         if complete_site_data is None:
             logger.warning(f"Site with id {site_id} not found")
             return

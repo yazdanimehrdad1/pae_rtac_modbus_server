@@ -19,7 +19,6 @@ High-level contract:
     "data_type": row.data_type,
     "unit": row.unit,
     "scale_factor": row.scale_factor,
-    "is_derived": row.is_derived,
     "timestamp": row.timestamp,
     "derived_value": row.derived_value,
     "calculated_value": <computed by rules below>
@@ -73,7 +72,6 @@ def create_calculated_points(
       "data_type": "bitfield",
       "unit": "Hz",
       "scale_factor": 0.1,
-      "is_derived": false,
       "timestamp": "2026-02-19T12:00:00Z",
       "derived_value": 5,
       "calculated_value": {
@@ -120,7 +118,6 @@ def create_calculated_points(
         data_type=point_reading.data_type,
         unit=point_reading.unit,
         scale_factor=point_reading.scale_factor,
-        is_derived=point_reading.is_derived,
         timestamp=point_reading.timestamp,
         derived_value=derived_value,
         calculated_value=calculated_value,

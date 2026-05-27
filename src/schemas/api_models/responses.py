@@ -103,17 +103,26 @@ class ConfigDeleteResponse(BaseModel):
     config_id: str = Field(..., description="Deleted config ID")
 
 
-class DevicePoints(BaseModel):
+class DevicePointsCategoryGrouped(BaseModel):
     """Device points grouped by category."""
     standardized: List["DevicePointResponse"] = Field(default_factory=list)
     native: List["DevicePointResponse"] = Field(default_factory=list)
     virtual: List["DevicePointResponse"] = Field(default_factory=list)
 
 
+# Backwards-compatible alias used by device endpoints that return both points and configs
+DevicePoints = DevicePointsCategoryGrouped
+
+
 class DeviceWithConfigs(DeviceListItem):
     """Device response with device points grouped by category."""
-    points: DevicePoints = Field(default_factory=DevicePoints)
+    points: DevicePointsCategoryGrouped = Field(default_factory=DevicePointsCategoryGrouped)
     configs: List[ConfigResponse] = Field(default_factory=list)
+
+
+class DeviceWithPoints(DeviceListItem):
+    """Device response with categorized device points (no configs)."""
+    points: DevicePointsCategoryGrouped = Field(default_factory=DevicePointsCategoryGrouped)
 
 
 class SiteResponse(BaseModel):
@@ -146,7 +155,7 @@ class SiteDeleteResponse(BaseModel):
 
 
 class SiteComprehensiveResponse(BaseModel):
-    """Comprehensive site response with devices and configs."""
+    """Comprehensive site response with devices and their categorized points."""
     site_id: int = Field(..., alias="id", description="Site ID (4-digit number)")
     client_id: str = Field(..., description="Client identifier")
     name: str = Field(..., description="Site name")
@@ -156,7 +165,29 @@ class SiteComprehensiveResponse(BaseModel):
     deviceCount: int = Field(..., alias="device_count", description="Number of devices at this site")
     description: Optional[str] = Field(None, description="Site description")
     coordinates: Optional[Coordinates] = Field(None, description="Geographic coordinates")
-    devices: List[DeviceWithConfigs] = Field(default_factory=list, description="Devices with configs")
+    devices: List[DeviceWithPoints] = Field(default_factory=list, description="Devices with categorized points")
+    createdAt: datetime = Field(..., alias="created_at", description="Timestamp when site was created")
+    updatedAt: datetime = Field(..., alias="updated_at", description="Timestamp when site was last updated")
+    lastUpdate: datetime = Field(..., alias="last_update", description="Timestamp of last update")
+
+    model_config = {
+        "from_attributes": True,
+        "populate_by_name": True,
+    }
+
+
+class SiteComprehensiveWithConfigsResponse(BaseModel):
+    """Comprehensive site response with devices and their polling configs (used internally by the scheduler/poller)."""
+    site_id: int = Field(..., alias="id", description="Site ID (4-digit number)")
+    client_id: str = Field(..., description="Client identifier")
+    name: str = Field(..., description="Site name")
+    location: Location = Field(..., description="Site location details")
+    operator: str = Field(..., description="Site operator")
+    capacity: str = Field(..., description="Site capacity")
+    deviceCount: int = Field(..., alias="device_count", description="Number of devices at this site")
+    description: Optional[str] = Field(None, description="Site description")
+    coordinates: Optional[Coordinates] = Field(None, description="Geographic coordinates")
+    devices: List[DeviceWithConfigs] = Field(default_factory=list, description="Devices with polling configs")
     createdAt: datetime = Field(..., alias="created_at", description="Timestamp when site was created")
     updatedAt: datetime = Field(..., alias="updated_at", description="Timestamp when site was last updated")
     lastUpdate: datetime = Field(..., alias="last_update", description="Timestamp of last update")
@@ -179,9 +210,6 @@ class DevicePointResponse(BaseModel):
     data_type: str = Field(..., description="Data type")
     scale_factor: Optional[float] = Field(None, description="Scale factor")
     unit: Optional[str] = Field(None, description="Unit")
-    enum_value: Optional[str] = Field(None, description="Enum value if applicable")
-    bitfield_value: Optional[str] = Field(None, description="Bitfield value if applicable")
-    is_derived: bool = Field(False, description="Whether this point is derived from bitfield/enum expansion")
     enum_detail: Optional[Dict[str, str]] = Field(None, description="Enum detail mapping")
     bitfield_detail: Optional[Dict[str, str]] = Field(None, description="Bitfield detail mapping")
     byte_order: str = Field("big-endian", description="Byte order for interpretation")
