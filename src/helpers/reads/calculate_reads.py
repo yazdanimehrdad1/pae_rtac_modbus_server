@@ -129,16 +129,3 @@ def build_enum_payload(
     return payload
 
 
-def build_scaled_payload(
-    derived_value: Optional[float],
-    scale_factor: Optional[float]
-) -> Optional[float]:
-    """
-    Apply scale factor to derived_value.
-
-    Example:
-    derived_value=599, scale_factor=0.1 -> 59.9
-    """
-    if derived_value is None:
-        return None
-    return derived_value * (scale_factor or 1.0)

@@ -30,21 +30,8 @@ help:
 # Start containers (ensures postgres is healthy, then starts services)
 up:
 	@echo "Starting services..."
-	@docker-compose -f docker-compose.yaml up -d postgres redis
-	@echo "Waiting for PostgreSQL to be healthy..."
-	@timeout=60; \
-	while [ $$timeout -gt 0 ]; do \
-		if docker-compose -f docker-compose.yaml exec -T postgres pg_isready -U $$POSTGRES_USER 2>/dev/null || docker-compose -f docker-compose.yaml exec -T postgres pg_isready -U rtac_user 2>/dev/null; then \
-			echo "PostgreSQL is ready!"; \
-			break; \
-		fi; \
-		sleep 1; \
-		timeout=$$((timeout-1)); \
-	done; \
-	if [ $$timeout -eq 0 ]; then \
-		echo "ERROR: PostgreSQL health check timeout"; \
-		exit 1; \
-	fi
+	@docker-compose -f docker-compose.yaml up -d --wait postgres redis
+	@echo "PostgreSQL and Redis are ready!"
 	@echo "Starting application service (migrations will run automatically)..."
 	@docker-compose -f docker-compose.yaml up -d pae-rtac-server
 
@@ -64,21 +51,8 @@ rebuild:
 up-build:
 	@echo "Building and starting services..."
 	@docker-compose -f docker-compose.yaml build
-	@docker-compose -f docker-compose.yaml up -d postgres redis
-	@echo "Waiting for PostgreSQL to be healthy..."
-	@timeout=60; \
-	while [ $$timeout -gt 0 ]; do \
-		if docker-compose -f docker-compose.yaml exec -T postgres pg_isready -U $$POSTGRES_USER 2>/dev/null || docker-compose -f docker-compose.yaml exec -T postgres pg_isready -U rtac_user 2>/dev/null; then \
-			echo "PostgreSQL is ready!"; \
-			break; \
-		fi; \
-		sleep 1; \
-		timeout=$$((timeout-1)); \
-	done; \
-	if [ $$timeout -eq 0 ]; then \
-		echo "ERROR: PostgreSQL health check timeout"; \
-		exit 1; \
-	fi
+	@docker-compose -f docker-compose.yaml up -d --wait postgres redis
+	@echo "PostgreSQL and Redis are ready!"
 	@echo "Starting application service (migrations will run automatically)..."
 	@docker-compose -f docker-compose.yaml up -d pae-rtac-server
 
@@ -86,21 +60,8 @@ up-build:
 up-rebuild:
 	@echo "Rebuilding and starting services..."
 	@docker-compose -f docker-compose.yaml build --no-cache
-	@docker-compose -f docker-compose.yaml up -d postgres redis
-	@echo "Waiting for PostgreSQL to be healthy..."
-	@timeout=60; \
-	while [ $$timeout -gt 0 ]; do \
-		if docker-compose -f docker-compose.yaml exec -T postgres pg_isready -U $$POSTGRES_USER 2>/dev/null || docker-compose -f docker-compose.yaml exec -T postgres pg_isready -U rtac_user 2>/dev/null; then \
-			echo "PostgreSQL is ready!"; \
-			break; \
-		fi; \
-		sleep 1; \
-		timeout=$$((timeout-1)); \
-	done; \
-	if [ $$timeout -eq 0 ]; then \
-		echo "ERROR: PostgreSQL health check timeout"; \
-		exit 1; \
-	fi
+	@docker-compose -f docker-compose.yaml up -d --wait postgres redis
+	@echo "PostgreSQL and Redis are ready!"
 	@echo "Starting application service (migrations will run automatically)..."
 	@docker-compose -f docker-compose.yaml up -d pae-rtac-server
 
@@ -137,21 +98,8 @@ dev:
 # Prepare test environment - ensure Redis container is running
 test-setup:
 	@echo "Preparing test environment..."
-	@echo "Checking if Redis container is running..."
-	@docker-compose -f docker-compose.yaml ps redis | grep -q "Up" || docker-compose -f docker-compose.yaml up -d redis
-	@echo "Waiting for Redis to be healthy..."
-	@timeout=30; \
-	while [ $$timeout -gt 0 ]; do \
-		if docker-compose -f docker-compose.yaml exec -T redis redis-cli ping > /dev/null 2>&1; then \
-			echo "Redis is ready!"; \
-			break; \
-		fi; \
-		sleep 1; \
-		timeout=$$((timeout-1)); \
-	done; \
-	if [ $$timeout -eq 0 ]; then \
-		echo "Warning: Redis health check timeout"; \
-	fi
+	@docker-compose -f docker-compose.yaml up -d --wait redis
+	@echo "Redis is ready!"
 
 # Run tests - ensures containers are up first
 test: test-setup
@@ -184,9 +132,12 @@ apply-migration:
 run:
 	@cd src && python -m main
 
-# Seed database with sample data (in container)
+# Seed database with development mock data (copies files into running container first)
 seed-db:
-	@docker-compose -f docker-compose.yaml exec pae-rtac-server python tests/seed_db.py
+	@echo "Copying seed files into container..."
+	@docker cp tests/seed_db/. pae-rtac-server:/app/tests/seed_db/
+	@echo "Running seed script..."
+	@docker-compose -f docker-compose.yaml exec pae-rtac-server python tests/seed_db/seed_db.py
 
 stop_rm_all:
 	docker stop $(docker ps -q) ; docker rm $(docker ps -aq) ; docker volume rm $(docker volume ls -q)

@@ -12,7 +12,7 @@ from sqlalchemy.dialects.postgresql import insert
 
 from db.session import get_session
 from schemas.db_models.orm_models import DevicePointsReading, DevicePoint, Device
-from helpers.devices import get_device_cache_db
+from db.devices import get_device_by_id
 from logger import get_logger
 
 logger = get_logger(__name__)
@@ -32,7 +32,6 @@ class LatestDevicePointReadingDict(TypedDict):
     size: int
     unit: Optional[str]
     scale_factor: Optional[float]
-    is_derived: bool
     timestamp: datetime
     derived_value: Optional[float]
     bitfield_detail: Optional[dict[str, str]]
@@ -54,7 +53,6 @@ class TimeSeriesDevicePointReadingDict(TypedDict):
     size: int
     unit: Optional[str]
     scale_factor: Optional[float]
-    is_derived: bool
     bitfield_detail: Optional[dict[str, str]]
     enum_detail: Optional[dict[str, str]]
 
@@ -174,53 +172,60 @@ async def insert_register_readings_batch(
     if not points_readings_list:
         logger.debug("No readings to insert in batch")
         return 0
-    
+
+    async with get_session() as session:
+        values = []
+        for r in points_readings_list:
+            values.append({
+                'site_id': r.site_id if r.site_id is not None else site_id,
+                'device_id': r.device_id if r.device_id is not None else device_id,
+                'device_point_id': r.device_point_id,
+                'timestamp': r.timestamp,
+                'derived_value': r.derived_value,
+            })
+
+        statement = insert(DevicePointsReading).values(values)
+        statement = statement.on_conflict_do_update(
+            index_elements=['device_point_id', 'timestamp'],
+            set_=dict(derived_value=statement.excluded.derived_value)
+        )
+        await session.execute(statement)
+        await session.commit()
+
+        inserted_count = len(values)
+        logger.debug(f"Batch inserted {inserted_count} register readings")
+        return inserted_count
+
+
+async def insert_register_reading_single(
+    site_id: Optional[str],
+    device_id: int,
+    reading: DevicePointsReading,
+) -> bool:
+    """
+    Insert a single DevicePointsReading. Returns True on success, False on failure.
+    Used as a per-row fallback when bulk insert fails.
+    """
     try:
         async with get_session() as session:
-            
-            values = []
-            for device_point_reading in points_readings_list:
-                reading_site_id = device_point_reading.site_id if device_point_reading.site_id is not None else site_id
-                reading_device_id = device_point_reading.device_id if device_point_reading.device_id is not None else device_id
-
-                values.append({
-                    'site_id': reading_site_id,
-                    'device_id': reading_device_id,
-                    'device_point_id': device_point_reading.device_point_id,
-                    'timestamp': device_point_reading.timestamp,
-                    'derived_value': device_point_reading.derived_value
-                })
-            
-            # Build batch INSERT query with ON CONFLICT
-            # TODO: critical: we need to insert the readings into the correct table, based on the site_id
-            # we need to create a new table for each site, and then insert the readings into the correct table
-            # the table name should be register_readings_raw_site_id_device_id
-            # the table should have the following columns: timestamp, device_point_id, derived_value
-            # the table should have the following primary key: timestamp, device_point_id
-            # the table should have the following foreign key: device_point_id
-            # the table should have the following index: device_point_id, timestamp
-            # the table should have the following constraint: device_id must be unique for each site
-            statement = insert(DevicePointsReading).values(values)
-            
+            values = {
+                'site_id': reading.site_id if reading.site_id is not None else site_id,
+                'device_id': reading.device_id if reading.device_id is not None else device_id,
+                'device_point_id': reading.device_point_id,
+                'timestamp': reading.timestamp,
+                'derived_value': reading.derived_value,
+            }
+            statement = insert(DevicePointsReading).values([values])
             statement = statement.on_conflict_do_update(
                 index_elements=['device_point_id', 'timestamp'],
-                set_=dict(
-                    derived_value=statement.excluded.derived_value
-                )
+                set_=dict(derived_value=statement.excluded.derived_value)
             )
-            
             await session.execute(statement)
             await session.commit()
-            
-            inserted_count = len(values)
-            logger.debug(f"Batch inserted {inserted_count} register readings")
-            
-            return inserted_count
-            
+            return True
     except Exception as e:
-        logger.error(f"Error in batch insert: {e}", exc_info=True)
-        # Return 0 on unexpected errors
-        return 0
+        logger.warning(f"Single insert failed for device_point_id={reading.device_point_id}: {e}")
+        return False
 
 async def get_all_readings(
     site_id: Optional[str] = None,
@@ -271,7 +276,6 @@ async def get_all_readings(
                     DevicePoint.size,
                     DevicePoint.unit,
                     DevicePoint.scale_factor,
-                    DevicePoint.is_derived,
                     DevicePoint.bitfield_detail,
                     DevicePoint.enum_detail,
                 )
@@ -316,7 +320,6 @@ async def get_all_readings(
                     'size': reading.size,
                     'unit': reading.unit,
                     'scale_factor': reading.scale_factor,
-                    'is_derived': reading.is_derived,
                     'bitfield_detail': reading.bitfield_detail,
                     'enum_detail': reading.enum_detail,
                 }
@@ -384,7 +387,6 @@ async def get_latest_reading(
                 DevicePoint.data_type,
                 DevicePoint.unit,
                 DevicePoint.scale_factor,
-                DevicePoint.is_derived,
             )
             .join(ranked, ranked.c.device_point_id == DevicePoint.id)
             .where(
@@ -414,7 +416,6 @@ async def get_latest_reading(
             'data_type': row.data_type,
             'unit': row.unit,
             'scale_factor': row.scale_factor,
-            'is_derived': row.is_derived,
             'derived_value': row.derived_value
         }
 
@@ -458,7 +459,6 @@ async def get_latest_readings_for_device(
                 DevicePoint.size,
                 DevicePoint.unit,
                 DevicePoint.scale_factor,
-                DevicePoint.is_derived,
                 DevicePoint.bitfield_detail,
                 DevicePoint.enum_detail,
             )
@@ -493,7 +493,6 @@ async def get_latest_readings_for_device(
                 'size': row.size,
                 'unit': row.unit,
                 'scale_factor': row.scale_factor,
-                'is_derived': row.is_derived,
                 'timestamp': row.timestamp,
                 'derived_value': row.derived_value,
                 'bitfield_detail': row.bitfield_detail,
@@ -526,7 +525,7 @@ async def get_latest_readings_for_device_n(
         ValueError: If device doesn't exist
     """
     async with get_session() as session:
-        device = await get_device_cache_db(site_id, device_id)
+        device = await get_device_by_id(device_id, site_id)
         if device is None:
             raise ValueError(f"Device with id '{device_id}' not found")
 
@@ -560,7 +559,6 @@ async def get_latest_readings_for_device_n(
                 DevicePoint.data_type,
                 DevicePoint.unit,
                 DevicePoint.scale_factor,
-                DevicePoint.is_derived,
             )
             .join(ranked, ranked.c.device_point_id == DevicePoint.id)
             .where(
@@ -590,7 +588,6 @@ async def get_latest_readings_for_device_n(
                 'data_type': row.data_type,
                 'unit': row.unit,
                 'scale_factor': row.scale_factor,
-                'is_derived': row.is_derived,
                 'timestamp': row.timestamp,
                 'derived_value': row.derived_value
             }

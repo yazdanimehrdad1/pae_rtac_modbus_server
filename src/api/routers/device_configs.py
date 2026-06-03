@@ -2,18 +2,20 @@
 
 from fastapi import APIRouter, HTTPException, status
 
-from db.device_configs import (
-    get_config,
-    update_config,
+from api.controllers.device_configs import (
+    create_config,
     delete_config,
+    get_config,
+    get_device_configs,
+    update_config,
 )
-from helpers.device_configs import create_config_cache_db
 from schemas.api_models import (
     ConfigCreateRequest,
     ConfigResponse,
     ConfigDeleteResponse,
     ConfigUpdate,
 )
+from typing import List
 from utils.exceptions import AppError
 from logger import get_logger
 
@@ -21,11 +23,24 @@ router = APIRouter(prefix="/configs", tags=["configs"])
 logger = get_logger(__name__)
 
 
+@router.get("/site/{site_id}/device/{device_id}", response_model=List[ConfigResponse])
+async def get_device_configs_endpoint(site_id: int, device_id: int):
+    """Get all configs for a device."""
+    try:
+        return await get_device_configs(device_id, site_id)
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An internal server error occurred"
+        )
+
+
 @router.post("/site/{site_id}/device/{device_id}", response_model=ConfigResponse, status_code=status.HTTP_201_CREATED)
 async def create_new_config(site_id: int, device_id: int, config: ConfigCreateRequest):
     """Create a new config."""
     try:
-        return await create_config_cache_db(site_id, device_id, config)
+        return await create_config(site_id, device_id, config)
     except AppError as e:
         detail = {"error": type(e).__name__, "message": e.message}
         if e.payload:

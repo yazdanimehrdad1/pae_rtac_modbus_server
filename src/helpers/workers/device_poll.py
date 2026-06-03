@@ -2,8 +2,8 @@
 
 from typing import List
 
-from modbus.client import ModbusClient
-from modbus.modbus_utills import ModbusUtils
+from services.modbus.client import ModbusClient
+from services.modbus.modbus_utills import ModbusUtils
 from logger import get_logger
 from schemas.api_models import DeviceListItem, ModbusRegisterValues, PollingConfig
 
@@ -24,7 +24,7 @@ def get_direct_modbus_utils(host: str, port: int) -> ModbusUtils:
     return modbus_utils
 
 
-async def get_enabled_devices_to_poll(site_devices: List[DeviceListItem]) -> List[DeviceListItem]:
+async def get_enabled_devices_to_poll(site_devices: List[DeviceListItem], site_name: str = "") -> List[DeviceListItem]:
     """
     Get list of devices to poll from database, filtered by poll_enabled.
 
@@ -35,22 +35,23 @@ async def get_enabled_devices_to_poll(site_devices: List[DeviceListItem]) -> Lis
     for device in site_devices:
         if device.poll_enabled:
             devices_to_poll.append(device)
-            logger.debug(f"Device '{device.name}' (ID: {device.device_id}) has polling enabled")
+            logger.debug(f"site_name='{site_name}', device_name='{device.name}': polling enabled")
         else:
             logger.debug(
-                f"Device '{device.name}' (ID: {device.device_id}) has polling disabled "
-                f"(poll_enabled={device.poll_enabled}), skipping"
+                f"site_name='{site_name}', device_name='{device.name}': polling disabled, skipping"
             )
 
     logger.info(
-        f"Found {len(devices_to_poll)} device(s) to poll out of {len(site_devices)} total device(s) "
+        f"site_name='{site_name}': {len(devices_to_poll)}/{len(site_devices)} device(s) enabled for polling"
     )
     return devices_to_poll
 
 
 async def read_device_registers(
     device: DeviceListItem,
-    polling_config: PollingConfig
+    polling_config: PollingConfig,
+    site_name: str = "",
+    config_id: str = "",
 ) -> ModbusRegisterValues:
     """
     Read Modbus registers for a device using polling configuration.
@@ -58,6 +59,8 @@ async def read_device_registers(
     Args:
         device: Device to read from
         polling_config: Polling configuration (address, count, kind, device_id)
+        site_name: Site name for log context
+        config_id: Config ID for log context
 
     Returns:
         List of raw register values from Modbus
@@ -73,8 +76,8 @@ async def read_device_registers(
     port = device.port
 
     logger.debug(
-        f"Reading Modbus registers for device '{device.name}': "
-        f"kind={kind}, address={address}, count={count}, server_address={server_id}"
+        f"site_name='{site_name}', device_name='{device.name}', device_config_ID='{config_id}': "
+        f"reading {kind} registers at address={address}, count={count}, server_address={server_id}"
     )
 
     if device.read_from_aggregator:
@@ -120,5 +123,8 @@ async def read_device_registers(
             port
         )
 
-    logger.info(f"Successfully read {len(modbus_data)} registers from device '{device.name}'")
+    logger.info(
+        f"site_name='{site_name}', device_name='{device.name}', device_config_ID='{config_id}': "
+        f"successfully read {len(modbus_data)} {kind} registers at address={address}"
+    )
     return modbus_data

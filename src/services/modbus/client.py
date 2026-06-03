@@ -11,7 +11,7 @@ from contextlib import contextmanager
 
 from dotenv import load_dotenv
 from pymodbus.client import ModbusTcpClient
-from pymodbus.exceptions import ConnectionException
+from pymodbus.exceptions import ConnectionException, ModbusException
 
 from helpers.modbus import translate_modbus_error
 
@@ -107,7 +107,7 @@ class ModbusClient:
                     device_id=server_id
                 )
                 if result.isError():
-                    raise result
+                    raise ModbusException(str(result))
                 return result.registers
                 
             elif kind == "input":
@@ -117,7 +117,7 @@ class ModbusClient:
                     device_id=server_id
                 )
                 if result.isError():
-                    raise result
+                    raise ModbusException(str(result))
                 return result.registers
                 
             elif kind == "coils":
@@ -127,7 +127,7 @@ class ModbusClient:
                     device_id=server_id
                 )
                 if result.isError():
-                    raise result
+                    raise ModbusException(str(result))
                 return result.bits
                 
             elif kind == "discretes":
@@ -137,7 +137,7 @@ class ModbusClient:
                     device_id=server_id
                 )
                 if result.isError():
-                    raise result
+                    raise ModbusException(str(result))
                 return result.bits
                 
             else:

@@ -1,13 +1,21 @@
 """Helpers for storing device polling data."""
 
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+
+@dataclass
+class DbStoreResult:
+    successful: int
+    failed: int
+    used_fallback: bool = False
+
 from cache.cache import CacheService
 from config import settings
-from db.register_readings import insert_register_readings_batch
+from db.register_readings import insert_register_readings_batch, insert_register_reading_single
 from logger import get_logger
-from utils.modbus_mapper import MappedRegisterData
+from helpers.modbus.modbus_data_converter import MappedRegisterData
 from schemas.db_models.orm_models import DevicePointsReading
 
 logger = get_logger(__name__)
@@ -106,42 +114,47 @@ async def store_device_data_in_db(
     device_id: int,
     site_id: str,
     points_readings_list: List[DevicePointsReading],
-    timestamp_dt: datetime
-) -> tuple[int, int]:
+    timestamp_dt: datetime,
+    device_name: str = "",
+) -> DbStoreResult:
     """
-    Store mapped register data in database.
+    Store device point readings in the database.
 
-    Args:
-        device_id: Database device ID (primary key)
-        site_id: Site ID (UUID) to validate device belongs to site
-        mapped_registers: List of mapped register data
-        timestamp_dt: Datetime object for database storage
-
-    Returns:
-        Tuple of (successful_inserts, failed_inserts)
+    Tries a single bulk INSERT first. If that fails, falls back to inserting
+    one row at a time so good rows still make it through.
     """
+    if not points_readings_list:
+        return DbStoreResult(successful=0, failed=0)
+
     try:
         inserted_count = await insert_register_readings_batch(
             site_id=site_id,
             device_id=device_id,
             points_readings_list=points_readings_list,
-            timestamp_dt=timestamp_dt
+            timestamp_dt=timestamp_dt,
         )
-        logger.info(f"Successfully stored {inserted_count} register readings in database")
-        return inserted_count, 0
+        logger.info(f"site_id='{site_id}', device_name='{device_name}': bulk insert stored {inserted_count} readings")
+        return DbStoreResult(successful=inserted_count, failed=0)
 
     except Exception as e:
-        logger.error(f"Failed to store register readings in database: {e}", exc_info=True)
-        return 0, len(points_readings_list)
+        logger.warning(
+            f"site_id='{site_id}', device_name='{device_name}': bulk insert failed ({e}), "
+            f"falling back to one-by-one inserts for {len(points_readings_list)} readings",
+            exc_info=True,
+        )
 
+    successful = 0
+    failed = 0
+    for reading in points_readings_list:
+        ok = await insert_register_reading_single(
+            site_id=site_id,
+            device_id=device_id,
+            reading=reading,
+        )
+        if ok:
+            successful += 1
+        else:
+            failed += 1
 
-async def store_device_data_in_db_translated(
-    device_id: int,
-    site_id: str,
-    mapped_registers: List[MappedRegisterData],
-    timestamp_dt: datetime
-) -> tuple[int, int]:
-    """
-    Store mapped register data in database.
-    """
-    pass
+    logger.info(f"site_id='{site_id}', device_name='{device_name}': one-by-one fallback — {successful} stored, {failed} failed")
+    return DbStoreResult(successful=successful, failed=failed, used_fallback=True)

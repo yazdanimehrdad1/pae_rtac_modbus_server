@@ -14,11 +14,9 @@ from schemas.db_models.orm_models import Config, Device
 from utils.exceptions import ConflictError, NotFoundError
 from logger import get_logger
 
+from constants import CONFIG_INDEX_MIN, CONFIG_INDEX_MAX
+
 logger = get_logger(__name__)
-
-
-CONFIG_INDEX_MIN = 1
-CONFIG_INDEX_MAX = 10
 
 # 
 async def _generate_config_id(session, site_id: int, device_id: int) -> str:
@@ -84,7 +82,7 @@ async def create_config_for_device(
 
             config_row = Config(
                 config_id=config_id,
-                site_id=payload["site_id"],
+                site_id=payload["site_id"],#TODO: this can be removed Device-config -> Device -> Site relationship has this already.
                 device_id=payload["device_id"],
                 poll_kind=payload["poll_kind"],
                 poll_start_index=payload["poll_start_index"],

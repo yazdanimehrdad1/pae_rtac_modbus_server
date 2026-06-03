@@ -11,18 +11,31 @@ from sqlalchemy.exc import IntegrityError
 
 from db.connection import get_async_session_factory
 from schemas.api_models import (
-    ConfigResponse,
     DeviceCreateRequest,
     DeviceUpdate,
     DeviceResponse,
+    DevicePoints,
     DeviceWithConfigs,
+    DevicePointResponse,
 )
-from schemas.db_models.orm_models import Config, Device, Site
+from schemas.db_models.orm_models import Device, DevicePoint, Site
 from utils.exceptions import ConflictError, NotFoundError, ValidationError, InternalError
-from helpers.mappers import config_to_response
 from logger import get_logger
 
 logger = get_logger(__name__)
+
+
+def _group_points(orm_points) -> DevicePoints:
+    grouped = DevicePoints()
+    for pt in orm_points:
+        point = DevicePointResponse.model_validate(pt, from_attributes=True)
+        if pt.category == "STANDARDIZED":
+            grouped.standardized.append(point)
+        elif pt.category == "NATIVE":
+            grouped.native.append(point)
+        elif pt.category == "VIRTUAL":
+            grouped.virtual.append(point)
+    return grouped
 
 
 async def create_device(device: DeviceCreateRequest, site_id: int) -> DeviceWithConfigs:
@@ -41,13 +54,13 @@ async def create_device(device: DeviceCreateRequest, site_id: int) -> DeviceWith
     session_factory = get_async_session_factory()
     async with session_factory() as session:
         try:
-            # Check if device name already exists
+            # Check if device name already exists within this site
             existing_device_result = await session.execute(
-                select(Device).where(Device.name == device.name)
+                select(Device).where(Device.name == device.name, Device.site_id == site_id)
             )
             existing_device = existing_device_result.scalar_one_or_none()
             if existing_device is not None:
-                raise ConflictError(f"Device with name '{device.name}' already exists")
+                raise ConflictError(f"Device with name '{device.name}' already exists in site {site_id}")
             
             site_result = await session.execute(
                 select(Site).where(Site.id == site_id)
@@ -105,7 +118,7 @@ async def create_device(device: DeviceCreateRequest, site_id: int) -> DeviceWith
                 protocol=created_device.protocol,
                 created_at=created_device.created_at,
                 updated_at=created_device.updated_at,
-                configs=[],
+                points=DevicePoints(),
             )
             
         except IntegrityError as e:
@@ -113,8 +126,8 @@ async def create_device(device: DeviceCreateRequest, site_id: int) -> DeviceWith
             # Check if it's a unique constraint violation
             error_text = str(e).lower()
             if "unique" in error_text or "duplicate" in error_text or "already exists" in error_text:
-                logger.warning(f"Device name '{device.name}' already exists")
-                raise ConflictError(f"Device with name '{device.name}' already exists") from e
+                logger.warning(f"Device name '{device.name}' already exists in site {site_id}")
+                raise ConflictError(f"Device with name '{device.name}' already exists in site {site_id}") from e
             else:
                 logger.error(f"Database integrity error creating device: {e}")
                 raise ValidationError(f"Database integrity error: {e}") from e
@@ -139,15 +152,22 @@ async def get_all_devices(site_id: int) -> list[DeviceWithConfigs]:
         devices = result.scalars().all()
         
         device_ids = [device.device_id for device in devices]
-        configs_by_device: dict[int, list[ConfigResponse]] = {}
+        points_by_device: dict[int, DevicePoints] = {}
         if device_ids:
-            configs_result = await session.execute(
-                select(Config).where(Config.device_id.in_(device_ids))
+            points_result = await session.execute(
+                select(DevicePoint).where(DevicePoint.device_id.in_(device_ids))
             )
-            for config in configs_result.scalars().all():
-                configs_by_device.setdefault(config.device_id, []).append(
-                    config_to_response(config)
-                )
+            for pt in points_result.scalars().all():
+                if pt.device_id not in points_by_device:
+                    points_by_device[pt.device_id] = DevicePoints()
+                point = DevicePointResponse.model_validate(pt, from_attributes=True)
+                grouped = points_by_device[pt.device_id]
+                if pt.category == "STANDARDIZED":
+                    grouped.standardized.append(point)
+                elif pt.category == "NATIVE":
+                    grouped.native.append(point)
+                elif pt.category == "VIRTUAL":
+                    grouped.virtual.append(point)
 
         device_list: list[DeviceWithConfigs] = []
         for device in devices:
@@ -169,7 +189,7 @@ async def get_all_devices(site_id: int) -> list[DeviceWithConfigs]:
                     protocol=device.protocol,
                     created_at=device.created_at,
                     updated_at=device.updated_at,
-                    configs=configs_by_device.get(device.device_id, []),
+                    points=points_by_device.get(device.device_id, DevicePoints()),
                 )
             )
         return device_list
@@ -195,13 +215,10 @@ async def get_device_by_id(device_id: int, site_id: int) -> Optional[DeviceWithC
         if device is None:
             return None
         
-        configs_result = await session.execute(
-            select(Config).where(Config.device_id == device.device_id)
+        points_result = await session.execute(
+            select(DevicePoint).where(DevicePoint.device_id == device.device_id)
         )
-        device_configs = [
-            config_to_response(config)
-            for config in configs_result.scalars().all()
-        ]
+        device_points = _group_points(points_result.scalars().all())
 
         return DeviceWithConfigs(
             device_id=device.device_id,
@@ -220,7 +237,7 @@ async def get_device_by_id(device_id: int, site_id: int) -> Optional[DeviceWithC
             protocol=device.protocol,
             created_at=device.created_at,
             updated_at=device.updated_at,
-            configs=device_configs,
+            points=device_points,
         )
 
 
@@ -234,13 +251,10 @@ async def get_device_by_id_internal(device_id: int) -> Optional[DeviceWithConfig
         device = result.scalar_one_or_none()
         if device is None:
             return None
-        configs_result = await session.execute(
-            select(Config).where(Config.device_id == device.device_id)
+        points_result = await session.execute(
+            select(DevicePoint).where(DevicePoint.device_id == device.device_id)
         )
-        device_configs = [
-            config_to_response(config)
-            for config in configs_result.scalars().all()
-        ]
+        device_points = _group_points(points_result.scalars().all())
 
         return DeviceWithConfigs(
             device_id=device.device_id,
@@ -259,7 +273,7 @@ async def get_device_by_id_internal(device_id: int) -> Optional[DeviceWithConfig
             protocol=device.protocol,
             created_at=device.created_at,
             updated_at=device.updated_at,
-            configs=device_configs,
+            points=device_points,
         )
 
 
@@ -350,13 +364,10 @@ async def update_device(device_id: int, device_update: DeviceUpdate, site_id: in
             
             logger.info(f"Updated device with id {device.device_id}")
             
-            configs_result = await session.execute(
-                select(Config).where(Config.device_id == device.device_id)
+            points_result = await session.execute(
+                select(DevicePoint).where(DevicePoint.device_id == device.device_id)
             )
-            device_configs = [
-                config_to_response(config)
-                for config in configs_result.scalars().all()
-            ]
+            device_points = _group_points(points_result.scalars().all())
 
             return DeviceWithConfigs(
                 device_id=device.device_id,
@@ -375,15 +386,15 @@ async def update_device(device_id: int, device_update: DeviceUpdate, site_id: in
                 protocol=device.protocol,
                 created_at=device.created_at,
                 updated_at=device.updated_at,
-                configs=device_configs,
+                points=device_points,
             )
             
         except IntegrityError as e:
             await session.rollback()
             # Check if it's a unique constraint violation
             if "unique" in str(e).lower() or "duplicate" in str(e).lower():
-                logger.warning(f"Device name already exists")
-                raise ConflictError("Device with this name already exists") from e
+                logger.warning(f"Device name already exists in site {site_id}")
+                raise ConflictError(f"Device with this name already exists in site {site_id}") from e
             else:
                 logger.error(f"Database integrity error updating device: {e}")
                 raise ValidationError(f"Database integrity error: {e}") from e
