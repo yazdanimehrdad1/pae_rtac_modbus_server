@@ -161,6 +161,9 @@ def _decode_modbus_point_value(
         elif data_type in ("uint16", "status_word", "raw"):
             value = int.from_bytes(raw_bytes, byteorder="big", signed=False)
 
+        elif data_type == "bitfield":
+            value = int.from_bytes(raw_bytes, byteorder="big", signed=False)
+
         elif data_type == "int16":
             value = int.from_bytes(raw_bytes, byteorder="big", signed=True)
 
