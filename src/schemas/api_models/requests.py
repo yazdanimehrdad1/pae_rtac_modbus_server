@@ -18,36 +18,6 @@ class Location(BaseModel):
     zip_code: int = Field(..., ge=0, description="Zip/postal code")
 
 
-class ConfigPoint(BaseModel):
-    """Single point definition in a config."""
-    name: str = Field(..., alias="point_name", description="Human-readable point name/label")
-    address: int = Field(..., alias="point_address", ge=0, le=65535, description="Modbus point address")
-    size: int = Field(..., alias="point_size", ge=1, description="Number of registers/bits")
-    data_type: str = Field(..., alias="point_data_type", description="Data type interpretation")
-    scale_factor: Optional[float] = Field(
-        None, alias="point_scale_factor", description="Scale factor to apply to raw value"
-    )
-    unit: Optional[str] = Field(None, alias="point_unit", description="Physical unit (e.g., 'V', 'A', 'kW')")
-    bitfield_detail: Optional[Dict[str, str]] = Field(
-        None,
-        alias="point_bitfield_detail",
-        description="Bitfield detail mapping (optional)",
-    )
-    enum_detail: Optional[Dict[str, str]] = Field(
-        None,
-        alias="point_enum_detail",
-        description="Enum detail mapping (optional)",
-    )
-    byte_order: str = Field(
-        default="big-endian",
-        alias="point_byte_order",
-        description="Byte order for interpretation",
-    )
-
-    model_config = {
-        "populate_by_name": True,
-    }
-
 
 class ReadRequest(BaseModel):
     """Request model for reading Modbus registers."""
@@ -86,6 +56,7 @@ class DeviceCreateRequest(BaseModel):
     description: Optional[str] = Field(default=None, description="Optional device description")
     poll_enabled: bool = Field(True, description="Whether polling is enabled for this device")
     read_from_aggregator: bool = Field(True, description="Whether to read from edge aggregator")
+    scan_ranges: Optional["DeviceScanRanges"] = Field(None, description="Initial scan ranges (optional)")
 
 
 class DeviceUpdate(BaseModel):
@@ -110,6 +81,7 @@ class DeviceUpdate(BaseModel):
     read_from_aggregator: Optional[bool] = Field(
         None, description="Whether to read from edge aggregator"
     )
+    scan_ranges: Optional["DeviceScanRanges"] = Field(None, description="Updated scan ranges (does not lock)")
 
 
 class SiteCreateRequest(BaseModel):
@@ -138,33 +110,6 @@ class SiteUpdateRequest(BaseModel):
     coordinates: Optional[Coordinates] = Field(None, description="Geographic coordinates")
 
 
-class ConfigCreateRequest(BaseModel):
-    """Config payload for a device."""
-    site_id: int = Field(..., description="Site ID (4-digit number)")
-    device_id: int = Field(..., description="Device ID (database primary key)")
-    poll_kind: Literal["holding", "input", "coils"] = Field(..., description="Register type")
-    poll_start_index: int = Field(..., ge=0, le=65535, description="Start index for polling")
-    poll_count: int = Field(..., ge=1, description="Number of registers to read during polling")
-    points: List[ConfigPoint] = Field(..., min_length=1, description="Point definitions")
-    is_active: bool = Field(default=True, description="Whether the config is active")
-    created_by: str = Field(..., min_length=1, max_length=255, description="Config creator identifier")
-
-
-class ConfigUpdate(BaseModel):
-    """Update payload for a config."""
-    poll_kind: Optional[Literal["holding", "input", "coils"]] = Field(
-        None, description="Register type"
-    )
-    poll_start_index: Optional[int] = Field(
-        None, ge=0, le=65535, description="Start index for polling"
-    )
-    poll_count: Optional[int] = Field(None, ge=1, description="Number of registers to read during polling")
-    points: Optional[List[ConfigPoint]] = Field(None, min_length=1, description="Point definitions")
-    is_active: Optional[bool] = Field(None, description="Whether the config is active")
-    created_by: Optional[str] = Field(
-        None, min_length=1, max_length=255, description="Config creator identifier"
-    )
-
 
 class PollingConfig(BaseModel):
     """Polling configuration for Modbus reads."""
@@ -173,3 +118,54 @@ class PollingConfig(BaseModel):
     poll_kind: Literal["holding", "input", "coils", "discretes"] = Field(
         ..., description="Register type to read"
     )
+
+
+class RegisterRange(BaseModel):
+    """A single Modbus read window."""
+    start_index: int = Field(..., ge=0, le=65535)
+    count: int = Field(..., ge=1)
+
+
+class DeviceScanRanges(BaseModel):
+    """Scan ranges categorized by register type."""
+    holding: List[RegisterRange] = Field(default_factory=list)
+    input: List[RegisterRange] = Field(default_factory=list)
+    coils: List[RegisterRange] = Field(default_factory=list)
+
+
+class DevicePointCreateRequest(BaseModel):
+    """Request model for creating a device point directly (Config-free)."""
+    name: str = Field(..., min_length=1, max_length=255)
+    poll_kind: Optional[Literal["holding", "input", "coils"]] = None
+    address: Optional[int] = Field(None, ge=0, le=65535)
+    size: int = Field(..., ge=1)
+    data_type: str
+    scale_factor: Optional[float] = None
+    unit: Optional[str] = None
+    byte_order: str = "big-endian"
+    word_order: str = "msw_first"
+    register_offset: float = 0.0
+    bitfield_detail: Optional[Dict[str, str]] = None
+    enum_detail: Optional[Dict[str, str]] = None
+    category: Literal["NATIVE", "STANDARDIZED", "VIRTUAL"] = "NATIVE"
+
+
+class DevicePointUpdateRequest(BaseModel):
+    """Request model for updating a device point."""
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    poll_kind: Optional[Literal["holding", "input", "coils"]] = None
+    address: Optional[int] = Field(None, ge=0, le=65535)
+    size: Optional[int] = Field(None, ge=1)
+    data_type: Optional[str] = None
+    scale_factor: Optional[float] = None
+    unit: Optional[str] = None
+    byte_order: Optional[str] = None
+    word_order: Optional[str] = None
+    register_offset: Optional[float] = None
+    bitfield_detail: Optional[Dict[str, str]] = None
+    enum_detail: Optional[Dict[str, str]] = None
+
+
+class DevicePointsBulkRequest(BaseModel):
+    """Bulk upsert: create new points and update existing ones (matched by name) in one call."""
+    points: List[DevicePointCreateRequest] = Field(..., min_length=1)

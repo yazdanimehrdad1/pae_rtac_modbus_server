@@ -99,7 +99,6 @@ def generate_standardized_points(
         DevicePointData(
             site_id=site_id,
             device_id=device_id,
-            config_id=None,
             address=point.address,
             name=point.name,
             size=1,

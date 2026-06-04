@@ -23,7 +23,6 @@ from api.routers import (
     readings_registers,
     sites,
     csv_exports,
-    device_configs,
     device_points,
     device_points_readings,
 )
@@ -114,7 +113,6 @@ def create_app() -> FastAPI:
     app.include_router(readings_registers.router, prefix="/api", tags=["register_readings"])
     app.include_router(sites.router, prefix="/api", tags=["sites"])
     app.include_router(csv_exports.router, prefix="/api", tags=["csv-exports"])
-    app.include_router(device_configs.router, prefix="/api", tags=["configs"])
     app.include_router(device_points.router, prefix="/api", tags=["device-points"])
     app.include_router(device_points_readings.router, prefix="/api", tags=["device-point-readings"])
 

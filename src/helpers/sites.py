@@ -7,7 +7,6 @@ from sqlalchemy import select
 from db.connection import get_async_session_factory
 from logger import get_logger
 from schemas.api_models import (
-    ConfigResponse,
     Coordinates,
     DevicePointResponse,
     DevicePointsCategoryGrouped,
@@ -15,9 +14,9 @@ from schemas.api_models import (
     DeviceWithPoints,
     Location,
     SiteComprehensiveResponse,
-    SiteComprehensiveWithConfigsResponse,
 )
-from schemas.db_models.orm_models import Config, Device, DevicePoint, Site
+from schemas.api_models.requests import DeviceScanRanges
+from schemas.db_models.orm_models import Device, DevicePoint, Site
 
 logger = get_logger(__name__)
 
@@ -25,7 +24,7 @@ logger = get_logger(__name__)
 async def get_complete_site_data_with_points(site_id: int) -> Optional[SiteComprehensiveResponse]:
     """
     Get a site with devices and their categorized device points.
-    Used by the API's comprehensive site endpoint.
+    Used by the API's comprehensive site endpoint and the scheduler/poller.
     """
     session_factory = get_async_session_factory()
     async with session_factory() as session:
@@ -50,7 +49,7 @@ async def get_complete_site_data_with_points(site_id: int) -> Optional[SiteCompr
             )
             for dp in points_result.scalars().all():
                 points_by_device.setdefault(dp.device_id, []).append(
-                    DevicePointResponse.model_validate(dp)
+                    DevicePointResponse.model_validate(dp, from_attributes=True)
                 )
 
         coordinates, location = _build_coordinates_and_location(site)
@@ -71,67 +70,12 @@ async def get_complete_site_data_with_points(site_id: int) -> Optional[SiteCompr
         )
 
 
-async def get_complete_site_data_with_configs(site_id: int) -> Optional[SiteComprehensiveWithConfigsResponse]:
-    """
-    Get a site with devices and their polling configs.
-    Used internally by the scheduler/poller.
-    """
-    session_factory = get_async_session_factory()
-    async with session_factory() as session:
-        site_result = await session.execute(select(Site).where(Site.id == site_id))
-        site = site_result.scalar_one_or_none()
-        if site is None:
-            return None
-
-        device_result = await session.execute(
-            select(Device).where(Device.site_id == site_id).order_by(Device.device_id)
-        )
-        devices = device_result.scalars().all()
-        device_ids = [d.device_id for d in devices]
-
-        configs_by_device: dict[int, list[ConfigResponse]] = {}
-        if device_ids:
-            configs_result = await session.execute(
-                select(Config).where(
-                    Config.device_id.in_(device_ids),
-                    Config.site_id == site_id,
-                )
-            )
-            for config in configs_result.scalars().all():
-                configs_by_device.setdefault(config.device_id, []).append(
-                    ConfigResponse(
-                        config_id=config.config_id,
-                        site_id=config.site_id,
-                        device_id=config.device_id,
-                        poll_kind=config.poll_kind,
-                        poll_start_index=config.poll_start_index,
-                        poll_count=config.poll_count,
-                        points=config.points,
-                        is_active=config.is_active,
-                        created_at=config.created_at,
-                        updated_at=config.updated_at,
-                        created_by=config.created_by,
-                    )
-                )
-
-        coordinates, location = _build_coordinates_and_location(site)
-
-        device_items: list[DeviceWithConfigs] = []
-        for device in devices:
-            device_items.append(
-                DeviceWithConfigs(
-                    **_device_base_kwargs(device),
-                    configs=configs_by_device.get(device.device_id, []),
-                )
-            )
-
-        return SiteComprehensiveWithConfigsResponse(
-            **_site_base_kwargs(site, coordinates, location),
-            devices=device_items,
-        )
+async def get_complete_site_data_with_configs(site_id: int) -> Optional[SiteComprehensiveResponse]:
+    """Alias for get_complete_site_data_with_points (configs removed)."""
+    return await get_complete_site_data_with_points(site_id)
 
 
-# Backwards-compatible alias — callers that still use the old name get the points variant
+# Backwards-compatible alias
 get_complete_site_data = get_complete_site_data_with_points
 
 
@@ -165,6 +109,9 @@ def _site_base_kwargs(site, coordinates, location) -> dict:
 
 
 def _device_base_kwargs(device) -> dict:
+    scan_ranges = None
+    if device.scan_ranges:
+        scan_ranges = DeviceScanRanges.model_validate(device.scan_ranges)
     return dict(
         device_id=device.device_id,
         site_id=device.site_id,
@@ -182,4 +129,6 @@ def _device_base_kwargs(device) -> dict:
         protocol=device.protocol,
         created_at=device.created_at,
         updated_at=device.updated_at,
+        scan_ranges=scan_ranges,
+        scan_ranges_locked=device.scan_ranges_locked or False,
     )

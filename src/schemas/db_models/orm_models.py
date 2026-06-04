@@ -6,7 +6,6 @@ These models represent the database schema and are used for ORM operations.
 
 from datetime import datetime
 from typing import Optional, Dict, Any
-from typing_extensions import TypedDict
 from sqlalchemy import String, Integer, Text, DateTime, func, Float, ForeignKey, JSON, Boolean, UniqueConstraint, Enum as SAEnum
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -15,17 +14,6 @@ class Base(DeclarativeBase):
     """Base class for all SQLAlchemy models."""
     pass
 
-
-class ConfigPointDefinition(TypedDict, total=False):
-    address: int
-    name: str
-    data_type: str
-    size: int
-    scale_factor: float
-    unit: str
-    bitfield_detail: Dict[str, str]
-    enum_detail: Dict[str, str]
-    byte_order: str
 
 
 class Site(Base):
@@ -210,6 +198,21 @@ class Device(Base):
         comment="Device model"
     )
     
+    scan_ranges: Mapped[Optional[dict]] = mapped_column(
+        JSON,
+        nullable=True,
+        default=None,
+        comment="Auto-computed (or manually locked) scan ranges keyed by register type"
+    )
+
+    scan_ranges_locked: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+        comment="When True, point CRUD does not overwrite scan_ranges"
+    )
+
     # Polling configuration
     poll_enabled: Mapped[bool] = mapped_column(
         Boolean,
@@ -264,88 +267,6 @@ class Device(Base):
     def __repr__(self) -> str:
         return f"<Device(device_id={self.device_id}, name='{self.name}', host='{self.host}:{self.port}')>"
 
-
-class Config(Base):
-    """
-    SQLAlchemy model for the configs table.
-    
-    Stores versioned polling configuration payloads keyed by config ID.
-    """
-    __tablename__ = "configs"
-    
-    config_id: Mapped[str] = mapped_column(
-        String(255),
-        primary_key=True,
-        comment="Config ID (e.g., siteID-deviceID-1)"
-    )
-    
-    site_id: Mapped[int] = mapped_column(
-        Integer,
-        nullable=False,
-        comment="Site ID (4-digit number)"
-    )
-    
-    device_id: Mapped[int] = mapped_column(
-        Integer,
-        ForeignKey("devices.device_id", ondelete="CASCADE"),
-        nullable=False,
-        comment="Device ID (database primary key)"
-    )
-    
-    poll_kind: Mapped[str] = mapped_column(
-        String(20),
-        nullable=False,
-        comment="Register type: holding, input, or coils"
-    )
-    
-    poll_start_index: Mapped[int] = mapped_column(
-        Integer,
-        nullable=False,
-        comment="Start index for polling Modbus registers"
-    )
-    
-    poll_count: Mapped[int] = mapped_column(
-        Integer,
-        nullable=False,
-        comment="Number of registers to read during polling"
-    )
-    
-    points: Mapped[list[ConfigPointDefinition]] = mapped_column(
-        JSON,
-        nullable=False,
-        comment="Point definitions"
-    )
-    
-    is_active: Mapped[bool] = mapped_column(
-        Boolean,
-        nullable=False,
-        default=True,
-        comment="Whether this config is active"
-    )
-    
-    created_by: Mapped[str] = mapped_column(
-        String(255),
-        nullable=False,
-        comment="Config creator identifier"
-    )
-    
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        server_default=func.now(),
-        comment="Timestamp when config record was created"
-    )
-    
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        server_default=func.now(),
-        onupdate=func.now(),
-        comment="Timestamp when config record was last updated"
-    )
-    
-    def __repr__(self) -> str:
-        return f"<Config(config_id='{self.config_id}')>"
 
 
 class DevicePointsReading(Base):
@@ -443,13 +364,6 @@ class DevicePoint(Base):
         comment="Device ID"
     )
     
-    config_id: Mapped[Optional[str]] = mapped_column(
-        String(255),
-        ForeignKey("configs.config_id", ondelete="CASCADE"),
-        nullable=True,
-        comment="Config ID (null for STANDARDIZED and VIRTUAL points)"
-    )
-    
     address: Mapped[int] = mapped_column(
         Integer,
         nullable=False,
@@ -520,6 +434,12 @@ class DevicePoint(Base):
         default=0.0,
         server_default="0.0",
         comment="Linear offset applied after scaling: final = raw * scale_factor + register_offset"
+    )
+
+    poll_kind: Mapped[Optional[str]] = mapped_column(
+        String(20),
+        nullable=True,
+        comment="Register type: holding, input, or coils (required for NATIVE points)"
     )
 
     category: Mapped[str] = mapped_column(

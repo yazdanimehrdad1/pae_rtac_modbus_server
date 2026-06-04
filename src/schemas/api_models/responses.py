@@ -1,11 +1,11 @@
 """API response models."""
 
 from datetime import datetime
-from typing import Optional, Dict, List, Literal
+from typing import Optional, Dict, List
 from pydantic import BaseModel, Field
 
 from schemas.api_models.mappers import RegisterData, RegisterValue
-from schemas.api_models.requests import ConfigPoint, Coordinates, Location
+from schemas.api_models.requests import Coordinates, Location, DeviceScanRanges
 
 
 class ReadResponse(BaseModel):
@@ -59,6 +59,8 @@ class DeviceListItem(BaseModel):
     description: Optional[str] = Field(None, description="Device description")
     poll_enabled: bool = Field(True, description="Whether polling is enabled for this device")
     read_from_aggregator: bool = Field(True, description="Whether to read from edge aggregator")
+    scan_ranges: Optional[DeviceScanRanges] = Field(None, description="Auto-computed or manually locked scan ranges")
+    scan_ranges_locked: bool = Field(False, description="Whether scan ranges are locked against auto-recompute")
     created_at: datetime = Field(..., description="Timestamp when device was created")
     updated_at: datetime = Field(..., description="Timestamp when device was last updated")
 
@@ -77,31 +79,6 @@ class DeviceDeleteResponse(BaseModel):
     site_id: int = Field(..., description="Site ID for the deleted device")
 
 
-class ConfigResponse(BaseModel):
-    """Response model for config."""
-    config_id: str = Field(..., description="Config ID")
-    site_id: int = Field(..., description="Site ID (4-digit number)")
-    device_id: int = Field(..., description="Device ID (database primary key)")
-    poll_kind: Literal["holding", "input", "coils"] = Field(
-        ..., description="Register type"
-    )
-    poll_start_index: int = Field(..., ge=0, le=65535, description="Start index for polling")
-    poll_count: int = Field(..., ge=1, description="Number of registers to read during polling")
-    points: List[ConfigPoint] = Field(..., min_length=1, description="Point definitions")
-    is_active: bool = Field(..., description="Whether the config is active")
-    created_at: datetime = Field(..., description="Timestamp when config was created")
-    updated_at: datetime = Field(..., description="Timestamp when config was last updated")
-    created_by: str = Field(..., description="Config creator identifier")
-
-    model_config = {
-        "from_attributes": True,
-    }
-
-
-class ConfigDeleteResponse(BaseModel):
-    """Response model for a deleted config."""
-    config_id: str = Field(..., description="Deleted config ID")
-
 
 class DevicePointsCategoryGrouped(BaseModel):
     """Device points grouped by category."""
@@ -117,7 +94,6 @@ DevicePoints = DevicePointsCategoryGrouped
 class DeviceWithConfigs(DeviceListItem):
     """Device response with device points grouped by category."""
     points: DevicePointsCategoryGrouped = Field(default_factory=DevicePointsCategoryGrouped)
-    configs: List[ConfigResponse] = Field(default_factory=list)
 
 
 class DeviceWithPoints(DeviceListItem):
@@ -176,34 +152,12 @@ class SiteComprehensiveResponse(BaseModel):
     }
 
 
-class SiteComprehensiveWithConfigsResponse(BaseModel):
-    """Comprehensive site response with devices and their polling configs (used internally by the scheduler/poller)."""
-    site_id: int = Field(..., alias="id", description="Site ID (4-digit number)")
-    client_id: str = Field(..., description="Client identifier")
-    name: str = Field(..., description="Site name")
-    location: Location = Field(..., description="Site location details")
-    operator: str = Field(..., description="Site operator")
-    capacity: str = Field(..., description="Site capacity")
-    deviceCount: int = Field(..., alias="device_count", description="Number of devices at this site")
-    description: Optional[str] = Field(None, description="Site description")
-    coordinates: Optional[Coordinates] = Field(None, description="Geographic coordinates")
-    devices: List[DeviceWithConfigs] = Field(default_factory=list, description="Devices with polling configs")
-    createdAt: datetime = Field(..., alias="created_at", description="Timestamp when site was created")
-    updatedAt: datetime = Field(..., alias="updated_at", description="Timestamp when site was last updated")
-    lastUpdate: datetime = Field(..., alias="last_update", description="Timestamp of last update")
-
-    model_config = {
-        "from_attributes": True,
-        "populate_by_name": True,
-    }
-
 
 class DevicePointResponse(BaseModel):
     """Response model for a device point."""
     id: int = Field(..., description="Primary key")
     site_id: int = Field(..., description="Site ID")
     device_id: int = Field(..., description="Device ID")
-    config_id: Optional[str] = Field(None, description="Config ID")
     name: str = Field(..., description="Point name")
     address: int = Field(..., description="Point address")
     size: int = Field(..., description="Point size")
@@ -213,6 +167,9 @@ class DevicePointResponse(BaseModel):
     enum_detail: Optional[Dict[str, str]] = Field(None, description="Enum detail mapping")
     bitfield_detail: Optional[Dict[str, str]] = Field(None, description="Bitfield detail mapping")
     byte_order: str = Field("big-endian", description="Byte order for interpretation")
+    word_order: str = Field("msw_first", description="Word order for multi-register types")
+    register_offset: float = Field(0.0, description="Linear offset applied after scaling")
+    poll_kind: Optional[str] = Field(None, description="Register type: holding, input, or coils")
     category: str = Field("NATIVE", description="Point category: NATIVE, STANDARDIZED, or VIRTUAL")
 
     model_config = {
