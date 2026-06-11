@@ -20,7 +20,6 @@ from api.routers import (
     readings_raw_modbus,
     cache,
     devices,
-    readings_registers,
     sites,
     csv_exports,
     device_points,
@@ -110,7 +109,6 @@ def create_app() -> FastAPI:
     app.include_router(readings_raw_modbus.router, prefix="/api", tags=["raw-modbus"])
     app.include_router(cache.router, prefix="/api", tags=["cache"])
     app.include_router(devices.router, prefix="/api", tags=["devices"])
-    app.include_router(readings_registers.router, prefix="/api", tags=["register_readings"])
     app.include_router(sites.router, prefix="/api", tags=["sites"])
     app.include_router(csv_exports.router, prefix="/api", tags=["csv-exports"])
     app.include_router(device_points.router, prefix="/api", tags=["device-points"])

@@ -84,7 +84,7 @@ async def get_timeseries_readings(
     point_ids: Optional[str] = Query(None, description="Comma-separated device_point_ids (e.g. '1,2,3'). If omitted, returns all points for the device."),
     start_time: Optional[datetime] = Query(None, description="Start time in ISO format (e.g. '2025-01-18T08:00:00Z')"),
     end_time: Optional[datetime] = Query(None, description="End time in ISO format (e.g. '2025-01-18T09:00:00Z')"),
-    limit: int = Query(1000, ge=1, le=10000, description="Maximum total rows returned across all points"),
+    limit: int = Query(1000, ge=1, le=10000, description="Maximum rows per point (each point gets up to this many readings)"),
 ):
     """
     Get time-series readings for each requested device point, keyed by device_point_id.

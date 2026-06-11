@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import List, Optional
 
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, func as sql_func
 
 from db.session import get_session
 from schemas.db_models.orm_models import DevicePointsReading, DevicePoint
@@ -99,7 +99,7 @@ async def get_timeseries_by_point_ids(
         if end_time is not None:
             conditions.append(DevicePointsReading.timestamp <= end_time)
 
-        statement = (
+        rank_subq = (
             select(
                 DevicePointsReading.timestamp,
                 DevicePointsReading.derived_value,
@@ -112,14 +112,19 @@ async def get_timeseries_by_point_ids(
                 DevicePoint.scale_factor,
                 DevicePoint.bitfield_detail,
                 DevicePoint.enum_detail,
+                sql_func.row_number().over(
+                    partition_by=DevicePointsReading.device_point_id,
+                    order_by=DevicePointsReading.timestamp.asc(),
+                ).label("rn"),
             )
             .join(DevicePoint, DevicePointsReading.device_point_id == DevicePoint.id)
             .where(and_(*conditions) if conditions else True)
-            .order_by(
-                DevicePointsReading.device_point_id,
-                DevicePointsReading.timestamp.asc(),
-            )
-            .limit(limit)
+        ).subquery()
+
+        statement = (
+            select(rank_subq)
+            .where(rank_subq.c.rn <= limit)
+            .order_by(rank_subq.c.device_point_id, rank_subq.c.timestamp.asc())
         )
         result = await session.execute(statement)
         return [
