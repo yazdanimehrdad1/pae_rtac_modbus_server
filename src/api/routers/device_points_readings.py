@@ -5,6 +5,7 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query, status
 
+from helpers.reads.calculate_reads import translate_reading
 from helpers.reads.device_points_readings import (
     get_latest_readings_by_point_ids,
     get_timeseries_by_point_ids,
@@ -45,6 +46,7 @@ async def get_latest_readings(
     site_id: int,
     device_id: int,
     point_ids: Optional[str] = Query(None, description="Comma-separated device_point_ids (e.g. '1,2,3'). If omitted, returns all points for the device."),
+    translate: bool = Query(False, description="Translate enum/bitfield values to human-readable form"),
 ):
     """Get the latest reading for each requested device point, keyed by device_point_id."""
     ids = _parse_point_ids(point_ids)
@@ -63,6 +65,12 @@ async def get_latest_readings(
             unit=row["unit"],
             time=row["timestamp"],
             value=row["derived_value"],
+            translated_value=translate_reading(
+                row["derived_value"],
+                row["bitfield_detail"],
+                row["enum_detail"],
+                row["size"],
+            ) if translate else None,
         )
         for row in rows
     }
@@ -85,6 +93,7 @@ async def get_timeseries_readings(
     start_time: Optional[datetime] = Query(None, description="Start time in ISO format (e.g. '2025-01-18T08:00:00Z')"),
     end_time: Optional[datetime] = Query(None, description="End time in ISO format (e.g. '2025-01-18T09:00:00Z')"),
     limit: int = Query(1000, ge=1, le=10000, description="Maximum rows per point (each point gets up to this many readings)"),
+    translate: bool = Query(False, description="Translate enum/bitfield values to human-readable form"),
 ):
     """
     Get time-series readings for each requested device point, keyed by device_point_id.
@@ -122,6 +131,12 @@ async def get_timeseries_readings(
         readings[key].timeseries.append(TimeseriesPoint(
             time=row["timestamp"],
             value=row["derived_value"],
+            translated_value=translate_reading(
+                row["derived_value"],
+                row["bitfield_detail"],
+                row["enum_detail"],
+                row["size"],
+            ) if translate else None,
         ))
         readings[key].count += 1
 

@@ -1,11 +1,12 @@
 """API response models."""
 
 from datetime import datetime
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Union
 from pydantic import BaseModel, Field
 
 from schemas.api_models.mappers import RegisterData, RegisterValue
 from schemas.api_models.requests import Coordinates, Location, DeviceScanRanges
+from schemas.api_models.types import BitfieldPayload
 
 
 class ReadResponse(BaseModel):
@@ -182,6 +183,7 @@ class DevicePointResponse(BaseModel):
 class TimeseriesPoint(BaseModel):
     time: datetime
     value: Optional[float]
+    translated_value: Optional[Union[str, BitfieldPayload]] = None
 
 
 class PointTimeseries(BaseModel):
@@ -200,6 +202,7 @@ class PointLatest(BaseModel):
     unit: Optional[str]
     time: Optional[datetime]
     value: Optional[float]
+    translated_value: Optional[Union[str, BitfieldPayload]] = None
 
 
 class TimeseriesMeta(BaseModel):

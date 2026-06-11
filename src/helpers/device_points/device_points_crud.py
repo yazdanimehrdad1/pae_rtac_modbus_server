@@ -139,6 +139,8 @@ async def update_device_point(
             native_candidates.append(
                 NativePointRange(name=point.name, poll_kind=eff_poll_kind, address=eff_address, size=eff_size)
             )
+            # Ensures the updated point's register range doesn't collide with any other
+            # active NATIVE point on this device within the same poll_kind address space.
             validate_no_register_overlap(native_candidates)
 
         if data.poll_kind is not None:
@@ -250,26 +252,28 @@ async def bulk_upsert_device_points(
     session_factory = get_async_session_factory()
     async with session_factory() as session:
         existing_result = await session.execute(
-            select(DevicePoint).where(
-                DevicePoint.device_id == device_id,
-                DevicePoint.deleted_at.is_(None),
-            )
+            select(DevicePoint).where(DevicePoint.device_id == device_id)
         )
         existing_by_name: dict[str, DevicePoint] = {
             p.name: p for p in existing_result.scalars().all()
         }
 
         incoming_names = {data.name for data in bulk.points}
+        # Only active, untouched points count as "occupied" for overlap validation
         native_candidates = [
             NativePointRange(name=p.name, poll_kind=p.poll_kind, address=p.address, size=p.size)
             for p in existing_by_name.values()
-            if p.category == "NATIVE" and p.name not in incoming_names
+            if p.category == "NATIVE" and p.name not in incoming_names and p.deleted_at is None
         ]
         for data in bulk.points:
             if data.category == "NATIVE":
                 native_candidates.append(
                     NativePointRange(name=data.name, poll_kind=data.poll_kind, address=data.address, size=data.size)
                 )
+        # Ensures no two NATIVE points share registers within the same poll_kind.
+        # A point occupies [address, address + size - 1] inclusive; overlap across
+        # different poll_kinds (holding / input / coils) is allowed since they are
+        # independent Modbus address spaces.
         validate_no_register_overlap(native_candidates)
 
         upserted: list[DevicePoint] = []

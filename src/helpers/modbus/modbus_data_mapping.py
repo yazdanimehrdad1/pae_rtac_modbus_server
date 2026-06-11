@@ -149,6 +149,7 @@ def _decode_modbus_point_value(
         float64
         bool
         raw/status_word
+        bitfield, enum
     """
     try:
         ordered_registers = _apply_word_order(register_values, word_order)
@@ -162,7 +163,7 @@ def _decode_modbus_point_value(
         elif data_type in ("uint16", "status_word", "raw"):
             value = int.from_bytes(raw_bytes, byteorder="big", signed=False)
 
-        elif data_type == "bitfield":
+        elif data_type in ("bitfield", "enum"):
             value = int.from_bytes(raw_bytes, byteorder="big", signed=False)
 
         elif data_type == "int16":

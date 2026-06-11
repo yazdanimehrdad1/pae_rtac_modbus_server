@@ -83,6 +83,53 @@ def _parse_enum_detail(raw: str) -> Tuple[Optional[int], Optional[str]]:
     return None, raw
 
 
+def translate_enum_value(derived_value: float, enum_detail: EnumDetailMap) -> Optional[str]:
+    """
+    Return the human-readable label for derived_value from an enum_detail map.
+
+    Supports two formats:
+    - Simple: {"0": "OFF", "1": "ON"}  — key is the register value
+    - Embedded: {"s1": "1:OFF", "s2": "2:ON"}  — value encodes register value and label
+    """
+    target = int(derived_value)
+
+    # Direct key lookup (most common format)
+    direct = enum_detail.get(str(target))
+    if direct is not None:
+        # Value might itself be "label" or "value:label"; return the label part
+        _, label = _parse_enum_detail(direct)
+        return label if label else direct
+
+    # Fallback: scan values for embedded "value:label" pairs
+    for raw in enum_detail.values():
+        parsed_value, parsed_label = _parse_enum_detail(raw)
+        if parsed_value == target and parsed_label:
+            return parsed_label
+
+    return f"UNKNOWN ({target})"
+
+
+def translate_reading(
+    derived_value: Optional[float],
+    bitfield_detail: Optional[BitfieldDetailMap],
+    enum_detail: Optional[EnumDetailMap],
+    size: int,
+) -> "Optional[BitfieldPayload | str]":
+    """
+    Translate a raw derived_value to a human-readable form using the point's detail maps.
+
+    Returns BitfieldPayload for bitfield points, a label string for enum points,
+    or None for numeric-only points or when derived_value is None.
+    """
+    if derived_value is None:
+        return None
+    if bitfield_detail:
+        return build_bitfield_payload(derived_value, bitfield_detail, size * 16)
+    if enum_detail:
+        return translate_enum_value(derived_value, enum_detail)
+    return None
+
+
 def build_enum_payload(
     derived_value: float,
     enum_detail: EnumDetailMap
