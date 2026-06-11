@@ -253,6 +253,7 @@ async def get_device_by_id(device_id: int, site_id: int) -> Optional[DeviceWithC
             updated_at=device.updated_at,
             scan_ranges=_orm_scan_ranges(device),
             scan_ranges_locked=device.scan_ranges_locked or False,
+            modbus_address_mode=device.modbus_address_mode,
             points=device_points,
         )
 
@@ -291,6 +292,7 @@ async def get_device_by_id_internal(device_id: int) -> Optional[DeviceWithConfig
             updated_at=device.updated_at,
             scan_ranges=_orm_scan_ranges(device),
             scan_ranges_locked=device.scan_ranges_locked or False,
+            modbus_address_mode=device.modbus_address_mode,
             points=device_points,
         )
 
@@ -408,7 +410,7 @@ async def update_device(device_id: int, device_update: DeviceUpdate, site_id: in
                 updated_at=device.updated_at,
                 scan_ranges=_orm_scan_ranges(device),
                 scan_ranges_locked=device.scan_ranges_locked or False,
-                modbus_address_mode=device.modbus_address_mode or "zero_based",
+                modbus_address_mode=device.modbus_address_mode,
                 points=device_points,
             )
 
