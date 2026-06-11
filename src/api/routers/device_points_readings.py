@@ -5,7 +5,7 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query, status
 
-from helpers.device_points_readings import (
+from helpers.reads.device_points_readings import (
     get_latest_readings_by_point_ids,
     get_timeseries_by_point_ids,
 )

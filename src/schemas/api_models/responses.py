@@ -172,6 +172,7 @@ class DevicePointResponse(BaseModel):
     register_offset: float = Field(0.0, description="Linear offset applied after scaling")
     poll_kind: Optional[str] = Field(None, description="Register type: holding, input, or coils")
     category: str = Field("NATIVE", description="Point category: NATIVE, STANDARDIZED, or VIRTUAL")
+    deleted_at: Optional[datetime] = Field(None, description="Soft-delete timestamp; null means active")
 
     model_config = {
         "from_attributes": True,

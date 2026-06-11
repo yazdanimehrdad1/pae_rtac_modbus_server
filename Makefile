@@ -52,6 +52,8 @@ build:
 # Rebuild the Docker image (no cache - forces fresh build)
 rebuild:
 	docker-compose -f docker-compose.yaml build --no-cache
+	docker-compose -f docker-compose.yaml up -d --wait postgres redis
+	docker-compose -f docker-compose.yaml up -d pae-rtac-server
 
 # Build and start containers
 up-build: network

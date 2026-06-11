@@ -458,6 +458,13 @@ class DevicePoint(Base):
         comment="Point type: NATIVE (by device), STANDARDIZED, or VIRTUAL"
     )
 
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        default=None,
+        comment="Set when soft-deleted; NULL means active"
+    )
+
     # Table-level constraints
     __table_args__ = (
         UniqueConstraint('site_id', 'device_id', 'name', name='uq_device_point_site_device_name'),
