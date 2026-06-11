@@ -131,4 +131,5 @@ def _device_base_kwargs(device) -> dict:
         updated_at=device.updated_at,
         scan_ranges=scan_ranges,
         scan_ranges_locked=device.scan_ranges_locked or False,
+        modbus_address_mode=device.modbus_address_mode,
     )

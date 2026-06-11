@@ -61,6 +61,7 @@ class DeviceListItem(BaseModel):
     read_from_aggregator: bool = Field(True, description="Whether to read from edge aggregator")
     scan_ranges: Optional[DeviceScanRanges] = Field(None, description="Auto-computed or manually locked scan ranges")
     scan_ranges_locked: bool = Field(False, description="Whether scan ranges are locked against auto-recompute")
+    modbus_address_mode: str = Field("zero_based", description="zero_based or one_based — controls pymodbus address offset")
     created_at: datetime = Field(..., description="Timestamp when device was created")
     updated_at: datetime = Field(..., description="Timestamp when device was last updated")
 

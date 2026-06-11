@@ -10,7 +10,6 @@ from logger import get_logger
 from helpers.modbus.modbus_data_mapping import map_modbus_data_to_device_points
 from helpers.sites import get_complete_site_data_with_points
 from schemas.api_models import DeviceListItem, DeviceWithPoints, PollResult, PollingConfig
-from schemas.api_models.requests import DeviceScanRanges
 from schemas.internal_models import RegisterMap, DevicePollResult, FailedScanRange
 from helpers.modbus.store_data_readings import store_device_data_in_db, DbStoreResult
 from helpers.device_points import get_device_points
@@ -112,14 +111,13 @@ async def poll_single_device_modbus(site_name: str, device: DeviceWithPoints) ->
     }
 
     if device.scan_ranges is None:
-        result["error"] = "No scan ranges configured — skipping"
+        result["error"] = "No scan_ranges configured — set them via POST /device or PUT /scan-ranges"
         logger.warning(
             "site_name='%s', device_name='%s': no scan_ranges configured, skipping poll",
             site_name, device_name,
         )
         return result
-
-    device_listitem = DeviceListItem(
+    device = DeviceListItem(
         device_id=device.device_id,
         site_id=device.site_id,
         name=device.name,
@@ -133,6 +131,9 @@ async def poll_single_device_modbus(site_name: str, device: DeviceWithPoints) ->
         description=device.description,
         poll_enabled=device.poll_enabled,
         read_from_aggregator=device.read_from_aggregator,
+        modbus_address_mode=device.modbus_address_mode,
+        scan_ranges=device.scan_ranges,
+        scan_ranges_locked=device.scan_ranges_locked,
         protocol=device.protocol,
         created_at=device.created_at,
         updated_at=device.updated_at,
@@ -145,7 +146,7 @@ async def poll_single_device_modbus(site_name: str, device: DeviceWithPoints) ->
         timestamp_dt = datetime.now(timezone.utc)
 
         scan_poll_result: DevicePollResult = await _poll_device_scan_ranges(
-            device_listitem, device.scan_ranges, device_name, site_name
+            device, site_name
         )
         if scan_poll_result.failed_ranges:
             logger.warning(
@@ -153,12 +154,10 @@ async def poll_single_device_modbus(site_name: str, device: DeviceWithPoints) ->
                 site_name, device_name, len(scan_poll_result.failed_ranges),
             )
 
-        register_address_value_map_all = scan_poll_result.register_map.values
-
         mapped_raw_registers_to_device_points_all = map_modbus_data_to_device_points(
             timestamp_dt=timestamp_dt,
             device_points_list=device_points_all,
-            register_map=register_address_value_map_all,
+            register_map=scan_poll_result.register_map,
             site_name=site_name,
             device_name=device_name,
         )
@@ -171,8 +170,8 @@ async def poll_single_device_modbus(site_name: str, device: DeviceWithPoints) ->
             )
             return result
 
-        has_any_value = any(r.derived_value is not None for r in mapped_raw_registers_to_device_points_all)
-        if not has_any_value:
+        has_any_reading = any(reading.derived_value is not None for reading in mapped_raw_registers_to_device_points_all)
+        if not has_any_reading:
             result["error"] = "All readings null — complete poll failure"
             logger.warning(
                 f"site_name='{site_name}', device_name='{device_name}': "
@@ -215,9 +214,7 @@ async def poll_single_device_modbus(site_name: str, device: DeviceWithPoints) ->
 
 async def _poll_device_scan_ranges(
     device: DeviceListItem,
-    scan_ranges: DeviceScanRanges,
-    device_name: str,
-    site_name: str = "",
+    site_name: str,
 ) -> DevicePollResult:
     """
     Poll using device.scan_ranges.
@@ -225,21 +222,27 @@ async def _poll_device_scan_ranges(
     """
     merged: dict[int, int | bool] = {}
     failed_ranges: list[FailedScanRange] = []
+    addr_offset = -1 if device.modbus_address_mode == "one_based" else 0
 
     for poll_kind, range_list in [
-        ("holding", scan_ranges.holding),
-        ("input", scan_ranges.input),
-        ("coils", scan_ranges.coils),
+        ("holding", device.scan_ranges.holding),
+        ("input", device.scan_ranges.input),
+        ("coils", device.scan_ranges.coils),
     ]:
         for range_block in range_list:
+            request_address = range_block.start_index + addr_offset
             polling_config = PollingConfig(
-                poll_address=range_block.start_index,
+                poll_address=request_address,
                 poll_count=range_block.count,
                 poll_kind=poll_kind,
             )
             try:
                 raw = await _read_scan_range_registers(device, polling_config, site_name=site_name)
-                merged.update({range_block.start_index + i: v for i, v in enumerate(raw)})
+                # Re-key the map back to configured addresses so point lookups match
+                if addr_offset != 0:
+                    merged.update({addr - addr_offset: val for addr, val in raw.values.items()})
+                else:
+                    merged.update(raw.values)
             except Exception as error:
                 error_host = settings.modbus_host if device.read_from_aggregator else (device.host or "unknown")
                 error_port = settings.modbus_port if device.read_from_aggregator else (device.port or "unknown")
@@ -253,7 +256,7 @@ async def _poll_device_scan_ranges(
                     )
                 logger.warning(
                     "site_name='%s', device_name='%s', %s@%s count=%s failed: [%s] %s",
-                    site_name, device_name, poll_kind, range_block.start_index,
+                    site_name, device.name, poll_kind, range_block.start_index,
                     range_block.count, status_code, error_message,
                 )
                 failed_ranges.append(FailedScanRange(
@@ -270,19 +273,19 @@ async def _poll_device_scan_ranges(
 async def _read_scan_range_registers(
     device: DeviceListItem,
     polling_config: PollingConfig,
-    site_name: str = "",
-) -> dict[int, int | bool]:
+    site_name: str,
+) -> RegisterMap:
     """Read Modbus registers in chunks and return a flat address→value map."""
     start_address = int(polling_config.poll_address)
     total_count = polling_config.poll_count
-    register_map: dict[int, int | bool] = {}
 
     if total_count <= MODBUS_MAX_REGISTERS_PER_READ:
         raw_values = await read_device_registers(device, polling_config, site_name=site_name)
         if not raw_values:
-            return {}
-        return {start_address + i: value for i, value in enumerate(raw_values)}
+            return RegisterMap()
+        return RegisterMap(values={start_address + i: value for i, value in enumerate(raw_values)})
 
+    values: dict[int, int | bool] = {}
     chunk_offset = 0
     while chunk_offset < total_count:
         chunk_count = min(MODBUS_MAX_REGISTERS_PER_READ, total_count - chunk_offset)
@@ -298,8 +301,8 @@ async def _read_scan_range_registers(
                 "site_name='%s', device_name='%s': chunked read returned no data at address=%s count=%s — aborting",
                 site_name, device.name, chunk_start, chunk_count,
             )
-            return {}
-        register_map.update({chunk_start + i: value for i, value in enumerate(chunk_data)})
+            return RegisterMap()
+        values.update({chunk_start + i: value for i, value in enumerate(chunk_data)})
         chunk_offset += chunk_count
 
-    return register_map
+    return RegisterMap(values=values)

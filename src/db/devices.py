@@ -88,6 +88,7 @@ async def create_device(device: DeviceCreateRequest, site_id: int) -> DeviceWith
                 description=device.description,
                 poll_enabled=device.poll_enabled,
                 read_from_aggregator=device.read_from_aggregator,
+                modbus_address_mode=device.modbus_address_mode,
                 protocol=device.protocol,
                 site_id=site_id
             )
@@ -127,6 +128,7 @@ async def create_device(device: DeviceCreateRequest, site_id: int) -> DeviceWith
                 updated_at=created_device.updated_at,
                 scan_ranges=_orm_scan_ranges(created_device),
                 scan_ranges_locked=created_device.scan_ranges_locked or False,
+                modbus_address_mode=created_device.modbus_address_mode,
                 points=DevicePoints(),
             )
             
@@ -200,6 +202,7 @@ async def get_all_devices(site_id: int) -> list[DeviceWithConfigs]:
                     updated_at=device.updated_at,
                     scan_ranges=_orm_scan_ranges(device),
                     scan_ranges_locked=device.scan_ranges_locked or False,
+                    modbus_address_mode=device.modbus_address_mode,
                     points=points_by_device.get(device.device_id, DevicePoints()),
                 )
             )
@@ -368,6 +371,8 @@ async def update_device(device_id: int, device_update: DeviceUpdate, site_id: in
                 device.read_from_aggregator = device_update.read_from_aggregator
             if device_update.protocol is not None:
                 device.protocol = device_update.protocol
+            if device_update.modbus_address_mode is not None:
+                device.modbus_address_mode = device_update.modbus_address_mode
             
             # updated_at is automatically updated by the ORM (onupdate=func.now())
             
@@ -401,9 +406,12 @@ async def update_device(device_id: int, device_update: DeviceUpdate, site_id: in
                 protocol=device.protocol,
                 created_at=device.created_at,
                 updated_at=device.updated_at,
+                scan_ranges=_orm_scan_ranges(device),
+                scan_ranges_locked=device.scan_ranges_locked or False,
+                modbus_address_mode=device.modbus_address_mode or "zero_based",
                 points=device_points,
             )
-            
+
         except IntegrityError as e:
             await session.rollback()
             # Check if it's a unique constraint violation

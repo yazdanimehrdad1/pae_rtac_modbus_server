@@ -56,6 +56,10 @@ class DeviceCreateRequest(BaseModel):
     description: Optional[str] = Field(default=None, description="Optional device description")
     poll_enabled: bool = Field(True, description="Whether polling is enabled for this device")
     read_from_aggregator: bool = Field(True, description="Whether to read from edge aggregator")
+    modbus_address_mode: Literal["zero_based", "one_based"] = Field(
+        "zero_based",
+        description="zero_based: use addresses as-is; one_based: subtract 1 before sending to pymodbus (for devices whose docs use 1-based numbering)"
+    )
     scan_ranges: Optional["DeviceScanRanges"] = Field(None, description="Initial scan ranges (optional)")
 
 
@@ -80,6 +84,10 @@ class DeviceUpdate(BaseModel):
     poll_enabled: Optional[bool] = Field(None, description="Whether polling is enabled for this device")
     read_from_aggregator: Optional[bool] = Field(
         None, description="Whether to read from edge aggregator"
+    )
+    modbus_address_mode: Optional[Literal["zero_based", "one_based"]] = Field(
+        None,
+        description="zero_based: use addresses as-is; one_based: subtract 1 before sending to pymodbus"
     )
     scan_ranges: Optional["DeviceScanRanges"] = Field(None, description="Updated scan ranges (does not lock)")
 

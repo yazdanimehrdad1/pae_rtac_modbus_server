@@ -213,6 +213,14 @@ class Device(Base):
         comment="When True, point CRUD does not overwrite scan_ranges"
     )
 
+    modbus_address_mode: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="zero_based",
+        server_default="zero_based",
+        comment="zero_based: address sent as-is; one_based: subtract 1 before sending to pymodbus"
+    )
+
     # Polling configuration
     poll_enabled: Mapped[bool] = mapped_column(
         Boolean,
