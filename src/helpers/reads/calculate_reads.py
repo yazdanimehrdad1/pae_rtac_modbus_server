@@ -106,25 +106,44 @@ def translate_enum_value(derived_value: float, enum_detail: EnumDetailMap) -> Op
         if parsed_value == target and parsed_label:
             return parsed_label
 
-    return f"UNKNOWN ({target})"
+    return "UNKNOWN"
+
+
+def translate_bitfield_to_named_map(
+    derived_value: float,
+    bitfield_detail: BitfieldDetailMap,
+) -> Dict[str, int]:
+    """
+    Returns {label: 0|1} for every named bit in bitfield_detail, ordered by bit position.
+    Iterates only the named entries — no need to know total bit count.
+    """
+    int_value = int(derived_value)
+    details = normalize_detail_keys(bitfield_detail, "bit-")
+    result: Dict[str, int] = {}
+    for key, label in sorted(details.items()):
+        try:
+            bit_index = int(key.split("-", 1)[1])
+            result[label] = (int_value >> bit_index) & 1
+        except (IndexError, ValueError):
+            continue
+    return result
 
 
 def translate_reading(
     derived_value: Optional[float],
     bitfield_detail: Optional[BitfieldDetailMap],
     enum_detail: Optional[EnumDetailMap],
-    size: int,
-) -> "Optional[BitfieldPayload | str]":
+) -> "Optional[Dict[str, int] | str]":
     """
     Translate a raw derived_value to a human-readable form using the point's detail maps.
 
-    Returns BitfieldPayload for bitfield points, a label string for enum points,
+    Returns {label: 0|1} for bitfield points, a label string for enum points,
     or None for numeric-only points or when derived_value is None.
     """
     if derived_value is None:
         return None
     if bitfield_detail:
-        return build_bitfield_payload(derived_value, bitfield_detail, size * 16)
+        return translate_bitfield_to_named_map(derived_value, bitfield_detail)
     if enum_detail:
         return translate_enum_value(derived_value, enum_detail)
     return None

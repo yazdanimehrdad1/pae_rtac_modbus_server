@@ -5,7 +5,7 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query, status
 
-from helpers.reads.calculate_reads import translate_reading
+from helpers.reads.calculate_reads import translate_bitfield_to_named_map, translate_reading
 from helpers.reads.device_points_readings import (
     get_latest_readings_by_point_ids,
     get_timeseries_by_point_ids,
@@ -58,20 +58,14 @@ async def get_latest_readings(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to retrieve readings")
 
     readings = {
-        str(row["device_point_id"]): PointLatest(
-            id=row["device_point_id"],
-            name=row["name"],
-            data_type=row["data_type"],
-            unit=row["unit"],
-            time=row["timestamp"],
-            value=row["derived_value"],
-            translated_value=translate_reading(
+        str(row["device_point_id"]): PointLatest.model_validate({
+            **row,
+            "translated_value": translate_reading(
                 row["derived_value"],
                 row["bitfield_detail"],
                 row["enum_detail"],
-                row["size"],
             ) if translate else None,
-        )
+        })
         for row in rows
     }
     return LatestResponse(
@@ -120,24 +114,22 @@ async def get_timeseries_readings(
     for row in rows:
         key = str(row["device_point_id"])
         if key not in readings:
-            readings[key] = PointTimeseries(
-                id=row["device_point_id"],
-                name=row["name"],
-                data_type=row["data_type"],
-                unit=row["unit"],
-                count=0,
-                timeseries=[],
-            )
-        readings[key].timeseries.append(TimeseriesPoint(
-            time=row["timestamp"],
-            value=row["derived_value"],
-            translated_value=translate_reading(
+            extra: dict = {}
+            if translate:
+                extra["enum_map"] = row["enum_detail"] or None
+                if row["bitfield_detail"]:
+                    extra["bit_labels"] = list(
+                        translate_bitfield_to_named_map(0.0, row["bitfield_detail"]).keys()
+                    )
+            readings[key] = PointTimeseries.model_validate({**row, **extra})
+        readings[key].timeseries.append(TimeseriesPoint.model_validate({
+            **row,
+            "translated_value": translate_reading(
                 row["derived_value"],
                 row["bitfield_detail"],
                 row["enum_detail"],
-                row["size"],
             ) if translate else None,
-        ))
+        }))
         readings[key].count += 1
 
     return TimeseriesResponse(

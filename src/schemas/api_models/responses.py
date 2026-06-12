@@ -2,11 +2,10 @@
 
 from datetime import datetime
 from typing import Optional, Dict, List, Union
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 
 from schemas.api_models.mappers import RegisterData, RegisterValue
 from schemas.api_models.requests import Coordinates, Location, DeviceScanRanges
-from schemas.api_models.types import BitfieldPayload
 
 
 class ReadResponse(BaseModel):
@@ -181,28 +180,36 @@ class DevicePointResponse(BaseModel):
 
 
 class TimeseriesPoint(BaseModel):
-    time: datetime
-    value: Optional[float]
-    translated_value: Optional[Union[str, BitfieldPayload]] = None
+    time: datetime = Field(validation_alias=AliasChoices("time", "timestamp"))
+    value: Optional[float] = Field(None, validation_alias=AliasChoices("value", "derived_value"))
+    translated_value: Optional[Union[str, Dict[str, int]]] = None
+
+    model_config = {"populate_by_name": True}
 
 
 class PointTimeseries(BaseModel):
-    id: int
+    id: int = Field(validation_alias=AliasChoices("id", "device_point_id"))
     name: str
     data_type: str
-    unit: Optional[str]
-    count: int
-    timeseries: List[TimeseriesPoint]
+    unit: Optional[str] = None
+    count: int = 0
+    enum_map: Optional[Dict[str, str]] = None
+    bit_labels: Optional[List[str]] = None
+    timeseries: List[TimeseriesPoint] = Field(default_factory=list)
+
+    model_config = {"populate_by_name": True}
 
 
 class PointLatest(BaseModel):
-    id: int
+    id: int = Field(validation_alias=AliasChoices("id", "device_point_id"))
     name: str
     data_type: str
-    unit: Optional[str]
-    time: Optional[datetime]
-    value: Optional[float]
-    translated_value: Optional[Union[str, BitfieldPayload]] = None
+    unit: Optional[str] = None
+    time: Optional[datetime] = Field(None, validation_alias=AliasChoices("time", "timestamp"))
+    value: Optional[float] = Field(None, validation_alias=AliasChoices("value", "derived_value"))
+    translated_value: Optional[Union[str, Dict[str, int]]] = None
+
+    model_config = {"populate_by_name": True}
 
 
 class TimeseriesMeta(BaseModel):
