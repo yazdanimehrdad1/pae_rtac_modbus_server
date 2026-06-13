@@ -9,7 +9,6 @@ from helpers.modbus import translate_modbus_error
 from services.modbus.client import ModbusClient
 from services.modbus.modbus_utills import ModbusUtils
 from db.devices import get_device_by_id_internal, get_device_id_by_name_internal
-from db.device_configs import get_configs_for_device
 from cache.cache import CacheService
 from config import settings
 from logger import get_logger
@@ -88,41 +87,10 @@ async def read_main_sel_751_data():
             )
         
         
-        # Get device configs from database if device has a site_id
-        json_data = None
-        if device.site_id:
-            try:
-                configs = await get_configs_for_device(device.device_id, site_id=device.site_id)
-                if configs:
-                    json_data = {"registers": configs[0].points}
-            except Exception as e:
-                logger.warning(f"Error getting device configs for device {device.device_id}: {e}")
-                json_data = None
-        
-        response_data = {}
-        
-        if json_data is not None:
-            # Use register map to map data with names and metadata
-            register_map = json_to_register_map(json_data)
-            
-            for point in register_map.points:
-                # Check if this register is within the requested address range
-                # Calculate the index in the data array
-                data_index = point.address - poll_address
-                if 0 <= data_index < len(data):
-                    response_data[point.address] = RegisterData(
-                        name=point.name,
-                        value=data[data_index],
-                        scale_factor=point.scale_factor,
-                        unit=point.unit,
-                        Type=point.data_type
-                    )
-        else:
-            # No register map available - raise error
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Register map not found for device '{device_name}'. Device may not be mapped to a CSV file or CSV file does not exist."
-            )
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE,
+            detail="This endpoint previously used device configs for register naming. Configs have been removed — use device points instead."
+        )
         return ReadResponse(
             ok=True,
             timestamp=datetime.now(timezone.utc).isoformat(),

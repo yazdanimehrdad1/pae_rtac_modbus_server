@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import List, Optional
 
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, func as sql_func
 
 from db.session import get_session
 from schemas.db_models.orm_models import DevicePointsReading, DevicePoint
@@ -21,21 +21,21 @@ async def get_latest_readings_by_point_ids(
     """
     Get the single latest reading per point.
 
-    If point_ids is empty, returns latest for all points belonging to device_id/site_id.
+    Always returns ALL device points for the device (LEFT JOIN), so points that
+    have never been polled appear with timestamp=None and derived_value=None.
+    If point_ids is provided, only those points are returned.
     """
     async with get_session() as session:
-        conditions = []
+        point_conditions = []
         if point_ids:
-            conditions.append(DevicePointsReading.device_point_id.in_(point_ids))
+            point_conditions.append(DevicePoint.id.in_(point_ids))
         if device_id is not None:
-            conditions.append(DevicePointsReading.device_id == device_id)
+            point_conditions.append(DevicePoint.device_id == device_id)
         if site_id is not None:
-            conditions.append(DevicePointsReading.site_id == site_id)
+            point_conditions.append(DevicePoint.site_id == site_id)
 
         statement = (
             select(
-                DevicePointsReading.timestamp,
-                DevicePointsReading.derived_value,
                 DevicePoint.id.label("device_point_id"),
                 DevicePoint.address,
                 DevicePoint.name,
@@ -45,14 +45,13 @@ async def get_latest_readings_by_point_ids(
                 DevicePoint.scale_factor,
                 DevicePoint.bitfield_detail,
                 DevicePoint.enum_detail,
+                DevicePointsReading.timestamp,
+                DevicePointsReading.derived_value,
             )
-            .join(DevicePoint, DevicePointsReading.device_point_id == DevicePoint.id)
-            .where(and_(*conditions) if conditions else True)
-            .distinct(DevicePointsReading.device_point_id)
-            .order_by(
-                DevicePointsReading.device_point_id,
-                DevicePointsReading.timestamp.desc(),
-            )
+            .outerjoin(DevicePointsReading, DevicePoint.id == DevicePointsReading.device_point_id)
+            .where(and_(*point_conditions) if point_conditions else True)
+            .distinct(DevicePoint.id)
+            .order_by(DevicePoint.id, DevicePointsReading.timestamp.desc())
         )
         result = await session.execute(statement)
         return [
@@ -99,7 +98,7 @@ async def get_timeseries_by_point_ids(
         if end_time is not None:
             conditions.append(DevicePointsReading.timestamp <= end_time)
 
-        statement = (
+        rank_subq = (
             select(
                 DevicePointsReading.timestamp,
                 DevicePointsReading.derived_value,
@@ -112,14 +111,19 @@ async def get_timeseries_by_point_ids(
                 DevicePoint.scale_factor,
                 DevicePoint.bitfield_detail,
                 DevicePoint.enum_detail,
+                sql_func.row_number().over(
+                    partition_by=DevicePointsReading.device_point_id,
+                    order_by=DevicePointsReading.timestamp.asc(),
+                ).label("rn"),
             )
             .join(DevicePoint, DevicePointsReading.device_point_id == DevicePoint.id)
             .where(and_(*conditions) if conditions else True)
-            .order_by(
-                DevicePointsReading.device_point_id,
-                DevicePointsReading.timestamp.asc(),
-            )
-            .limit(limit)
+        ).subquery()
+
+        statement = (
+            select(rank_subq)
+            .where(rank_subq.c.rn <= limit)
+            .order_by(rank_subq.c.device_point_id, rank_subq.c.timestamp.asc())
         )
         result = await session.execute(statement)
         return [

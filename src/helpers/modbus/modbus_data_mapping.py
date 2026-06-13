@@ -9,6 +9,7 @@ from typing import List, Optional, Literal
 
 from schemas.db_models.orm_models import DevicePoint, DevicePointsReading
 from schemas.api_models import ModbusRegisterValues
+from schemas.internal_models import RegisterMap
 from logger import get_logger
 from helpers.modbus.modbus_data_converter import (
     concat_register_values,
@@ -148,6 +149,7 @@ def _decode_modbus_point_value(
         float64
         bool
         raw/status_word
+        bitfield, enum
     """
     try:
         ordered_registers = _apply_word_order(register_values, word_order)
@@ -161,7 +163,7 @@ def _decode_modbus_point_value(
         elif data_type in ("uint16", "status_word", "raw"):
             value = int.from_bytes(raw_bytes, byteorder="big", signed=False)
 
-        elif data_type == "bitfield":
+        elif data_type in ("bitfield", "enum"):
             value = int.from_bytes(raw_bytes, byteorder="big", signed=False)
 
         elif data_type == "int16":
@@ -214,7 +216,7 @@ def _decode_modbus_point_value(
 def map_modbus_data_to_device_points(
     timestamp_dt: datetime,
     device_points_list: list[DevicePoint],
-    register_map: dict[int, int | bool],
+    register_map: RegisterMap,
     site_name: str = "",
     device_name: str = "",
 ) -> list[DevicePointsReading]:
@@ -222,7 +224,7 @@ def map_modbus_data_to_device_points(
 
     for point in device_points_list:
         extraction = _extract_register_values(
-            register_map=register_map,
+            register_map=register_map.values,
             point_address=point.address,
             size=point.size or 1,
         )

@@ -51,16 +51,14 @@ async def read_device_registers(
     device: DeviceListItem,
     polling_config: PollingConfig,
     site_name: str = "",
-    config_id: str = "",
 ) -> ModbusRegisterValues:
     """
     Read Modbus registers for a device using polling configuration.
 
     Args:
         device: Device to read from
-        polling_config: Polling configuration (address, count, kind, device_id)
+        polling_config: Polling configuration (address, count, kind)
         site_name: Site name for log context
-        config_id: Config ID for log context
 
     Returns:
         List of raw register values from Modbus
@@ -76,7 +74,7 @@ async def read_device_registers(
     port = device.port
 
     logger.debug(
-        f"site_name='{site_name}', device_name='{device.name}', device_config_ID='{config_id}': "
+        f"site_name='{site_name}', device_name='{device.name}': "
         f"reading {kind} registers at address={address}, count={count}, server_address={server_id}"
     )
 
@@ -124,7 +122,7 @@ async def read_device_registers(
         )
 
     logger.info(
-        f"site_name='{site_name}', device_name='{device.name}', device_config_ID='{config_id}': "
+        f"site_name='{site_name}', device_name='{device.name}': "
         f"successfully read {len(modbus_data)} {kind} registers at address={address}"
     )
     return modbus_data

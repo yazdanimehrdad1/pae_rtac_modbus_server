@@ -46,7 +46,7 @@ services:
     environment:
       # Set these to your external Modbus server
       # Values can come from .env file or environment variables
-      - AGGREGATOR_MODBUS_HOST=${AGGREGATOR_MODBUS_HOST:-localhost}
+      - AGGREGATOR_MODBUS_HOST=${AGGREGATOR_MODBUS_HOST:-mock-modbus}
       - AGGREGATOR_MODBUS_PORT=${AGGREGATOR_MODBUS_PORT:-502}
       - AGGREGATOR_SERVER_ID=${AGGREGATOR_SERVER_ID:-1}
       - MODBUS_TIMEOUT_S=${MODBUS_TIMEOUT_S:-5.0}
@@ -85,5 +85,5 @@ networks:
     driver: bridge
   shared-network:
     name: pae-shared-network
-    driver: bridge
+    external: true
 

@@ -18,11 +18,18 @@ from schemas.api_models import (
     DeviceWithConfigs,
     DevicePointResponse,
 )
+from schemas.api_models.requests import DeviceScanRanges
 from schemas.db_models.orm_models import Device, DevicePoint, Site
 from utils.exceptions import ConflictError, NotFoundError, ValidationError, InternalError
 from logger import get_logger
 
 logger = get_logger(__name__)
+
+
+def _orm_scan_ranges(device: Device) -> Optional[DeviceScanRanges]:
+    if device.scan_ranges:
+        return DeviceScanRanges.model_validate(device.scan_ranges)
+    return None
 
 
 def _group_points(orm_points) -> DevicePoints:
@@ -81,6 +88,7 @@ async def create_device(device: DeviceCreateRequest, site_id: int) -> DeviceWith
                 description=device.description,
                 poll_enabled=device.poll_enabled,
                 read_from_aggregator=device.read_from_aggregator,
+                modbus_address_mode=device.modbus_address_mode,
                 protocol=device.protocol,
                 site_id=site_id
             )
@@ -118,6 +126,9 @@ async def create_device(device: DeviceCreateRequest, site_id: int) -> DeviceWith
                 protocol=created_device.protocol,
                 created_at=created_device.created_at,
                 updated_at=created_device.updated_at,
+                scan_ranges=_orm_scan_ranges(created_device),
+                scan_ranges_locked=created_device.scan_ranges_locked or False,
+                modbus_address_mode=created_device.modbus_address_mode,
                 points=DevicePoints(),
             )
             
@@ -189,6 +200,9 @@ async def get_all_devices(site_id: int) -> list[DeviceWithConfigs]:
                     protocol=device.protocol,
                     created_at=device.created_at,
                     updated_at=device.updated_at,
+                    scan_ranges=_orm_scan_ranges(device),
+                    scan_ranges_locked=device.scan_ranges_locked or False,
+                    modbus_address_mode=device.modbus_address_mode,
                     points=points_by_device.get(device.device_id, DevicePoints()),
                 )
             )
@@ -237,6 +251,9 @@ async def get_device_by_id(device_id: int, site_id: int) -> Optional[DeviceWithC
             protocol=device.protocol,
             created_at=device.created_at,
             updated_at=device.updated_at,
+            scan_ranges=_orm_scan_ranges(device),
+            scan_ranges_locked=device.scan_ranges_locked or False,
+            modbus_address_mode=device.modbus_address_mode,
             points=device_points,
         )
 
@@ -273,6 +290,9 @@ async def get_device_by_id_internal(device_id: int) -> Optional[DeviceWithConfig
             protocol=device.protocol,
             created_at=device.created_at,
             updated_at=device.updated_at,
+            scan_ranges=_orm_scan_ranges(device),
+            scan_ranges_locked=device.scan_ranges_locked or False,
+            modbus_address_mode=device.modbus_address_mode,
             points=device_points,
         )
 
@@ -353,6 +373,8 @@ async def update_device(device_id: int, device_update: DeviceUpdate, site_id: in
                 device.read_from_aggregator = device_update.read_from_aggregator
             if device_update.protocol is not None:
                 device.protocol = device_update.protocol
+            if device_update.modbus_address_mode is not None:
+                device.modbus_address_mode = device_update.modbus_address_mode
             
             # updated_at is automatically updated by the ORM (onupdate=func.now())
             
@@ -386,9 +408,12 @@ async def update_device(device_id: int, device_update: DeviceUpdate, site_id: in
                 protocol=device.protocol,
                 created_at=device.created_at,
                 updated_at=device.updated_at,
+                scan_ranges=_orm_scan_ranges(device),
+                scan_ranges_locked=device.scan_ranges_locked or False,
+                modbus_address_mode=device.modbus_address_mode,
                 points=device_points,
             )
-            
+
         except IntegrityError as e:
             await session.rollback()
             # Check if it's a unique constraint violation
@@ -475,6 +500,56 @@ async def delete_device_by_id(id: int) -> Optional[DeviceResponse]:
         if device is None:
             return None
         return await delete_device(device.device_id, site_id=device.site_id)
+
+
+async def update_device_scan_ranges(device_id: int, ranges: DeviceScanRanges) -> None:
+    """Store auto-computed scan ranges on the device (lock state unchanged)."""
+    session_factory = get_async_session_factory()
+    async with session_factory() as session:
+        result = await session.execute(select(Device).where(Device.device_id == device_id))
+        device = result.scalar_one_or_none()
+        if device is None:
+            raise NotFoundError(f"Device {device_id} not found")
+        device.scan_ranges = ranges.model_dump()
+        await session.commit()
+
+
+async def lock_device_scan_ranges(device_id: int, ranges: DeviceScanRanges) -> None:
+    """Store manually-specified scan ranges and set scan_ranges_locked = True."""
+    session_factory = get_async_session_factory()
+    async with session_factory() as session:
+        result = await session.execute(select(Device).where(Device.device_id == device_id))
+        device = result.scalar_one_or_none()
+        if device is None:
+            raise NotFoundError(f"Device {device_id} not found")
+        device.scan_ranges = ranges.model_dump()
+        device.scan_ranges_locked = True
+        await session.commit()
+
+
+async def reset_device_scan_ranges(device_id: int) -> DeviceScanRanges:
+    """Clear the lock and recompute scan ranges from current NATIVE points."""
+    from helpers.device_points.scan_range_computation import compute_device_scan_ranges
+
+    session_factory = get_async_session_factory()
+    async with session_factory() as session:
+        result = await session.execute(select(Device).where(Device.device_id == device_id))
+        device = result.scalar_one_or_none()
+        if device is None:
+            raise NotFoundError(f"Device {device_id} not found")
+
+        points_result = await session.execute(
+            select(DevicePoint).where(DevicePoint.device_id == device_id, DevicePoint.category == "NATIVE")
+        )
+        native_points = [
+            DevicePointResponse.model_validate(p, from_attributes=True)
+            for p in points_result.scalars().all()
+        ]
+        ranges = compute_device_scan_ranges(native_points)
+        device.scan_ranges = ranges.model_dump()
+        device.scan_ranges_locked = False
+        await session.commit()
+        return ranges
 
 
 

@@ -1,0 +1,2 @@
+ALTER TABLE device_points DROP COLUMN IF EXISTS config_id;
+DROP TABLE IF EXISTS configs;

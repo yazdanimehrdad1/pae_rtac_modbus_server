@@ -1,4 +1,4 @@
-.PHONY: help up down build rebuild up-build up-rebuild restart logs shell clean ps health dev test-setup test lint format migrate apply-migration run seed-db
+.PHONY: help network up down build rebuild up-build up-rebuild restart logs shell clean ps health dev test-setup test lint format migrate apply-migration run seed-db
 
 # Default target
 help:
@@ -27,8 +27,14 @@ help:
 	@echo "  make run        - Run service locally (non-Docker)"
 	@echo "  make seed-db    - Seed the database in container"
 
+# Ensure the shared Docker network exists (idempotent)
+network:
+	@docker network inspect pae-shared-network >/dev/null 2>&1 || \
+	  (docker network create pae-shared-network && echo "Created pae-shared-network")
+	@echo "pae-shared-network ready"
+
 # Start containers (ensures postgres is healthy, then starts services)
-up:
+up: network
 	@echo "Starting services..."
 	@docker-compose -f docker-compose.yaml up -d --wait postgres redis
 	@echo "PostgreSQL and Redis are ready!"
@@ -46,9 +52,11 @@ build:
 # Rebuild the Docker image (no cache - forces fresh build)
 rebuild:
 	docker-compose -f docker-compose.yaml build --no-cache
+	docker-compose -f docker-compose.yaml up -d --wait postgres redis
+	docker-compose -f docker-compose.yaml up -d pae-rtac-server
 
 # Build and start containers
-up-build:
+up-build: network
 	@echo "Building and starting services..."
 	@docker-compose -f docker-compose.yaml build
 	@docker-compose -f docker-compose.yaml up -d --wait postgres redis
@@ -57,7 +65,7 @@ up-build:
 	@docker-compose -f docker-compose.yaml up -d pae-rtac-server
 
 # Rebuild and start containers (no cache)
-up-rebuild:
+up-rebuild: network
 	@echo "Rebuilding and starting services..."
 	@docker-compose -f docker-compose.yaml build --no-cache
 	@docker-compose -f docker-compose.yaml up -d --wait postgres redis

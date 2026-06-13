@@ -11,7 +11,6 @@ class DevicePointData(BaseModel):
     """Pydantic model for a device point row to be written to the database."""
     site_id: int
     device_id: int
-    config_id: Optional[str] = None
     address: int
     name: str
     size: int
@@ -26,13 +25,6 @@ class DevicePointData(BaseModel):
     register_offset: float = 0.0
 
 
-class FailedConfigInfo(TypedDict):
-    """Details of a single config block that failed during polling."""
-    config_id: str
-    status_code: int
-    error_message: str
-
-
 class PollResult(TypedDict, total=False):
     """Result of polling a single device."""
     device_name: str
@@ -42,7 +34,6 @@ class PollResult(TypedDict, total=False):
     db_successful: int
     db_failed: int
     error: Optional[str]
-    configs_failed: list[FailedConfigInfo]
 
 
 ModbusRegisterValues: TypeAlias = list[int | bool]

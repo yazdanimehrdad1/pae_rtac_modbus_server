@@ -5,7 +5,8 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query, status
 
-from helpers.device_points_readings import (
+from helpers.reads.calculate_reads import translate_bitfield_to_named_map, translate_reading
+from helpers.reads.device_points_readings import (
     get_latest_readings_by_point_ids,
     get_timeseries_by_point_ids,
 )
@@ -45,6 +46,7 @@ async def get_latest_readings(
     site_id: int,
     device_id: int,
     point_ids: Optional[str] = Query(None, description="Comma-separated device_point_ids (e.g. '1,2,3'). If omitted, returns all points for the device."),
+    translate: bool = Query(False, description="Translate enum/bitfield values to human-readable form"),
 ):
     """Get the latest reading for each requested device point, keyed by device_point_id."""
     ids = _parse_point_ids(point_ids)
@@ -56,14 +58,14 @@ async def get_latest_readings(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to retrieve readings")
 
     readings = {
-        str(row["device_point_id"]): PointLatest(
-            id=row["device_point_id"],
-            name=row["name"],
-            data_type=row["data_type"],
-            unit=row["unit"],
-            time=row["timestamp"],
-            value=row["derived_value"],
-        )
+        str(row["device_point_id"]): PointLatest.model_validate({
+            **row,
+            "translated_value": translate_reading(
+                row["derived_value"],
+                row["bitfield_detail"],
+                row["enum_detail"],
+            ) if translate else None,
+        })
         for row in rows
     }
     return LatestResponse(
@@ -84,7 +86,8 @@ async def get_timeseries_readings(
     point_ids: Optional[str] = Query(None, description="Comma-separated device_point_ids (e.g. '1,2,3'). If omitted, returns all points for the device."),
     start_time: Optional[datetime] = Query(None, description="Start time in ISO format (e.g. '2025-01-18T08:00:00Z')"),
     end_time: Optional[datetime] = Query(None, description="End time in ISO format (e.g. '2025-01-18T09:00:00Z')"),
-    limit: int = Query(1000, ge=1, le=10000, description="Maximum total rows returned across all points"),
+    limit: int = Query(1000, ge=1, le=10000, description="Maximum rows per point (each point gets up to this many readings)"),
+    translate: bool = Query(False, description="Translate enum/bitfield values to human-readable form"),
 ):
     """
     Get time-series readings for each requested device point, keyed by device_point_id.
@@ -111,18 +114,22 @@ async def get_timeseries_readings(
     for row in rows:
         key = str(row["device_point_id"])
         if key not in readings:
-            readings[key] = PointTimeseries(
-                id=row["device_point_id"],
-                name=row["name"],
-                data_type=row["data_type"],
-                unit=row["unit"],
-                count=0,
-                timeseries=[],
-            )
-        readings[key].timeseries.append(TimeseriesPoint(
-            time=row["timestamp"],
-            value=row["derived_value"],
-        ))
+            extra: dict = {}
+            if translate:
+                extra["enum_map"] = row["enum_detail"] or None
+                if row["bitfield_detail"]:
+                    extra["bit_labels"] = list(
+                        translate_bitfield_to_named_map(0.0, row["bitfield_detail"]).keys()
+                    )
+            readings[key] = PointTimeseries.model_validate({**row, **extra})
+        readings[key].timeseries.append(TimeseriesPoint.model_validate({
+            **row,
+            "translated_value": translate_reading(
+                row["derived_value"],
+                row["bitfield_detail"],
+                row["enum_detail"],
+            ) if translate else None,
+        }))
         readings[key].count += 1
 
     return TimeseriesResponse(

@@ -13,41 +13,30 @@ from config import settings
 
 router = APIRouter()
 
-# Initialize Modbus client wrapper
 modbus_client = ModbusClient()
 
-#@healthz is for the api health check while health_modbus_client is checking the health of mobus can read from the modbus server
-#  
 
 @router.get("/healthz", response_model=HealthResponse)
 async def health_check():
-    """
-    Health check endpoint that verifies API is running.
-    
-    Returns basic health status without performing Modbus operations.
-    """
+    """Health check endpoint that verifies API is running."""
     return HealthResponse(
         ok=True,
-        host=modbus_client.host,
-        port=modbus_client.port,
-        device_id=modbus_client.default_server_id,
+        host=settings.modbus_host,
+        port=settings.modbus_port,
+        device_id=settings.modbus_device_id,
         detail="API is healthy"
     )
 
+
 @router.get("/health_modbus_client", response_model=HealthResponse)
 async def health_modbus_client():
-    """
-    Health check endpoint that verifies connectivity and performs a small test read.
-    
-    Attempts to connect to the Modbus server and reads a single holding register
-    at address 0 to confirm end-to-end communication is working.
-    """
+    """Connects to the Modbus server and reads a single register to confirm end-to-end communication."""
     ok, detail = modbus_client.modbus_server_health_check()
     return HealthResponse(
         ok=ok,
-        host=modbus_client.host,
-        port=modbus_client.port,
-        device_id=modbus_client.default_server_id,
+        host=settings.modbus_host,
+        port=settings.modbus_port,
+        device_id=settings.modbus_device_id,
         detail=detail
     )
 
