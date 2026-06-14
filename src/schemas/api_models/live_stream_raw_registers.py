@@ -1,4 +1,4 @@
-"""Pydantic models for the modbus raw registers live data streaming feature."""
+"""Pydantic models for the modbus live stream raw registers feature."""
 
 from datetime import datetime
 from typing import Dict, Literal, Optional, Union
@@ -13,7 +13,7 @@ _VALID_DATA_TYPES: frozenset[str] = frozenset({
 })
 
 
-class RawRegistersLiveRegisterConfig(BaseModel):
+class LiveStreamRawRegistersRegisterConfig(BaseModel):
     label: Optional[str] = None
     data_type: str = "int16"
     byte_order: Optional[Literal["big", "little"]] = None
@@ -27,7 +27,7 @@ class RawRegistersLiveRegisterConfig(BaseModel):
         return str(v)
 
 
-class RawRegistersLiveParams(BaseModel):
+class LiveStreamRawRegistersParams(BaseModel):
     host: str = Field(..., description="Modbus device IP/hostname")
     port: int = Field(502, ge=1, le=65535)
     server_address: int = Field(1, ge=1, le=255, description="Modbus unit/slave ID")
@@ -42,46 +42,46 @@ class RawRegistersLiveParams(BaseModel):
     duration: int = Field(3600, ge=1, le=3600, description="Session length in seconds, max 1 hour")
     byte_order: Literal["big", "little"] = Field("big")
     word_order: Literal["msw_first", "lsw_first"] = Field("msw_first")
-    register_configs: Optional[Dict[str, RawRegistersLiveRegisterConfig]] = Field(
+    register_configs: Optional[Dict[str, LiveStreamRawRegistersRegisterConfig]] = Field(
         None,
         description="Optional per-address config, e.g. {\"1400\": {\"label\": \"voltage\", \"data_type\": \"float32\"}}",
     )
 
     @model_validator(mode="after")
-    def _validate_range(self) -> "RawRegistersLiveParams":
+    def _validate_range(self) -> "LiveStreamRawRegistersParams":
         if self.end_address < self.start_address:
             raise ValueError("end_address must be >= start_address")
         if (self.end_address - self.start_address + 1) > 125:
             raise ValueError("Address range must be <= 125 registers (single Modbus frame limit)")
         return self
 
-    def int_register_configs(self) -> dict[int, RawRegistersLiveRegisterConfig]:
+    def int_register_configs(self) -> dict[int, LiveStreamRawRegistersRegisterConfig]:
         if not self.register_configs:
             return {}
         return {int(k): v for k, v in self.register_configs.items()}
 
 
-class RawRegistersLiveRegister(BaseModel):
+class LiveStreamRawRegistersRegister(BaseModel):
     value: Optional[Union[int, float]] = None
     label: str = "unknown"
     data_type: str = "int16"
 
 
-class RawRegistersLiveEvent(BaseModel):
+class LiveStreamRawRegistersEvent(BaseModel):
     timestamp: datetime
     poll: int
-    registers: Dict[str, RawRegistersLiveRegister]
+    registers: Dict[str, LiveStreamRawRegistersRegister]
 
 
-class RawRegistersLiveErrorEvent(BaseModel):
+class LiveStreamRawRegistersErrorEvent(BaseModel):
     error: str
     poll: int
 
 
-class RawRegistersLiveDoneEvent(BaseModel):
+class LiveStreamRawRegistersDoneEvent(BaseModel):
     total_polls: int
     duration_s: int
 
 
-class RawRegistersLiveConnectedEvent(BaseModel):
+class LiveStreamRawRegistersConnectedEvent(BaseModel):
     session_id: str

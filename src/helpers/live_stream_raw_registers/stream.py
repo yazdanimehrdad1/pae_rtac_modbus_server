@@ -1,4 +1,4 @@
-"""SSE generator for the modbus raw registers live data streaming feature."""
+"""SSE generator for the modbus live stream raw registers feature."""
 
 import asyncio
 import time
@@ -9,18 +9,18 @@ from pydantic import BaseModel
 
 from config import settings
 from helpers.modbus.modbus_data_mapping import _decode_modbus_point_value
-from schemas.api_models.raw_registers_live import (
-    RawRegistersLiveConnectedEvent,
-    RawRegistersLiveDoneEvent,
-    RawRegistersLiveErrorEvent,
-    RawRegistersLiveEvent,
-    RawRegistersLiveParams,
-    RawRegistersLiveRegister,
+from schemas.api_models.live_stream_raw_registers import (
+    LiveStreamRawRegistersConnectedEvent,
+    LiveStreamRawRegistersDoneEvent,
+    LiveStreamRawRegistersErrorEvent,
+    LiveStreamRawRegistersEvent,
+    LiveStreamRawRegistersParams,
+    LiveStreamRawRegistersRegister,
 )
 from services.server_sent_events import (
-    RawRegistersLiveConnection,
-    RawRegistersLiveConnectionError,
-    translate_raw_registers_live_error,
+    LiveStreamRawRegistersConnection,
+    LiveStreamRawRegistersConnectionError,
+    translate_live_stream_raw_registers_error,
 )
 from services.server_sent_events import session_store
 
@@ -39,8 +39,8 @@ def _register_size(data_type: str) -> int:
 
 def _build_registers(
     registers_raw: list[int],
-    params: RawRegistersLiveParams,
-) -> dict[str, Optional[RawRegistersLiveRegister]]:
+    params: LiveStreamRawRegistersParams,
+) -> dict[str, Optional[LiveStreamRawRegistersRegister]]:
     configs = params.int_register_configs()
     count = params.end_address - params.start_address + 1
 
@@ -49,7 +49,7 @@ def _build_registers(
         for j in range(1, _register_size(cfg.data_type)):
             consumed.add(addr + j)
 
-    registers: dict[str, Optional[RawRegistersLiveRegister]] = {}
+    registers: dict[str, Optional[LiveStreamRawRegistersRegister]] = {}
     i = 0
     while i < count:
         addr = params.start_address + i
@@ -73,7 +73,7 @@ def _build_registers(
         )
         value = result.value if result.success else None
 
-        registers[str(addr)] = RawRegistersLiveRegister(
+        registers[str(addr)] = LiveStreamRawRegistersRegister(
             value=value,
             label=(cfg.label if cfg else None) or "unknown",
             data_type=data_type,
@@ -83,15 +83,15 @@ def _build_registers(
     return registers
 
 
-async def raw_registers_live_generator(params: RawRegistersLiveParams) -> AsyncGenerator[str, None]:
+async def live_stream_raw_registers_generator(params: LiveStreamRawRegistersParams) -> AsyncGenerator[str, None]:
     session_id, cancel_event = session_store.register()
-    yield _sse("connected", RawRegistersLiveConnectedEvent(session_id=session_id))
+    yield _sse("connected", LiveStreamRawRegistersConnectedEvent(session_id=session_id))
 
     offset = -1 if params.modbus_address_mode == "one_based" else 0
     count = params.end_address - params.start_address + 1
     modbus_start = params.start_address + offset
 
-    connection = RawRegistersLiveConnection(
+    connection = LiveStreamRawRegistersConnection(
         host=params.host,
         port=params.port,
         timeout=settings.modbus_timeout_s,
@@ -102,8 +102,8 @@ async def raw_registers_live_generator(params: RawRegistersLiveParams) -> AsyncG
     try:
         try:
             await connection.connect()
-        except RawRegistersLiveConnectionError as exc:
-            yield _sse("error", RawRegistersLiveErrorEvent(error=str(exc), poll=0))
+        except LiveStreamRawRegistersConnectionError as exc:
+            yield _sse("error", LiveStreamRawRegistersErrorEvent(error=str(exc), poll=0))
             return
 
         while time.monotonic() < deadline and not cancel_event.is_set():
@@ -117,15 +117,15 @@ async def raw_registers_live_generator(params: RawRegistersLiveParams) -> AsyncG
                 )
                 poll_count += 1
                 registers = _build_registers(registers_raw, params)
-                yield _sse("poll", RawRegistersLiveEvent(
+                yield _sse("poll", LiveStreamRawRegistersEvent(
                     timestamp=datetime.now(timezone.utc),
                     poll=poll_count,
                     registers=registers,
                 ))
 
             except Exception as exc:
-                msg = translate_raw_registers_live_error(exc, params.host, params.port)
-                yield _sse("error", RawRegistersLiveErrorEvent(error=msg, poll=poll_count))
+                msg = translate_live_stream_raw_registers_error(exc, params.host, params.port)
+                yield _sse("error", LiveStreamRawRegistersErrorEvent(error=msg, poll=poll_count))
 
             elapsed = time.monotonic() - t0
             remaining = max(0.0, params.interval - elapsed)
@@ -138,4 +138,4 @@ async def raw_registers_live_generator(params: RawRegistersLiveParams) -> AsyncG
     finally:
         session_store.unregister(session_id)
         await connection.close()
-        yield _sse("done", RawRegistersLiveDoneEvent(total_polls=poll_count, duration_s=params.duration))
+        yield _sse("done", LiveStreamRawRegistersDoneEvent(total_polls=poll_count, duration_s=params.duration))

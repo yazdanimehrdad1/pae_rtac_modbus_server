@@ -3,19 +3,19 @@
 from pymodbus.exceptions import ConnectionException, ModbusException
 
 
-class RawRegistersLiveConnectionError(Exception):
+class LiveStreamRawRegistersConnectionError(Exception):
     """Raised when the TCP connection to the Modbus device cannot be established or is lost."""
 
 
-class RawRegistersLiveReadError(Exception):
+class LiveStreamRawRegistersReadError(Exception):
     """Raised when a Modbus read returns an error response."""
 
 
-def translate_raw_registers_live_error(exc: Exception, host: str, port: int) -> str:
+def translate_live_stream_raw_registers_error(exc: Exception, host: str, port: int) -> str:
     """Return a human-readable message for any exception raised during a raw registers live session."""
-    if isinstance(exc, RawRegistersLiveConnectionError):
+    if isinstance(exc, LiveStreamRawRegistersConnectionError):
         return str(exc)
-    if isinstance(exc, RawRegistersLiveReadError):
+    if isinstance(exc, LiveStreamRawRegistersReadError):
         return str(exc)
     if isinstance(exc, ConnectionException):
         return f"Failed to connect to {host}:{port}"

@@ -6,12 +6,12 @@ from typing import List, Literal
 from pymodbus.client import ModbusTcpClient
 
 from services.server_sent_events.errors import (
-    RawRegistersLiveConnectionError,
-    RawRegistersLiveReadError,
+    LiveStreamRawRegistersConnectionError,
+    LiveStreamRawRegistersReadError,
 )
 
 
-class RawRegistersLiveConnection:
+class LiveStreamRawRegistersConnection:
     """
     Wraps a single ModbusTcpClient for the duration of one SSE session.
     Call connect() once, read() repeatedly, then close() in a finally block.
@@ -25,7 +25,7 @@ class RawRegistersLiveConnection:
     async def connect(self) -> None:
         connected = await asyncio.to_thread(self._client.connect)
         if not connected:
-            raise RawRegistersLiveConnectionError(
+            raise LiveStreamRawRegistersConnectionError(
                 f"Failed to connect to {self._host}:{self._port}"
             )
 
@@ -49,7 +49,7 @@ class RawRegistersLiveConnection:
         )
 
         if result.isError():
-            raise RawRegistersLiveReadError(str(result))
+            raise LiveStreamRawRegistersReadError(str(result))
 
         return result.registers
 
