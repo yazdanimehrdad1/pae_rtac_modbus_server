@@ -26,7 +26,7 @@ from services.server_sent_events import session_store
 
 
 def _sse(event: str, payload: BaseModel) -> str:
-    return f"event: {event}\ndata: {payload.model_dump_json(exclude_none=True)}\n\n"
+    return f"event: {event}\ndata: {payload.model_dump_json()}\n\n"
 
 
 def _register_size(data_type: str) -> int:
@@ -56,7 +56,6 @@ def _build_registers(
         cfg = configs.get(addr)
 
         if addr in consumed:
-            registers[str(addr)] = None
             i += 1
             continue
 

@@ -63,14 +63,14 @@ class RawRegistersLiveParams(BaseModel):
 
 class RawRegistersLiveRegister(BaseModel):
     value: Optional[Union[int, float]] = None
-    label: Optional[str] = None
+    label: str = "unknown"
     data_type: str = "int16"
 
 
 class RawRegistersLiveEvent(BaseModel):
     timestamp: datetime
     poll: int
-    registers: Dict[str, Optional[RawRegistersLiveRegister]]
+    registers: Dict[str, RawRegistersLiveRegister]
 
 
 class RawRegistersLiveErrorEvent(BaseModel):
