@@ -34,7 +34,7 @@ class RawRegistersLiveParams(BaseModel):
     kind: Literal["holding", "input"] = Field("holding")
     start_address: int = Field(..., ge=0, le=65535)
     end_address: int = Field(..., ge=0, le=65535)
-    address_mode: Literal["zero_based", "one_based"] = Field(
+    modbus_address_mode: Literal["zero_based", "one_based"] = Field(
         "zero_based",
         description="zero_based: address sent as-is; one_based: subtract 1 before sending to device",
     )

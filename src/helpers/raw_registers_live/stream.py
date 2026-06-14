@@ -88,7 +88,7 @@ async def raw_registers_live_generator(params: RawRegistersLiveParams) -> AsyncG
     session_id, cancel_event = session_store.register()
     yield _sse("connected", RawRegistersLiveConnectedEvent(session_id=session_id))
 
-    offset = -1 if params.address_mode == "one_based" else 0
+    offset = -1 if params.modbus_address_mode == "one_based" else 0
     count = params.end_address - params.start_address + 1
     modbus_start = params.start_address + offset
 
