@@ -8,14 +8,14 @@ from typing import AsyncGenerator, Optional
 from pydantic import BaseModel
 
 from config import settings
-from helpers.modbus.modbus_data_mapping import _decode_modbus_point_value
+from helpers.live_stream_raw_registers.decode import build_registers
+from helpers.live_stream_raw_registers.redis_history import LiveStreamHistoryStore
 from schemas.api_models.live_stream_raw_registers import (
     LiveStreamRawRegistersConnectedEvent,
     LiveStreamRawRegistersDoneEvent,
     LiveStreamRawRegistersErrorEvent,
     LiveStreamRawRegistersEvent,
     LiveStreamRawRegistersParams,
-    LiveStreamRawRegistersRegister,
 )
 from services.server_sent_events import (
     LiveStreamRawRegistersConnection,
@@ -24,67 +24,27 @@ from services.server_sent_events import (
 )
 from services.server_sent_events import session_store
 
+_history_store = LiveStreamHistoryStore()
+
 
 def _sse(event: str, payload: BaseModel) -> str:
     return f"event: {event}\ndata: {payload.model_dump_json()}\n\n"
 
 
-def _register_size(data_type: str) -> int:
-    if data_type in ("uint32", "int32", "float32"):
-        return 2
-    if data_type in ("uint64", "int64", "float64"):
-        return 4
-    return 1
-
-
-def _build_registers(
-    registers_raw: list[int],
+async def live_stream_raw_registers_generator(
     params: LiveStreamRawRegistersParams,
-) -> dict[str, Optional[LiveStreamRawRegistersRegister]]:
-    configs = params.int_register_configs()
-    count = params.end_address - params.start_address + 1
-
-    consumed: set[int] = set()
-    for addr, cfg in configs.items():
-        for j in range(1, _register_size(cfg.data_type)):
-            consumed.add(addr + j)
-
-    registers: dict[str, Optional[LiveStreamRawRegistersRegister]] = {}
-    i = 0
-    while i < count:
-        addr = params.start_address + i
-        cfg = configs.get(addr)
-
-        if addr in consumed:
-            i += 1
-            continue
-
-        data_type = cfg.data_type if cfg else "int16"
-        size = _register_size(data_type)
-        raw_vals = registers_raw[i:i + size]
-
-        effective_byte_order = (cfg.byte_order if cfg and cfg.byte_order else None) or params.byte_order
-        effective_word_order = (cfg.word_order if cfg and cfg.word_order else None) or params.word_order
-        result = _decode_modbus_point_value(
-            register_values=raw_vals,
-            data_type=data_type,
-            byte_order=effective_byte_order,
-            word_order=effective_word_order,
-        )
-        value = result.value if result.success else None
-
-        registers[str(addr)] = LiveStreamRawRegistersRegister(
-            value=value,
-            label=(cfg.label if cfg else None) or "unknown",
-            data_type=data_type,
-        )
-        i += size
-
-    return registers
-
-
-async def live_stream_raw_registers_generator(params: LiveStreamRawRegistersParams) -> AsyncGenerator[str, None]:
-    session_id, cancel_event = session_store.register()
+    *,
+    existing_session_id: Optional[str] = None,
+    existing_cancel_event: Optional[asyncio.Event] = None,
+) -> AsyncGenerator[str, None]:
+    if existing_session_id and existing_cancel_event:
+        session_id, cancel_event = existing_session_id, existing_cancel_event
+    else:
+        session_id, cancel_event = session_store.register()
+    try:
+        await _history_store.store_session_params(session_id, params)
+    except Exception:
+        pass  # must not prevent the stream from starting
     yield _sse("connected", LiveStreamRawRegistersConnectedEvent(session_id=session_id))
 
     offset = -1 if params.modbus_address_mode == "one_based" else 0
@@ -116,7 +76,15 @@ async def live_stream_raw_registers_generator(params: LiveStreamRawRegistersPara
                     device_id=params.server_address,
                 )
                 poll_count += 1
-                registers = _build_registers(registers_raw, params)
+                try:
+                    await _history_store.push(
+                        session_id=session_id,
+                        timestamp=datetime.now(timezone.utc).isoformat(),
+                        values=registers_raw,
+                    )
+                except Exception:
+                    pass  # history write must never kill the SSE stream
+                registers = build_registers(registers_raw, params)
                 yield _sse("poll", LiveStreamRawRegistersEvent(
                     timestamp=datetime.now(timezone.utc),
                     poll=poll_count,

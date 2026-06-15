@@ -1,7 +1,7 @@
 """Pydantic models for the modbus live stream raw registers feature."""
 
 from datetime import datetime
-from typing import Dict, Literal, Optional, Union
+from typing import Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -85,3 +85,39 @@ class LiveStreamRawRegistersDoneEvent(BaseModel):
 
 class LiveStreamRawRegistersConnectedEvent(BaseModel):
     session_id: str
+
+
+# --- Session list models ---
+
+class LiveStreamSessionInfo(BaseModel):
+    session_id: str
+    status: Literal["active", "stopped"]
+    host: str
+    port: int
+    server_address: int
+    kind: Literal["holding", "input"]
+    start_address: int
+    end_address: int
+    interval: float
+    duration: int
+    modbus_address_mode: str
+
+
+class LiveStreamSessionsResponse(BaseModel):
+    sessions: List[LiveStreamSessionInfo]
+
+
+# --- Simple action response models ---
+
+class LiveStreamStopSessionResponse(BaseModel):
+    stopped: str
+
+
+class LiveStreamDeleteSessionResponse(BaseModel):
+    deleted: str
+
+
+class LiveStreamDeleteAllSessionsResponse(BaseModel):
+    cancelled_active_sessions: int
+    deleted_count: int
+    deleted_sessions: List[str]

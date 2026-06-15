@@ -25,6 +25,7 @@ from api.routers import (
     device_points,
     device_points_readings,
     live_stream_raw_registers,
+    live_stream_register_snapshot,
 )
 
 # Cache connection imports
@@ -115,6 +116,7 @@ def create_app() -> FastAPI:
     app.include_router(device_points.router, prefix="/api", tags=["device-points"])
     app.include_router(device_points_readings.router, prefix="/api", tags=["device-point-readings"])
     app.include_router(live_stream_raw_registers.router, prefix="/api", tags=["modbus-live-stream-raw-registers"])
+    app.include_router(live_stream_register_snapshot.router, prefix="/api", tags=["modbus-live-stream-register-snapshot"])
 
     logger.info("FastAPI application created")
     return app

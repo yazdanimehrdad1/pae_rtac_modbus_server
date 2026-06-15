@@ -27,3 +27,24 @@ def cancel(session_id: str) -> bool:
 def unregister(session_id: str) -> None:
     """Remove a session from the registry."""
     _sessions.pop(session_id, None)
+
+
+def list_active() -> list[str]:
+    """Return all currently active session IDs."""
+    return list(_sessions.keys())
+
+
+def resume(session_id: str) -> asyncio.Event:
+    """Re-register an existing session_id with a fresh cancel event."""
+    cancel = asyncio.Event()
+    _sessions[session_id] = cancel
+    return cancel
+
+
+def cancel_all() -> int:
+    """Cancel all active sessions. Returns the number of sessions cancelled."""
+    for event in _sessions.values():
+        event.set()
+    count = len(_sessions)
+    _sessions.clear()
+    return count
