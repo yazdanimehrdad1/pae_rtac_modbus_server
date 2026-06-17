@@ -12,46 +12,66 @@ from sqlalchemy.exc import IntegrityError
 
 from db.connection import get_async_session_factory
 from schemas.api_models import SiteCreateRequest, SiteUpdateRequest, SiteResponse
-from schemas.db_models.orm_models import Device, Site
+from schemas.db_models.orm_models import Device, DevicePoint, Site
 from utils.exceptions import ConflictError, NotFoundError, ValidationError, InternalError
 from logger import get_logger
 
 logger = get_logger(__name__)
 
 
-
+def _site_to_response(site: Site) -> SiteResponse:
+    coordinates = None
+    if site.coordinates:
+        from schemas.api_models import Coordinates
+        coordinates = Coordinates(lat=site.coordinates["lat"], lng=site.coordinates["lng"])
+    location = None
+    if site.location:
+        from schemas.api_models import Location
+        location = Location(**site.location)
+    return SiteResponse(
+        site_id=site.id,
+        client_id=site.client_id,
+        name=site.name,
+        location=location,
+        operator=site.operator,
+        capacity=site.capacity,
+        device_count=site.device_count,
+        description=site.description,
+        coordinates=coordinates,
+        created_at=site.created_at,
+        updated_at=site.updated_at,
+        last_update=site.last_update,
+        deleted_at=site.deleted_at,
+    )
 
 
 async def create_site(site: SiteCreateRequest) -> SiteResponse:
-    """
-    Create a new site in the database.
-    
-    Args:
-        site: Site creation data
-        
-    Returns:
-        Created site with ID and timestamps
-        
-    Raises:
-        ValueError: If site name already exists
-        IntegrityError: For other database constraint violations
-    """
     session_factory = get_async_session_factory()
     async with session_factory() as session:
         try:
-            # Check if site name already exists
+            # Check active site with same name
             existing_site = await session.execute(
-                select(Site).where(Site.name == site.name)
+                select(Site).where(Site.name == site.name, Site.deleted_at.is_(None))
             )
             if existing_site.scalar_one_or_none() is not None:
                 raise ConflictError(f"Site with name '{site.name}' already exists")
-            
-            # Convert location and coordinates to dicts for storage
+
+            # Check soft-deleted site with same name — suggest restore
+            soft_deleted = await session.execute(
+                select(Site).where(Site.name == site.name, Site.deleted_at.is_not(None))
+            )
+            sd = soft_deleted.scalar_one_or_none()
+            if sd is not None:
+                raise ConflictError(
+                    f"A soft-deleted site named '{site.name}' exists (site_id={sd.id}). "
+                    f"Use POST /sites/{sd.id}/restore to restore it."
+                )
+
             location_dict = site.location.model_dump()
             coordinates_dict = None
             if site.coordinates:
                 coordinates_dict = {"lat": site.coordinates.lat, "lng": site.coordinates.lng}
-            
+
             new_site = Site(
                 client_id=site.client_id,
                 name=site.name,
@@ -60,40 +80,16 @@ async def create_site(site: SiteCreateRequest) -> SiteResponse:
                 capacity=site.capacity,
                 description=site.description,
                 coordinates=coordinates_dict,
-                device_count=0  # New sites start with 0 devices
+                device_count=0,
             )
-            
+
             session.add(new_site)
             await session.flush()
             logger.info(f"Created site: {site.name} (ID: {new_site.id})")
-            
             await session.commit()
-            
-            # Convert coordinates/location back to models if present
-            coordinates = None
-            if new_site.coordinates:
-                from schemas.api_models import Coordinates
-                coordinates = Coordinates(lat=new_site.coordinates["lat"], lng=new_site.coordinates["lng"])
-            location = None
-            if new_site.location:
-                from schemas.api_models import Location
-                location = Location(**new_site.location)
-            
-            return SiteResponse(
-                site_id=new_site.id,
-                client_id=new_site.client_id,
-                name=new_site.name,
-                location=location,
-                operator=new_site.operator,
-                capacity=new_site.capacity,
-                device_count=new_site.device_count,
-                description=new_site.description,
-                coordinates=coordinates,
-                created_at=new_site.created_at,
-                updated_at=new_site.updated_at,
-                last_update=new_site.last_update
-            )
-            
+
+            return _site_to_response(new_site)
+
         except IntegrityError as error:
             await session.rollback()
             error_msg = str(error)
@@ -101,129 +97,47 @@ async def create_site(site: SiteCreateRequest) -> SiteResponse:
             raise ValidationError(f"Database constraint violation: {error_msg}") from error
         except Exception as error:
             await session.rollback()
-            error_msg = str(error)
-            error_type = type(error).__name__
-            logger.error(f"Database error creating site '{site.name}': {error_type}: {error_msg}", exc_info=True)
-            raise InternalError(f"Failed to create site '{site.name}': {error_type}: {error_msg}") from error
+            logger.error(f"Database error creating site '{site.name}': {type(error).__name__}: {error}", exc_info=True)
+            raise
 
 
-async def get_all_sites() -> List[SiteResponse]:
-    """
-    Get all sites from the database.
-    
-    Returns:
-        List of all sites
-    """
+async def get_all_sites(include_deleted: bool = False) -> List[SiteResponse]:
     session_factory = get_async_session_factory()
     async with session_factory() as session:
-        result = await session.execute(select(Site).order_by(Site.created_at.desc()))
-        sites = result.scalars().all()
-        
-        site_responses = []
-        for site in sites:
-            # Convert coordinates/location to models if present
-            coordinates = None
-            if site.coordinates:
-                from schemas.api_models import Coordinates
-                coordinates = Coordinates(lat=site.coordinates["lat"], lng=site.coordinates["lng"])
-            location = None
-            if site.location:
-                from schemas.api_models import Location
-                location = Location(**site.location)
-            
-            site_responses.append(SiteResponse(
-                site_id=site.id,
-                client_id=site.client_id,
-                name=site.name,
-                location=location,
-                operator=site.operator,
-                capacity=site.capacity,
-                device_count=site.device_count,
-                description=site.description,
-                coordinates=coordinates,
-                created_at=site.created_at,
-                updated_at=site.updated_at,
-                last_update=site.last_update
-            ))
-        
-        return site_responses
+        query = select(Site).order_by(Site.created_at.desc())
+        if not include_deleted:
+            query = query.where(Site.deleted_at.is_(None))
+        result = await session.execute(query)
+        return [_site_to_response(site) for site in result.scalars().all()]
 
 
-async def get_site_by_id(site_id: int) -> Optional[SiteResponse]:
-    """
-    Get a site by its ID (UUID).
-    
-    Args:
-        site_id: Site UUID
-        
-    Returns:
-        Site data with associated devices if found, None otherwise
-    """
+async def get_site_by_id(site_id: int, include_deleted: bool = False) -> Optional[SiteResponse]:
     session_factory = get_async_session_factory()
     async with session_factory() as session:
-        result = await session.execute(
-            select(Site).where(Site.id == site_id)
-        )
+        query = select(Site).where(Site.id == site_id)
+        if not include_deleted:
+            query = query.where(Site.deleted_at.is_(None))
+        result = await session.execute(query)
         site = result.scalar_one_or_none()
-        
         if site is None:
             return None
-        
-        # Convert coordinates/location to models if present
-        coordinates = None
-        if site.coordinates:
-            from schemas.api_models import Coordinates
-            coordinates = Coordinates(lat=site.coordinates["lat"], lng=site.coordinates["lng"])
-        location = None
-        if site.location:
-            from schemas.api_models import Location
-            location = Location(**site.location)
-        
-        return SiteResponse(
-            site_id=site.id,
-            client_id=site.client_id,
-            name=site.name,
-            location=location,
-            operator=site.operator,
-            capacity=site.capacity,
-            device_count=site.device_count,
-            description=site.description,
-            coordinates=coordinates,
-            devices=None,
-            created_at=site.created_at,
-            updated_at=site.updated_at,
-            last_update=site.last_update
-        )
+        response = _site_to_response(site)
+        response.devices = None
+        return response
 
 
 async def update_site(site_id: int, site_update: SiteUpdateRequest) -> SiteResponse:
-    """
-    Update a site in the database.
-    
-    Args:
-        site_id: Site UUID
-        site_update: Site update data (only provided fields will be updated)
-        
-    Returns:
-        Updated site with new timestamps
-        
-    Raises:
-        ValueError: If site not found or name already exists
-        IntegrityError: For other database constraint violations
-    """
     session_factory = get_async_session_factory()
     async with session_factory() as session:
         try:
-            # Get existing site
             result = await session.execute(
-                select(Site).where(Site.id == site_id)
+                select(Site).where(Site.id == site_id, Site.deleted_at.is_(None))
             )
             site = result.scalar_one_or_none()
-            
+
             if site is None:
                 raise NotFoundError(f"Site with id {site_id} not found")
-            
-            # Update only provided fields
+
             if site_update.client_id is not None:
                 site.client_id = site_update.client_id
             if site_update.name is not None:
@@ -238,48 +152,19 @@ async def update_site(site_id: int, site_update: SiteUpdateRequest) -> SiteRespo
                 site.description = site_update.description
             if site_update.coordinates is not None:
                 site.coordinates = {"lat": site_update.coordinates.lat, "lng": site_update.coordinates.lng}
-            elif site_update.coordinates is False:  # Allow clearing coordinates by passing None
+            elif site_update.coordinates is False:
                 site.coordinates = None
-            
-            # Update last_update timestamp
+
             site.last_update = datetime.now(timezone.utc)
-            
-            # Commit the transaction
+
             await session.commit()
-            
-            # Refresh to get the latest data (including updated_at)
             await session.refresh(site)
-            
             logger.info(f"Updated site with id {site_id}")
-            
-            # Convert coordinates/location to models if present
-            coordinates = None
-            if site.coordinates:
-                from schemas.api_models import Coordinates
-                coordinates = Coordinates(lat=site.coordinates["lat"], lng=site.coordinates["lng"])
-            location = None
-            if site.location:
-                from schemas.api_models import Location
-                location = Location(**site.location)
-            
-            return SiteResponse(
-                site_id=site.id,
-                client_id=site.client_id,
-                name=site.name,
-                location=location,
-                operator=site.operator,
-                capacity=site.capacity,
-                device_count=site.device_count,
-                description=site.description,
-                coordinates=coordinates,
-                created_at=site.created_at,
-                updated_at=site.updated_at,
-                last_update=site.last_update
-            )
-            
+
+            return _site_to_response(site)
+
         except IntegrityError as e:
             await session.rollback()
-            # Check if it's a unique constraint violation
             if "unique" in str(e).lower() or "duplicate" in str(e).lower():
                 logger.warning(f"Site name already exists")
                 raise ConflictError("Site with this name already exists") from e
@@ -292,81 +177,120 @@ async def update_site(site_id: int, site_update: SiteUpdateRequest) -> SiteRespo
             raise
 
 
-async def delete_site(site_id: int) -> Optional[SiteResponse]:
-    """
-    Delete a site from the database.
-    
-    Args:
-        site_id: Site UUID
-        
-    Returns:
-        SiteResponse with metadata of the deleted site if found, None if not found
-        
-    Raises:
-        Exception: For database errors
-    """
+async def delete_site(
+    site_id: int,
+    mode: str = "soft",
+    confirm: bool = False,
+) -> Optional[SiteResponse]:
+    if mode == "hard" and not confirm:
+        raise ValidationError("Set confirm=true to permanently delete a site and all its data")
+
     session_factory = get_async_session_factory()
     async with session_factory() as session:
         try:
-            # Get the site to delete
-            result = await session.execute(
-                select(Site).where(Site.id == site_id)
-            )
+            result = await session.execute(select(Site).where(Site.id == site_id))
             site = result.scalar_one_or_none()
-            
+
             if site is None:
                 logger.warning(f"Site with id {site_id} not found for deletion")
                 return None
-            
-            device_result = await session.execute(
-                select(Device.device_id).where(Device.site_id == site_id)
-            )
-            device_ids = [row[0] for row in device_result.all()]
-            if device_ids:
-                joined_ids = ", ".join(str(device_id) for device_id in device_ids)
-                raise ConflictError(
-                    f"Site with id {site_id} has associated devices: {joined_ids}",
-                    payload={"device_ids": device_ids}
-                )
 
-            # Convert coordinates/location to models if present
-            coordinates = None
-            if site.coordinates:
-                from schemas.api_models import Coordinates
-                coordinates = Coordinates(lat=site.coordinates["lat"], lng=site.coordinates["lng"])
-            location = None
-            if site.location:
-                from schemas.api_models import Location
-                location = Location(**site.location)
-            
-            # Store site data before deletion
-            site_response = SiteResponse(
-                site_id=site.id,
-                client_id=site.client_id,
-                name=site.name,
-                location=location,
-                operator=site.operator,
-                capacity=site.capacity,
-                device_count=site.device_count,
-                description=site.description,
-                coordinates=coordinates,
-                created_at=site.created_at,
-                updated_at=site.updated_at,
-                last_update=site.last_update
-            )
-            
-            # Delete the site
-            site_name_to_delete = site.name
-            await session.delete(site)
-            await session.flush()  # Flush to check for constraint violations before commit
-            
-            await session.commit()
-            
-            logger.info(f"Successfully deleted site '{site_name_to_delete}' with id {site_id}")
+            site_response = _site_to_response(site)
+
+            if mode == "soft":
+                now = datetime.now(timezone.utc)
+                site.deleted_at = now
+                site_response.deleted_at = now
+
+                # Cascade soft-delete to all active devices and their points
+                devices_result = await session.execute(
+                    select(Device).where(
+                        Device.site_id == site_id,
+                        Device.deleted_at.is_(None),
+                    )
+                )
+                for device in devices_result.scalars().all():
+                    device.deleted_at = now
+                    points_result = await session.execute(
+                        select(DevicePoint).where(
+                            DevicePoint.device_id == device.device_id,
+                            DevicePoint.deleted_at.is_(None),
+                        )
+                    )
+                    for pt in points_result.scalars().all():
+                        pt.deleted_at = now
+
+                await session.commit()
+                logger.info(f"Soft-deleted site {site_id} and all its devices/points")
+
+            else:
+                # Hard delete: block if any active (non-soft-deleted) devices remain
+                device_result = await session.execute(
+                    select(Device.device_id).where(
+                        Device.site_id == site_id,
+                        Device.deleted_at.is_(None),
+                    )
+                )
+                active_device_ids = [row[0] for row in device_result.all()]
+                if active_device_ids:
+                    joined_ids = ", ".join(str(did) for did in active_device_ids)
+                    raise ConflictError(
+                        f"Site {site_id} has active devices: {joined_ids}. "
+                        f"Soft-delete or delete them first.",
+                        payload={"device_ids": active_device_ids},
+                    )
+
+                await session.delete(site)
+                await session.flush()
+                await session.commit()
+                logger.info(f"Hard-deleted site '{site.name}' (id={site_id})")
+
             return site_response
-            
+
         except Exception as e:
             await session.rollback()
             logger.error(f"Database error deleting site: {e}")
             raise
 
+
+async def restore_site(site_id: int) -> Optional[SiteResponse]:
+    """Restore a soft-deleted site, all its soft-deleted devices, and their soft-deleted points."""
+    session_factory = get_async_session_factory()
+    async with session_factory() as session:
+        try:
+            result = await session.execute(select(Site).where(Site.id == site_id))
+            site = result.scalar_one_or_none()
+
+            if site is None:
+                return None
+            if site.deleted_at is None:
+                raise ConflictError(f"Site {site_id} is not soft-deleted")
+
+            site.deleted_at = None
+
+            devices_result = await session.execute(
+                select(Device).where(
+                    Device.site_id == site_id,
+                    Device.deleted_at.is_not(None),
+                )
+            )
+            for device in devices_result.scalars().all():
+                device.deleted_at = None
+                points_result = await session.execute(
+                    select(DevicePoint).where(
+                        DevicePoint.device_id == device.device_id,
+                        DevicePoint.deleted_at.is_not(None),
+                    )
+                )
+                for pt in points_result.scalars().all():
+                    pt.deleted_at = None
+
+            await session.commit()
+            logger.info(f"Restored site {site_id} and all its devices/points")
+
+        except Exception as e:
+            await session.rollback()
+            logger.error(f"Database error restoring site: {e}")
+            raise InternalError(f"Failed to restore site: {e}") from e
+
+    return await get_site_by_id(site_id)

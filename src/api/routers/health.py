@@ -1,15 +1,19 @@
 """Health check endpoints."""
 
-from typing import Dict, Any
-from fastapi import APIRouter
+import asyncio
+import time
+from typing import Dict, Any, List
 
+from fastapi import APIRouter
+from pymodbus.client import ModbusTcpClient
 from sqlalchemy import text
 
-from schemas.api_models import HealthResponse
-from services.modbus.client import ModbusClient
+from api.controllers.devices import get_all_devices
+from config import settings
 from cache.connection import get_redis_client
 from db.connection import check_db_health, get_async_engine, get_db_pool
-from config import settings
+from schemas.api_models import DeviceHealthStatus, HealthResponse, SiteDevicesHealthResponse
+from services.modbus.client import ModbusClient
 
 router = APIRouter()
 
@@ -39,6 +43,75 @@ async def health_modbus_client():
         device_id=settings.modbus_device_id,
         detail=detail
     )
+
+async def _check_device_reachability(device) -> DeviceHealthStatus:
+    host = settings.modbus_host if device.read_from_aggregator else device.host
+    port = settings.modbus_port if device.read_from_aggregator else device.port
+    timeout = device.timeout or settings.modbus_timeout_s
+
+    t0 = time.monotonic()
+    try:
+        def _connect():
+            client = ModbusTcpClient(host=host, port=port, timeout=timeout)
+            try:
+                return client.connect()
+            finally:
+                client.close()
+
+        connected = await asyncio.to_thread(_connect)
+        latency_ms = round((time.monotonic() - t0) * 1000, 2)
+        return DeviceHealthStatus(
+            device_id=device.device_id,
+            name=device.name,
+            host=host,
+            port=port,
+            read_from_aggregator=device.read_from_aggregator,
+            poll_enabled=device.poll_enabled,
+            reachable=connected,
+            latency_ms=latency_ms if connected else None,
+            error=None if connected else "TCP connection refused or timed out",
+        )
+    except Exception as exc:
+        latency_ms = round((time.monotonic() - t0) * 1000, 2)
+        return DeviceHealthStatus(
+            device_id=device.device_id,
+            name=device.name,
+            host=host,
+            port=port,
+            read_from_aggregator=device.read_from_aggregator,
+            poll_enabled=device.poll_enabled,
+            reachable=False,
+            latency_ms=None,
+            error=str(exc),
+        )
+
+
+@router.get("/healthz/site/{site_id}", response_model=SiteDevicesHealthResponse)
+async def site_devices_health(site_id: int):
+    """
+    Check Modbus TCP reachability for every active device in a site.
+
+    For devices with read_from_aggregator=true the aggregator host/port is probed;
+    otherwise the device's own host/port is used. All devices are checked concurrently.
+    """
+    try:
+        devices = await get_all_devices(site_id)
+    except Exception:
+        devices = []
+
+    results: List[DeviceHealthStatus] = await asyncio.gather(
+        *[_check_device_reachability(d) for d in devices]
+    )
+
+    reachable_count = sum(1 for r in results if r.reachable)
+    return SiteDevicesHealthResponse(
+        site_id=site_id,
+        total=len(results),
+        reachable=reachable_count,
+        unreachable=len(results) - reachable_count,
+        devices=list(results),
+    )
+
 
 @router.get("/redis_health")
 async def redis_health() -> Dict[str, Any]:

@@ -39,6 +39,8 @@ from schemas.api_models.responses import (
     LatestMeta,
     TimeseriesResponse,
     LatestResponse,
+    DeviceHealthStatus,
+    SiteDevicesHealthResponse,
 )
 
 __all__ = [
@@ -74,4 +76,6 @@ __all__ = [
     "DevicePointResponse",
     "Coordinates",
     "Location",
+    "DeviceHealthStatus",
+    "SiteDevicesHealthResponse",
 ]

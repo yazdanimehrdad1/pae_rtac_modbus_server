@@ -5,6 +5,7 @@ Handles CRUD operations for devices table.
 Uses SQLAlchemy 2.0+ async ORM.
 """
 
+from datetime import datetime, timezone
 from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -45,37 +46,69 @@ def _group_points(orm_points) -> DevicePoints:
     return grouped
 
 
+def _device_to_with_configs(device: Device, points: DevicePoints) -> DeviceWithConfigs:
+    return DeviceWithConfigs(
+        device_id=device.device_id,
+        site_id=device.site_id,
+        name=device.name,
+        type=device.type,
+        vendor=device.vendor,
+        model=device.model,
+        host=device.host,
+        port=device.port,
+        timeout=device.timeout,
+        server_address=device.server_address,
+        description=device.description,
+        poll_enabled=device.poll_enabled if device.poll_enabled is not None else True,
+        read_from_aggregator=device.read_from_aggregator if device.read_from_aggregator is not None else True,
+        protocol=device.protocol,
+        created_at=device.created_at,
+        updated_at=device.updated_at,
+        deleted_at=device.deleted_at,
+        scan_ranges=_orm_scan_ranges(device),
+        scan_ranges_locked=device.scan_ranges_locked or False,
+        modbus_address_mode=device.modbus_address_mode,
+        points=points,
+    )
+
+
 async def create_device(device: DeviceCreateRequest, site_id: int) -> DeviceWithConfigs:
-    """
-    Create a new device in the database.
-    
-    Args:
-        device: Device creation data
-    Returns:
-        Created device with ID and timestamps
-        
-    Raises:
-        ValueError: If device name or device_id already exists
-        IntegrityError: For other database constraint violations
-    """
     session_factory = get_async_session_factory()
     async with session_factory() as session:
         try:
-            # Check if device name already exists within this site
-            existing_device_result = await session.execute(
-                select(Device).where(Device.name == device.name, Device.site_id == site_id)
-            )
-            existing_device = existing_device_result.scalar_one_or_none()
-            if existing_device is not None:
-                raise ConflictError(f"Device with name '{device.name}' already exists in site {site_id}")
-            
             site_result = await session.execute(
-                select(Site).where(Site.id == site_id)
+                select(Site).where(Site.id == site_id, Site.deleted_at.is_(None))
             )
-            site = site_result.scalar_one_or_none()
-            if site is None:
+            if site_result.scalar_one_or_none() is None:
                 raise NotFoundError(f"Site with id '{site_id}' not found")
-            
+
+            # Check for active device with same name
+            existing = await session.execute(
+                select(Device).where(
+                    Device.name == device.name,
+                    Device.site_id == site_id,
+                    Device.deleted_at.is_(None),
+                )
+            )
+            if existing.scalar_one_or_none() is not None:
+                raise ConflictError(f"Device with name '{device.name}' already exists in site {site_id}")
+
+            # Check for soft-deleted device with same name — suggest restore
+            soft_deleted = await session.execute(
+                select(Device).where(
+                    Device.name == device.name,
+                    Device.site_id == site_id,
+                    Device.deleted_at.is_not(None),
+                )
+            )
+            sd = soft_deleted.scalar_one_or_none()
+            if sd is not None:
+                raise ConflictError(
+                    f"A soft-deleted device named '{device.name}' exists in site {site_id} "
+                    f"(device_id={sd.device_id}). "
+                    f"Use POST /devices/site/{site_id}/devices/{sd.device_id}/restore to restore it."
+                )
+
             new_device = Device(
                 name=device.name,
                 type=device.type,
@@ -90,51 +123,26 @@ async def create_device(device: DeviceCreateRequest, site_id: int) -> DeviceWith
                 read_from_aggregator=device.read_from_aggregator,
                 modbus_address_mode=device.modbus_address_mode,
                 protocol=device.protocol,
-                site_id=site_id
+                site_id=site_id,
             )
-            
-            # Add to session and flush to get the ID
+
             session.add(new_device)
             await session.flush()
             device_primary_key = new_device.device_id
             logger.info(f"Created device: {device.name} (ID: {device_primary_key})")
-            
             await session.commit()
-            
+
             result = await session.execute(
                 select(Device).where(Device.device_id == device_primary_key)
             )
             created_device = result.scalar_one_or_none()
-            
             if created_device is None:
                 raise InternalError(f"Device with id {device_primary_key} not found after creation")
-            
-            return DeviceWithConfigs(
-                device_id=created_device.device_id,
-                site_id=created_device.site_id,
-                name=created_device.name,
-                type=created_device.type,
-                vendor=created_device.vendor,
-                model=created_device.model,
-                host=created_device.host,
-                port=created_device.port,
-                timeout=created_device.timeout,
-                server_address=created_device.server_address,
-                description=created_device.description,
-                poll_enabled=created_device.poll_enabled if created_device.poll_enabled is not None else True,
-                read_from_aggregator=created_device.read_from_aggregator if created_device.read_from_aggregator is not None else True,
-                protocol=created_device.protocol,
-                created_at=created_device.created_at,
-                updated_at=created_device.updated_at,
-                scan_ranges=_orm_scan_ranges(created_device),
-                scan_ranges_locked=created_device.scan_ranges_locked or False,
-                modbus_address_mode=created_device.modbus_address_mode,
-                points=DevicePoints(),
-            )
-            
+
+            return _device_to_with_configs(created_device, DevicePoints())
+
         except IntegrityError as e:
             await session.rollback()
-            # Check if it's a unique constraint violation
             error_text = str(e).lower()
             if "unique" in error_text or "duplicate" in error_text or "already exists" in error_text:
                 logger.warning(f"Device name '{device.name}' already exists in site {site_id}")
@@ -145,29 +153,25 @@ async def create_device(device: DeviceCreateRequest, site_id: int) -> DeviceWith
         except Exception as e:
             await session.rollback()
             logger.error(f"Database error creating device: {e}")
-            raise InternalError(f"Failed to create device: {e}") from e
+            raise
 
 
-async def get_all_devices(site_id: int) -> list[DeviceWithConfigs]:
-    """
-    Get all devices from the database.
-    
-    Returns:
-        List of all devices ordered by ID
-    """
+async def get_all_devices(site_id: int, include_deleted: bool = False) -> list[DeviceWithConfigs]:
     session_factory = get_async_session_factory()
     async with session_factory() as session:
-        result = await session.execute(
-            select(Device).where(Device.site_id == site_id).order_by(Device.device_id)
-        )
+        query = select(Device).where(Device.site_id == site_id)
+        if not include_deleted:
+            query = query.where(Device.deleted_at.is_(None))
+        result = await session.execute(query.order_by(Device.device_id))
         devices = result.scalars().all()
-        
+
         device_ids = [device.device_id for device in devices]
         points_by_device: dict[int, DevicePoints] = {}
         if device_ids:
-            points_result = await session.execute(
-                select(DevicePoint).where(DevicePoint.device_id.in_(device_ids))
-            )
+            points_query = select(DevicePoint).where(DevicePoint.device_id.in_(device_ids))
+            if not include_deleted:
+                points_query = points_query.where(DevicePoint.deleted_at.is_(None))
+            points_result = await session.execute(points_query)
             for pt in points_result.scalars().all():
                 if pt.device_id not in points_by_device:
                     points_by_device[pt.device_id] = DevicePoints()
@@ -180,82 +184,33 @@ async def get_all_devices(site_id: int) -> list[DeviceWithConfigs]:
                 elif pt.category == "VIRTUAL":
                     grouped.virtual.append(point)
 
-        device_list: list[DeviceWithConfigs] = []
-        for device in devices:
-            device_list.append(
-                DeviceWithConfigs(
-                    device_id=device.device_id,
-                    site_id=device.site_id,
-                    name=device.name,
-                    type=device.type,
-                    vendor=device.vendor,
-                    model=device.model,
-                    host=device.host,
-                    port=device.port,
-                    timeout=device.timeout,
-                    server_address=device.server_address,
-                    description=device.description,
-                    poll_enabled=device.poll_enabled if device.poll_enabled is not None else True,
-                    read_from_aggregator=device.read_from_aggregator if device.read_from_aggregator is not None else True,
-                    protocol=device.protocol,
-                    created_at=device.created_at,
-                    updated_at=device.updated_at,
-                    scan_ranges=_orm_scan_ranges(device),
-                    scan_ranges_locked=device.scan_ranges_locked or False,
-                    modbus_address_mode=device.modbus_address_mode,
-                    points=points_by_device.get(device.device_id, DevicePoints()),
-                )
-            )
-        return device_list
+        return [
+            _device_to_with_configs(device, points_by_device.get(device.device_id, DevicePoints()))
+            for device in devices
+        ]
 
 
-async def get_device_by_id(device_id: int, site_id: int) -> Optional[DeviceWithConfigs]:
-    """
-    Get a device by primary key ID.
-    
-    Args:
-        device_id: Device ID (database primary key)
-        
-    Returns:
-        Device if found, None otherwise
-    """
+async def get_device_by_id(
+    device_id: int, site_id: int, include_deleted: bool = False
+) -> Optional[DeviceWithConfigs]:
     session_factory = get_async_session_factory()
     async with session_factory() as session:
-        result = await session.execute(
-            select(Device).where(Device.device_id == device_id, Device.site_id == site_id)
-        )
+        query = select(Device).where(Device.device_id == device_id, Device.site_id == site_id)
+        if not include_deleted:
+            query = query.where(Device.deleted_at.is_(None))
+        result = await session.execute(query)
         device = result.scalar_one_or_none()
-        
+
         if device is None:
             return None
-        
-        points_result = await session.execute(
-            select(DevicePoint).where(DevicePoint.device_id == device.device_id)
-        )
+
+        points_query = select(DevicePoint).where(DevicePoint.device_id == device.device_id)
+        if not include_deleted:
+            points_query = points_query.where(DevicePoint.deleted_at.is_(None))
+        points_result = await session.execute(points_query)
         device_points = _group_points(points_result.scalars().all())
 
-        return DeviceWithConfigs(
-            device_id=device.device_id,
-            site_id=device.site_id,
-            name=device.name,
-            type=device.type,
-            vendor=device.vendor,
-            model=device.model,
-            host=device.host,
-            port=device.port,
-            timeout=device.timeout,
-            server_address=device.server_address,
-            description=device.description,
-            poll_enabled=device.poll_enabled if device.poll_enabled is not None else True,
-            read_from_aggregator=device.read_from_aggregator if device.read_from_aggregator is not None else True,
-            protocol=device.protocol,
-            created_at=device.created_at,
-            updated_at=device.updated_at,
-            scan_ranges=_orm_scan_ranges(device),
-            scan_ranges_locked=device.scan_ranges_locked or False,
-            modbus_address_mode=device.modbus_address_mode,
-            points=device_points,
-        )
+        return _device_to_with_configs(device, device_points)
 
 
 async def get_device_by_id_internal(device_id: int) -> Optional[DeviceWithConfigs]:
@@ -263,92 +218,52 @@ async def get_device_by_id_internal(device_id: int) -> Optional[DeviceWithConfig
     session_factory = get_async_session_factory()
     async with session_factory() as session:
         result = await session.execute(
-            select(Device).where(Device.device_id == device_id)
+            select(Device).where(Device.device_id == device_id, Device.deleted_at.is_(None))
         )
         device = result.scalar_one_or_none()
         if device is None:
             return None
         points_result = await session.execute(
-            select(DevicePoint).where(DevicePoint.device_id == device.device_id)
+            select(DevicePoint).where(
+                DevicePoint.device_id == device.device_id,
+                DevicePoint.deleted_at.is_(None),
+            )
         )
-        device_points = _group_points(points_result.scalars().all())
-
-        return DeviceWithConfigs(
-            device_id=device.device_id,
-            site_id=device.site_id,
-            name=device.name,
-            type=device.type,
-            vendor=device.vendor,
-            model=device.model,
-            host=device.host,
-            port=device.port,
-            timeout=device.timeout,
-            server_address=device.server_address,
-            description=device.description,
-            poll_enabled=device.poll_enabled if device.poll_enabled is not None else True,
-            read_from_aggregator=device.read_from_aggregator if device.read_from_aggregator is not None else True,
-            protocol=device.protocol,
-            created_at=device.created_at,
-            updated_at=device.updated_at,
-            scan_ranges=_orm_scan_ranges(device),
-            scan_ranges_locked=device.scan_ranges_locked or False,
-            modbus_address_mode=device.modbus_address_mode,
-            points=device_points,
-        )
+        return _device_to_with_configs(device, _group_points(points_result.scalars().all()))
 
 
 async def get_device_id_by_name(device_name: str) -> Optional[int]:
-    """
-    Get device ID by device name.
-    
-    Args:
-        device_name: Device name/identifier
-        
-    Returns:
-        Device ID if found, None otherwise
-    """
     session_factory = get_async_session_factory()
     async with session_factory() as session:
         result = await session.execute(
-            select(Device.device_id).where(Device.name == device_name)
+            select(Device.device_id).where(
+                Device.name == device_name,
+                Device.deleted_at.is_(None),
+            )
         )
-        device_id = result.scalar_one_or_none()
-        
-        return device_id
+        return result.scalar_one_or_none()
 
 
 async def get_device_id_by_name_internal(device_name: str) -> Optional[int]:
-    """Backward-compatible helper to get device ID by device name."""
     return await get_device_id_by_name(device_name)
 
 
 async def update_device(device_id: int, device_update: DeviceUpdate, site_id: int) -> DeviceWithConfigs:
-    """
-    Update a device in the database.
-    
-    Args:
-        device_id: Device ID (database primary key)
-        device_update: Device update data (only provided fields will be updated)
-    Returns:
-        Updated device with new timestamps
-        
-    Raises:
-        ValueError: If device not found or name already exists
-        IntegrityError: For other database constraint violations
-    """
     session_factory = get_async_session_factory()
     async with session_factory() as session:
         try:
-            # Get existing device by primary key
             result = await session.execute(
-                select(Device).where(Device.device_id == device_id, Device.site_id == site_id)
+                select(Device).where(
+                    Device.device_id == device_id,
+                    Device.site_id == site_id,
+                    Device.deleted_at.is_(None),
+                )
             )
             device = result.scalar_one_or_none()
-            
+
             if device is None:
                 raise NotFoundError(f"Device with id {device_id} not found")
-            
-            # Update only provided fields
+
             if device_update.name is not None:
                 device.name = device_update.name
             if device_update.type is not None:
@@ -375,48 +290,21 @@ async def update_device(device_id: int, device_update: DeviceUpdate, site_id: in
                 device.protocol = device_update.protocol
             if device_update.modbus_address_mode is not None:
                 device.modbus_address_mode = device_update.modbus_address_mode
-            
-            # updated_at is automatically updated by the ORM (onupdate=func.now())
-            
-            # Commit the transaction
-            await session.commit()
-            
-            # Refresh to get the latest data (including updated_at)
-            await session.refresh(device)
-            
-            logger.info(f"Updated device with id {device.device_id}")
-            
-            points_result = await session.execute(
-                select(DevicePoint).where(DevicePoint.device_id == device.device_id)
-            )
-            device_points = _group_points(points_result.scalars().all())
 
-            return DeviceWithConfigs(
-                device_id=device.device_id,
-                site_id=device.site_id,
-                name=device.name,
-                type=device.type,
-                vendor=device.vendor,
-                model=device.model,
-                host=device.host,
-                port=device.port,
-                timeout=device.timeout,
-                server_address=device.server_address,
-                description=device.description,
-                poll_enabled=device.poll_enabled if device.poll_enabled is not None else True,
-                read_from_aggregator=device.read_from_aggregator if device.read_from_aggregator is not None else True,
-                protocol=device.protocol,
-                created_at=device.created_at,
-                updated_at=device.updated_at,
-                scan_ranges=_orm_scan_ranges(device),
-                scan_ranges_locked=device.scan_ranges_locked or False,
-                modbus_address_mode=device.modbus_address_mode,
-                points=device_points,
+            await session.commit()
+            await session.refresh(device)
+            logger.info(f"Updated device with id {device.device_id}")
+
+            points_result = await session.execute(
+                select(DevicePoint).where(
+                    DevicePoint.device_id == device.device_id,
+                    DevicePoint.deleted_at.is_(None),
+                )
             )
+            return _device_to_with_configs(device, _group_points(points_result.scalars().all()))
 
         except IntegrityError as e:
             await session.rollback()
-            # Check if it's a unique constraint violation
             if "unique" in str(e).lower() or "duplicate" in str(e).lower():
                 logger.warning(f"Device name already exists in site {site_id}")
                 raise ConflictError(f"Device with this name already exists in site {site_id}") from e
@@ -429,19 +317,15 @@ async def update_device(device_id: int, device_update: DeviceUpdate, site_id: in
             raise InternalError(f"Failed to update device: {e}") from e
 
 
-async def delete_device(device_id: int, site_id: int) -> Optional[DeviceResponse]:
-    """
-    Delete a device from the database by primary key.
-    
-    Args:
-        device_id: Device ID (database primary key)
-        
-    Returns:
-        DeviceResponse with metadata of the deleted device if found, None if not found
-        
-    Raises:
-        Exception: For database errors
-    """
+async def delete_device(
+    device_id: int,
+    site_id: int,
+    mode: str = "soft",
+    confirm: bool = False,
+) -> Optional[DeviceResponse]:
+    if mode == "hard" and not confirm:
+        raise ValidationError("Set confirm=true to permanently delete a device and all its data")
+
     session_factory = get_async_session_factory()
     async with session_factory() as session:
         try:
@@ -449,7 +333,7 @@ async def delete_device(device_id: int, site_id: int) -> Optional[DeviceResponse
                 select(Device).where(Device.device_id == device_id, Device.site_id == site_id)
             )
             device = result.scalar_one_or_none()
-            
+
             if device is None:
                 logger.warning(f"Device with id {device_id} not found for deletion")
                 return None
@@ -470,27 +354,78 @@ async def delete_device(device_id: int, site_id: int) -> Optional[DeviceResponse
                 read_from_aggregator=device.read_from_aggregator if device.read_from_aggregator is not None else True,
                 protocol=device.protocol,
                 created_at=device.created_at,
-                updated_at=device.updated_at
+                updated_at=device.updated_at,
+                deleted_at=device.deleted_at,
             )
-            
-            device_name_to_delete = device.name
-            primary_key = device.device_id
-            
-            await session.delete(device)
-            await session.flush()
-            await session.commit()
-            
-            logger.info(f"Successfully deleted device '{device_name_to_delete}' (primary key: {primary_key}).")
+
+            if mode == "soft":
+                now = datetime.now(timezone.utc)
+                device.deleted_at = now
+                device_response.deleted_at = now
+                # Cascade soft-delete all active DevicePoints
+                points_result = await session.execute(
+                    select(DevicePoint).where(
+                        DevicePoint.device_id == device_id,
+                        DevicePoint.deleted_at.is_(None),
+                    )
+                )
+                for pt in points_result.scalars().all():
+                    pt.deleted_at = now
+                await session.commit()
+                logger.info(f"Soft-deleted device {device_id} and its active points")
+            else:
+                await session.delete(device)
+                await session.flush()
+                await session.commit()
+                logger.info(f"Hard-deleted device '{device.name}' (id={device_id})")
+
             return device_response
-            
+
         except Exception as e:
             await session.rollback()
             logger.error(f"Database error deleting device: {e}")
             raise InternalError(f"Failed to delete device: {e}") from e
 
 
+async def restore_device(device_id: int, site_id: int) -> Optional[DeviceWithConfigs]:
+    """Restore a soft-deleted device and all its soft-deleted DevicePoints."""
+    session_factory = get_async_session_factory()
+    async with session_factory() as session:
+        try:
+            result = await session.execute(
+                select(Device).where(Device.device_id == device_id, Device.site_id == site_id)
+            )
+            device = result.scalar_one_or_none()
+
+            if device is None:
+                return None
+            if device.deleted_at is None:
+                raise ConflictError(f"Device {device_id} is not soft-deleted")
+
+            device.deleted_at = None
+
+            points_result = await session.execute(
+                select(DevicePoint).where(
+                    DevicePoint.device_id == device_id,
+                    DevicePoint.deleted_at.is_not(None),
+                )
+            )
+            for pt in points_result.scalars().all():
+                pt.deleted_at = None
+
+            await session.commit()
+            logger.info(f"Restored device {device_id} and its points")
+
+        except Exception as e:
+            await session.rollback()
+            logger.error(f"Database error restoring device: {e}")
+            raise InternalError(f"Failed to restore device: {e}") from e
+
+    return await get_device_by_id(device_id, site_id)
+
+
 async def delete_device_by_id(id: int) -> Optional[DeviceResponse]:
-    """Backward-compatible helper to delete by primary key."""
+    """Backward-compatible helper to delete by primary key (soft delete)."""
     session_factory = get_async_session_factory()
     async with session_factory() as session:
         result = await session.execute(
@@ -539,7 +474,11 @@ async def reset_device_scan_ranges(device_id: int) -> DeviceScanRanges:
             raise NotFoundError(f"Device {device_id} not found")
 
         points_result = await session.execute(
-            select(DevicePoint).where(DevicePoint.device_id == device_id, DevicePoint.category == "NATIVE")
+            select(DevicePoint).where(
+                DevicePoint.device_id == device_id,
+                DevicePoint.category == "NATIVE",
+                DevicePoint.deleted_at.is_(None),
+            )
         )
         native_points = [
             DevicePointResponse.model_validate(p, from_attributes=True)
@@ -550,6 +489,3 @@ async def reset_device_scan_ranges(device_id: int) -> DeviceScanRanges:
         device.scan_ranges_locked = False
         await session.commit()
         return ranges
-
-
-

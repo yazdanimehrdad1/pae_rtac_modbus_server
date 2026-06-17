@@ -89,7 +89,7 @@ class Site(Base):
         server_default=func.now(),
         comment="Timestamp when site record was created"
     )
-    
+
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -97,7 +97,7 @@ class Site(Base):
         onupdate=func.now(),
         comment="Timestamp when site record was last updated"
     )
-    
+
     last_update: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -105,7 +105,14 @@ class Site(Base):
         onupdate=func.now(),
         comment="Timestamp of last update (synced from external source)"
     )
-    
+
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        default=None,
+        comment="Set when soft-deleted; NULL means active"
+    )
+
     def __repr__(self) -> str:
         return f"<Site(id={self.id}, name='{self.name}', location='{self.location}')>"
 
@@ -244,7 +251,7 @@ class Device(Base):
         server_default=func.now(),
         comment="Timestamp when device record was created"
     )
-    
+
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -252,7 +259,14 @@ class Device(Base):
         onupdate=func.now(),
         comment="Timestamp when device record was last updated"
     )
-    
+
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        default=None,
+        comment="Set when soft-deleted; NULL means active"
+    )
+
     __table_args__ = (
         UniqueConstraint('name', 'site_id', name='uq_devices_name_site_id'),
     )
