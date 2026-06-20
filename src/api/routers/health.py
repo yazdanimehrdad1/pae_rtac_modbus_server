@@ -8,7 +8,8 @@ from fastapi import APIRouter
 from pymodbus.client import ModbusTcpClient
 from sqlalchemy import text
 
-from api.controllers.devices import get_all_devices
+from api.controllers.devices import get_all_devices, get_device_by_id
+from fastapi import HTTPException
 from config import settings
 from cache.connection import get_redis_client
 from db.connection import check_db_health, get_async_engine, get_db_pool
@@ -111,6 +112,16 @@ async def site_devices_health(site_id: int):
         unreachable=len(results) - reachable_count,
         devices=list(results),
     )
+
+
+@router.get("/healthz/site/{site_id}/device/{device_id}", response_model=DeviceHealthStatus)
+async def device_health(site_id: int, device_id: int):
+    """Check Modbus TCP reachability for a single device."""
+    try:
+        device = await get_device_by_id(site_id, device_id)
+    except Exception:
+        raise HTTPException(status_code=404, detail=f"Device {device_id} not found in site {site_id}")
+    return await _check_device_reachability(device)
 
 
 @router.get("/redis_health")
