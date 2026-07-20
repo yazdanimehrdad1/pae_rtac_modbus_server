@@ -93,21 +93,18 @@ class DeviceWithPoints(DeviceListItem):
 
 class SiteResponse(BaseModel):
     """Response model for site data."""
-    site_id: int = Field(..., alias="id", description="Site ID (4-digit number)")
+    site_id: int = Field(..., description="Site ID (4-digit number)")
     client_id: str = Field(..., description="Client identifier")
     name: str = Field(..., description="Site name")
-    location: Location = Field(..., description="Site location details")
+    location: Optional[Location] = Field(None, description="Site location details")
     operator: str = Field(..., description="Site operator")
     capacity: str = Field(..., description="Site capacity")
-    deviceCount: int = Field(..., alias="device_count", description="Number of devices at this site")
+    device_count: int = Field(..., description="Number of devices at this site")
     description: Optional[str] = Field(None, description="Site description")
     coordinates: Optional[Coordinates] = Field(None, description="Geographic coordinates")
-    devices: Optional[List[DeviceListItem]] = Field(
-        default=None, description="List of devices at this site"
-    )
-    createdAt: datetime = Field(..., alias="created_at", description="Timestamp when site was created")
-    updatedAt: datetime = Field(..., alias="updated_at", description="Timestamp when site was last updated")
-    lastUpdate: datetime = Field(..., alias="last_update", description="Timestamp of last update")
+    created_at: datetime = Field(..., description="Timestamp when site was created")
+    updated_at: datetime = Field(..., description="Timestamp when site was last updated")
+    last_update: datetime = Field(..., description="Timestamp of last update")
     deleted_at: Optional[datetime] = Field(None, description="Soft-delete timestamp; null means active")
 
     model_config = {
@@ -124,19 +121,19 @@ class SiteDeleteResponse(BaseModel):
 
 class SiteComprehensiveResponse(BaseModel):
     """Comprehensive site response with devices and their categorized points."""
-    site_id: int = Field(..., alias="id", description="Site ID (4-digit number)")
+    site_id: int = Field(..., description="Site ID (4-digit number)")
     client_id: str = Field(..., description="Client identifier")
     name: str = Field(..., description="Site name")
-    location: Location = Field(..., description="Site location details")
+    location: Optional[Location] = Field(None, description="Site location details")
     operator: str = Field(..., description="Site operator")
     capacity: str = Field(..., description="Site capacity")
-    deviceCount: int = Field(..., alias="device_count", description="Number of devices at this site")
+    device_count: int = Field(..., description="Number of devices at this site")
     description: Optional[str] = Field(None, description="Site description")
     coordinates: Optional[Coordinates] = Field(None, description="Geographic coordinates")
     devices: List[DeviceWithPoints] = Field(default_factory=list, description="Devices with categorized points")
-    createdAt: datetime = Field(..., alias="created_at", description="Timestamp when site was created")
-    updatedAt: datetime = Field(..., alias="updated_at", description="Timestamp when site was last updated")
-    lastUpdate: datetime = Field(..., alias="last_update", description="Timestamp of last update")
+    created_at: datetime = Field(..., description="Timestamp when site was created")
+    updated_at: datetime = Field(..., description="Timestamp when site was last updated")
+    last_update: datetime = Field(..., description="Timestamp of last update")
 
     model_config = {
         "from_attributes": True,

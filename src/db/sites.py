@@ -6,7 +6,7 @@ Uses SQLAlchemy 2.0+ async ORM.
 """
 
 from datetime import datetime, timezone
-from typing import Optional, List
+from typing import Literal, Optional, List
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
@@ -121,9 +121,7 @@ async def get_site_by_id(site_id: int, include_deleted: bool = False) -> Optiona
         site = result.scalar_one_or_none()
         if site is None:
             return None
-        response = _site_to_response(site)
-        response.devices = None
-        return response
+        return _site_to_response(site)
 
 
 async def update_site(site_id: int, site_update: SiteUpdateRequest) -> SiteResponse:
@@ -152,8 +150,6 @@ async def update_site(site_id: int, site_update: SiteUpdateRequest) -> SiteRespo
                 site.description = site_update.description
             if site_update.coordinates is not None:
                 site.coordinates = {"lat": site_update.coordinates.lat, "lng": site_update.coordinates.lng}
-            elif site_update.coordinates is False:
-                site.coordinates = None
 
             site.last_update = datetime.now(timezone.utc)
 
@@ -179,7 +175,7 @@ async def update_site(site_id: int, site_update: SiteUpdateRequest) -> SiteRespo
 
 async def delete_site(
     site_id: int,
-    mode: str = "soft",
+    mode: Literal["soft", "hard"] = "soft",
     confirm: bool = False,
 ) -> Optional[SiteResponse]:
     if mode == "hard" and not confirm:

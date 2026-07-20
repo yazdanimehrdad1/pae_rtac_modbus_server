@@ -5,7 +5,7 @@ Sits between the router and the DB/helper layers.
 No cache layer — all reads and writes go directly to the DB.
 """
 
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 import db.sites as sites_db
 from helpers.sites import get_complete_site_data_with_points
@@ -38,7 +38,7 @@ async def update_site(site_id: int, site_update: SiteUpdateRequest) -> SiteRespo
 
 async def delete_site(
     site_id: int,
-    mode: str = "soft",
+    mode: Literal["soft", "hard"] = "soft",
     confirm: bool = False,
 ) -> Optional[SiteResponse]:
     return await sites_db.delete_site(site_id, mode=mode, confirm=confirm)

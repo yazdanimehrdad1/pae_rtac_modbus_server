@@ -26,10 +26,10 @@ router = APIRouter(prefix="/sites", tags=["sites"])
 logger = get_logger(__name__)
 
 
-@router.get("/", response_model=List[SiteResponse])
+@router.get("", response_model=List[SiteResponse], summary="List all sites")
 async def get_all_sites_endpoint(
     include_deleted: bool = Query(False, description="Include soft-deleted sites"),
-):
+) -> List[SiteResponse]:
     try:
         return await get_all_sites(include_deleted=include_deleted)
     except AppError as e:
@@ -42,8 +42,8 @@ async def get_all_sites_endpoint(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An internal server error occurred")
 
 
-@router.post("/", response_model=SiteResponse, status_code=status.HTTP_201_CREATED)
-async def create_new_site(site: SiteCreateRequest):
+@router.post("", response_model=SiteResponse, status_code=status.HTTP_201_CREATED, summary="Create a site")
+async def create_new_site(site: SiteCreateRequest) -> SiteResponse:
     try:
         return await create_site(site)
     except AppError as e:
@@ -56,11 +56,11 @@ async def create_new_site(site: SiteCreateRequest):
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An internal server error occurred")
 
 
-@router.get("/{site_id}", response_model=SiteResponse)
+@router.get("/{site_id}", response_model=SiteResponse, summary="Get a site by ID")
 async def get_site(
     site_id: int,
     include_deleted: bool = Query(False, description="Return the site even if soft-deleted"),
-):
+) -> SiteResponse:
     try:
         site = await get_site_by_id(site_id, include_deleted=include_deleted)
     except AppError as e:
@@ -77,8 +77,8 @@ async def get_site(
     return site
 
 
-@router.put("/{site_id}", response_model=SiteResponse)
-async def update_site_endpoint(site_id: int, site_update: SiteUpdateRequest):
+@router.put("/{site_id}", response_model=SiteResponse, summary="Update a site")
+async def update_site_endpoint(site_id: int, site_update: SiteUpdateRequest) -> SiteResponse:
     try:
         return await update_site(site_id, site_update)
     except AppError as e:
@@ -91,7 +91,7 @@ async def update_site_endpoint(site_id: int, site_update: SiteUpdateRequest):
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An internal server error occurred")
 
 
-@router.delete("/{site_id}", response_model=SiteDeleteResponse)
+@router.delete("/{site_id}", response_model=SiteDeleteResponse, summary="Soft- or hard-delete a site")
 async def delete_site_endpoint(
     site_id: int,
     mode: Literal["soft", "hard"] = Query(
@@ -99,7 +99,7 @@ async def delete_site_endpoint(
         description="soft: preserves site_id — restorable via /restore. hard: permanent deletion, requires confirm=true and no active devices.",
     ),
     confirm: bool = Query(False, description="Must be true to execute a hard delete"),
-):
+) -> SiteDeleteResponse:
     try:
         deleted_site = await delete_site(site_id, mode=mode, confirm=confirm)
     except AppError as e:
@@ -116,8 +116,8 @@ async def delete_site_endpoint(
     return SiteDeleteResponse(site_id=deleted_site.site_id, mode=mode)
 
 
-@router.post("/{site_id}/restore", response_model=SiteResponse)
-async def restore_site_endpoint(site_id: int):
+@router.post("/{site_id}/restore", response_model=SiteResponse, summary="Restore a soft-deleted site")
+async def restore_site_endpoint(site_id: int) -> SiteResponse:
     """Restore a soft-deleted site, all its soft-deleted devices, and their soft-deleted points."""
     try:
         site = await restore_site(site_id)
@@ -135,8 +135,12 @@ async def restore_site_endpoint(site_id: int):
     return site
 
 
-@router.get("/comprehensive/{site_id}", response_model=SiteComprehensiveResponse)
-async def get_comprehensive_site_endpoint(site_id: int):
+@router.get(
+    "/comprehensive/{site_id}",
+    response_model=SiteComprehensiveResponse,
+    summary="Get a site with its devices and their categorized points",
+)
+async def get_comprehensive_site_endpoint(site_id: int) -> SiteComprehensiveResponse:
     try:
         site = await get_comprehensive_site(site_id)
     except AppError as e:
