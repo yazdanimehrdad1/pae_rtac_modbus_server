@@ -58,10 +58,6 @@ class DeviceListItem(BaseModel):
     }
 
 
-class DeviceResponse(DeviceListItem):
-    """Response model for device data."""
-
-
 class DeviceDeleteResponse(BaseModel):
     """Response model for a deleted device."""
     device_id: int = Field(..., description="Deleted device ID")
@@ -77,18 +73,19 @@ class DevicePointsCategoryGrouped(BaseModel):
     virtual: List["DevicePointResponse"] = Field(default_factory=list)
 
 
-# Backwards-compatible alias used by device endpoints that return both points and configs
+# Backwards-compatible alias
 DevicePoints = DevicePointsCategoryGrouped
 
 
-class DeviceWithConfigs(DeviceListItem):
-    """Device response with device points grouped by category."""
-    points: DevicePointsCategoryGrouped = Field(default_factory=DevicePointsCategoryGrouped)
-
-
 class DeviceWithPoints(DeviceListItem):
-    """Device response with categorized device points (no configs)."""
+    """Device response with its device points grouped by category."""
     points: DevicePointsCategoryGrouped = Field(default_factory=DevicePointsCategoryGrouped)
+
+
+# Backwards-compatible aliases. "Configs" is stale naming — the *_configs tables were
+# dropped in migration 042 — and DeviceResponse never added anything to DeviceListItem.
+DeviceWithConfigs = DeviceWithPoints
+DeviceResponse = DeviceListItem
 
 
 class SiteResponse(BaseModel):

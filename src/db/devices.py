@@ -6,7 +6,7 @@ Uses SQLAlchemy 2.0+ async ORM.
 """
 
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Literal, Optional
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
@@ -14,9 +14,9 @@ from db.connection import get_async_session_factory
 from schemas.api_models import (
     DeviceCreateRequest,
     DeviceUpdate,
-    DeviceResponse,
+    DeviceListItem,
     DevicePoints,
-    DeviceWithConfigs,
+    DeviceWithPoints,
     DevicePointResponse,
 )
 from schemas.api_models.requests import DeviceScanRanges
@@ -46,8 +46,8 @@ def _group_points(orm_points) -> DevicePoints:
     return grouped
 
 
-def _device_to_with_configs(device: Device, points: DevicePoints) -> DeviceWithConfigs:
-    return DeviceWithConfigs(
+def _device_to_with_points(device: Device, points: DevicePoints) -> DeviceWithPoints:
+    return DeviceWithPoints(
         device_id=device.device_id,
         site_id=device.site_id,
         name=device.name,
@@ -72,7 +72,7 @@ def _device_to_with_configs(device: Device, points: DevicePoints) -> DeviceWithC
     )
 
 
-async def create_device(device: DeviceCreateRequest, site_id: int) -> DeviceWithConfigs:
+async def create_device(device: DeviceCreateRequest, site_id: int) -> DeviceWithPoints:
     session_factory = get_async_session_factory()
     async with session_factory() as session:
         try:
@@ -139,7 +139,7 @@ async def create_device(device: DeviceCreateRequest, site_id: int) -> DeviceWith
             if created_device is None:
                 raise InternalError(f"Device with id {device_primary_key} not found after creation")
 
-            return _device_to_with_configs(created_device, DevicePoints())
+            return _device_to_with_points(created_device, DevicePoints())
 
         except IntegrityError as e:
             await session.rollback()
@@ -156,7 +156,7 @@ async def create_device(device: DeviceCreateRequest, site_id: int) -> DeviceWith
             raise
 
 
-async def get_all_devices(site_id: int, include_deleted: bool = False) -> list[DeviceWithConfigs]:
+async def get_all_devices(site_id: int, include_deleted: bool = False) -> list[DeviceWithPoints]:
     session_factory = get_async_session_factory()
     async with session_factory() as session:
         query = select(Device).where(Device.site_id == site_id)
@@ -185,14 +185,14 @@ async def get_all_devices(site_id: int, include_deleted: bool = False) -> list[D
                     grouped.virtual.append(point)
 
         return [
-            _device_to_with_configs(device, points_by_device.get(device.device_id, DevicePoints()))
+            _device_to_with_points(device, points_by_device.get(device.device_id, DevicePoints()))
             for device in devices
         ]
 
 
 async def get_device_by_id(
     device_id: int, site_id: int, include_deleted: bool = False
-) -> Optional[DeviceWithConfigs]:
+) -> Optional[DeviceWithPoints]:
     session_factory = get_async_session_factory()
     async with session_factory() as session:
         query = select(Device).where(Device.device_id == device_id, Device.site_id == site_id)
@@ -210,10 +210,10 @@ async def get_device_by_id(
         points_result = await session.execute(points_query)
         device_points = _group_points(points_result.scalars().all())
 
-        return _device_to_with_configs(device, device_points)
+        return _device_to_with_points(device, device_points)
 
 
-async def get_device_by_id_internal(device_id: int) -> Optional[DeviceWithConfigs]:
+async def get_device_by_id_internal(device_id: int) -> Optional[DeviceWithPoints]:
     """Backward-compatible helper to get a device by ID."""
     session_factory = get_async_session_factory()
     async with session_factory() as session:
@@ -229,7 +229,7 @@ async def get_device_by_id_internal(device_id: int) -> Optional[DeviceWithConfig
                 DevicePoint.deleted_at.is_(None),
             )
         )
-        return _device_to_with_configs(device, _group_points(points_result.scalars().all()))
+        return _device_to_with_points(device, _group_points(points_result.scalars().all()))
 
 
 async def get_device_id_by_name(device_name: str) -> Optional[int]:
@@ -248,7 +248,7 @@ async def get_device_id_by_name_internal(device_name: str) -> Optional[int]:
     return await get_device_id_by_name(device_name)
 
 
-async def update_device(device_id: int, device_update: DeviceUpdate, site_id: int) -> DeviceWithConfigs:
+async def update_device(device_id: int, device_update: DeviceUpdate, site_id: int) -> DeviceWithPoints:
     session_factory = get_async_session_factory()
     async with session_factory() as session:
         try:
@@ -301,7 +301,7 @@ async def update_device(device_id: int, device_update: DeviceUpdate, site_id: in
                     DevicePoint.deleted_at.is_(None),
                 )
             )
-            return _device_to_with_configs(device, _group_points(points_result.scalars().all()))
+            return _device_to_with_points(device, _group_points(points_result.scalars().all()))
 
         except IntegrityError as e:
             await session.rollback()
@@ -320,9 +320,9 @@ async def update_device(device_id: int, device_update: DeviceUpdate, site_id: in
 async def delete_device(
     device_id: int,
     site_id: int,
-    mode: str = "soft",
+    mode: Literal["soft", "hard"] = "soft",
     confirm: bool = False,
-) -> Optional[DeviceResponse]:
+) -> Optional[DeviceListItem]:
     if mode == "hard" and not confirm:
         raise ValidationError("Set confirm=true to permanently delete a device and all its data")
 
@@ -338,7 +338,7 @@ async def delete_device(
                 logger.warning(f"Device with id {device_id} not found for deletion")
                 return None
 
-            device_response = DeviceResponse(
+            device_response = DeviceListItem(
                 device_id=device.device_id,
                 site_id=device.site_id,
                 name=device.name,
@@ -356,6 +356,9 @@ async def delete_device(
                 created_at=device.created_at,
                 updated_at=device.updated_at,
                 deleted_at=device.deleted_at,
+                scan_ranges=_orm_scan_ranges(device),
+                scan_ranges_locked=device.scan_ranges_locked or False,
+                modbus_address_mode=device.modbus_address_mode,
             )
 
             if mode == "soft":
@@ -387,7 +390,7 @@ async def delete_device(
             raise InternalError(f"Failed to delete device: {e}") from e
 
 
-async def restore_device(device_id: int, site_id: int) -> Optional[DeviceWithConfigs]:
+async def restore_device(device_id: int, site_id: int) -> Optional[DeviceWithPoints]:
     """Restore a soft-deleted device and all its soft-deleted DevicePoints."""
     session_factory = get_async_session_factory()
     async with session_factory() as session:

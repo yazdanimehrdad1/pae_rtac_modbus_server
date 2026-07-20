@@ -10,7 +10,6 @@ from schemas.api_models import (
     Coordinates,
     DevicePointResponse,
     DevicePointsCategoryGrouped,
-    DeviceWithConfigs,
     DeviceWithPoints,
     Location,
     SiteComprehensiveResponse,
