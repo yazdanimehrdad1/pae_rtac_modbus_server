@@ -16,9 +16,8 @@ from schemas.api_models.requests import (
     DevicePointUpdateRequest,
     DevicePointsBulkRequest,
 )
-from schemas.api_models.mappers import RegisterData, RegisterValue
+from schemas.api_models.mappers import RegisterValue
 from schemas.api_models.responses import (
-    ReadResponse,
     SimpleReadResponse,
     HealthResponse,
     DeviceListItem,
@@ -48,8 +47,6 @@ __all__ = [
     "ModbusRegisterValues",
     "PollResult",
     "ReadRequest",
-    "ReadResponse",
-    "RegisterData",
     "RegisterValue",
     "SimpleReadResponse",
     "HealthResponse",

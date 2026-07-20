@@ -424,31 +424,6 @@ async def restore_device(device_id: int, site_id: int) -> Optional[DeviceWithCon
     return await get_device_by_id(device_id, site_id)
 
 
-async def delete_device_by_id(id: int) -> Optional[DeviceResponse]:
-    """Backward-compatible helper to delete by primary key (soft delete)."""
-    session_factory = get_async_session_factory()
-    async with session_factory() as session:
-        result = await session.execute(
-            select(Device).where(Device.device_id == id)
-        )
-        device = result.scalar_one_or_none()
-        if device is None:
-            return None
-        return await delete_device(device.device_id, site_id=device.site_id)
-
-
-async def update_device_scan_ranges(device_id: int, ranges: DeviceScanRanges) -> None:
-    """Store auto-computed scan ranges on the device (lock state unchanged)."""
-    session_factory = get_async_session_factory()
-    async with session_factory() as session:
-        result = await session.execute(select(Device).where(Device.device_id == device_id))
-        device = result.scalar_one_or_none()
-        if device is None:
-            raise NotFoundError(f"Device {device_id} not found")
-        device.scan_ranges = ranges.model_dump()
-        await session.commit()
-
-
 async def lock_device_scan_ranges(device_id: int, ranges: DeviceScanRanges) -> None:
     """Store manually-specified scan ranges and set scan_ranges_locked = True."""
     session_factory = get_async_session_factory()

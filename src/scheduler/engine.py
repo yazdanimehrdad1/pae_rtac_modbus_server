@@ -17,16 +17,6 @@ logger = get_logger(__name__)
 _scheduler: Optional[AsyncIOScheduler] = None
 
 
-def get_scheduler() -> Optional[AsyncIOScheduler]:
-    """
-    Get the global scheduler instance.
-    
-    Returns:
-        AsyncIOScheduler instance or None if not initialized
-    """
-    return _scheduler
-
-
 async def start_scheduler() -> None:
     """
     Initialize and start the APScheduler.

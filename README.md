@@ -280,13 +280,24 @@ Example error response:
 }
 ```
 
-## Future Enhancements
+## TODO
 
-The code includes TODO comments for:
-- Persistent pooled client connections
-- Prometheus metrics integration
-- Batch polling multiple addresses
-- Word/byte-order conversions for 32/64-bit values
+### Observability (not implemented)
+
+The `src/telemetry/` package (tracing + metrics) and the `/api/metrics` router were
+removed and still need to be re-implemented:
+
+- [ ] **Tracing** — OpenTelemetry spans around Modbus polls, DB writes, and API requests,
+      exported to an OTLP collector. Propagate trace context across the scheduler jobs.
+- [ ] **Metrics** — Prometheus metrics + a `/api/metrics` scrape endpoint. At minimum:
+      poll duration/success/failure counters per device, register read latency,
+      point_readings write throughput, scheduler leader-election state.
+
+### Other
+
+- [ ] Persistent pooled client connections
+- [ ] Batch polling multiple addresses
+- [ ] Word/byte-order conversions for 32/64-bit values
 
 ## Testing with a Modbus Simulator
 

@@ -3,7 +3,6 @@
 # Convenience imports for common schemas
 from schemas.api_models import (
     ReadRequest,
-    ReadResponse,
     HealthResponse,
 )
 from schemas.modbus_models import (
@@ -14,7 +13,6 @@ from schemas.modbus_models import (
 __all__ = [
     # API models
     "ReadRequest",
-    "ReadResponse",
     "HealthResponse",
     # Modbus models
     "RegisterPoint",

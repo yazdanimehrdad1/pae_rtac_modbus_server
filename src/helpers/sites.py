@@ -70,11 +70,6 @@ async def get_complete_site_data_with_points(site_id: int) -> Optional[SiteCompr
         )
 
 
-async def get_complete_site_data_with_configs(site_id: int) -> Optional[SiteComprehensiveResponse]:
-    """Alias for get_complete_site_data_with_points (configs removed)."""
-    return await get_complete_site_data_with_points(site_id)
-
-
 # Backwards-compatible alias
 get_complete_site_data = get_complete_site_data_with_points
 

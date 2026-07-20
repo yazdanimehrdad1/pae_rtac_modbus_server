@@ -43,6 +43,10 @@ venv.bak/
 .env.local
 .env.*.local
 
+# Personal, machine-local Claude files (NOT the shared .claude/settings.json or CLAUDE.md)
+CLAUDE.local.md
+.claude/settings.local.json
+
 # Testing
 .pytest_cache/
 .coverage

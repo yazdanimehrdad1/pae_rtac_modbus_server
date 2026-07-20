@@ -4,21 +4,8 @@ from datetime import datetime
 from typing import Literal, Optional, Dict, List, Union
 from pydantic import AliasChoices, BaseModel, Field
 
-from schemas.api_models.mappers import RegisterData, RegisterValue
+from schemas.api_models.mappers import RegisterValue
 from schemas.api_models.requests import Coordinates, Location, DeviceScanRanges
-
-
-class ReadResponse(BaseModel):
-    """Response model for read operations."""
-    ok: bool
-    timestamp: str = Field(..., description="ISO format timestamp of when the read operation completed")
-    kind: str
-    address: int
-    count: int
-    device_id: int = Field(..., description="Modbus unit/slave ID")
-    data: dict[int, RegisterData] = Field(
-        ..., description="Dictionary mapping register addresses to their data (name, value, type)"
-    )
 
 
 class SimpleReadResponse(BaseModel):

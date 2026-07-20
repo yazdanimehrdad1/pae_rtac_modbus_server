@@ -1,20 +1,11 @@
 """Internal Pydantic models for the polling pipeline (not exposed in the API)."""
 
-from typing import Literal
 from pydantic import BaseModel, Field
 
 
 class RegisterMap(BaseModel):
     """Register address → raw value, returned from a Modbus read."""
     values: dict[int, int | bool] = Field(default_factory=dict)
-
-
-class ScanRangeReadResult(BaseModel):
-    """Result of reading one scan range block."""
-    poll_kind: Literal["holding", "input", "coils"]
-    start_index: int
-    count: int
-    register_map: RegisterMap
 
 
 class FailedScanRange(BaseModel):
