@@ -450,14 +450,6 @@ class DevicePoint(Base):
         comment="Word order for multi-register types: msw_first or lsw_first"
     )
 
-    register_offset: Mapped[float] = mapped_column(
-        Float,
-        nullable=False,
-        default=0.0,
-        server_default="0.0",
-        comment="Linear offset applied after scaling: final = raw * scale_factor + register_offset"
-    )
-
     poll_kind: Mapped[Optional[str]] = mapped_column(
         String(20),
         nullable=True,

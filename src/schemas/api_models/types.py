@@ -22,7 +22,6 @@ class DevicePointData(BaseModel):
     enum_detail: Optional[dict[str, str]] = None
     byte_order: str = "big-endian"
     word_order: str = "msw_first"
-    register_offset: float = 0.0
 
 
 class PollResult(TypedDict, total=False):

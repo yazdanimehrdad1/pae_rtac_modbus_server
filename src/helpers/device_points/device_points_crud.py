@@ -159,8 +159,6 @@ async def update_device_point(
             point.byte_order = data.byte_order
         if data.word_order is not None:
             point.word_order = data.word_order
-        if data.register_offset is not None:
-            point.register_offset = data.register_offset
         if data.bitfield_detail is not None:
             point.bitfield_detail = data.bitfield_detail
         if data.enum_detail is not None:
@@ -297,8 +295,6 @@ async def bulk_upsert_device_points(
                     point.byte_order = data.byte_order
                 if data.word_order is not None:
                     point.word_order = data.word_order
-                if data.register_offset is not None:
-                    point.register_offset = data.register_offset
                 if data.bitfield_detail is not None:
                     point.bitfield_detail = data.bitfield_detail
                 if data.enum_detail is not None:
@@ -317,7 +313,6 @@ async def bulk_upsert_device_points(
                     unit=data.unit,
                     byte_order=data.byte_order,
                     word_order=data.word_order,
-                    register_offset=data.register_offset,
                     bitfield_detail=data.bitfield_detail,
                     enum_detail=data.enum_detail,
                     category=data.category,

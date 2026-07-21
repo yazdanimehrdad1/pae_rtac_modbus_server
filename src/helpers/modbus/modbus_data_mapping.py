@@ -132,7 +132,6 @@ def _decode_modbus_point_value(
     byte_order: str = "big",
     word_order: str = "msw_first",
     scale: float = 1.0,
-    offset: float = 0.0,
 ) -> DecodeResult:
     """
     Decode raw Modbus registers into final engineering value.
@@ -192,7 +191,7 @@ def _decode_modbus_point_value(
             )
 
         if isinstance(value, (int, float)) and data_type != "bool":
-            value = round((value * scale) + offset, 5)
+            value = round(value * scale, 5)
 
         return DecodeResult(
             success=True,
@@ -246,7 +245,6 @@ def map_modbus_data_to_device_points(
             byte_order=point.byte_order or "big",
             word_order=point.word_order or "msw_first",
             scale=point.scale_factor or 1.0,
-            offset=point.register_offset or 0.0,
         )
 
         if not decoded.success:

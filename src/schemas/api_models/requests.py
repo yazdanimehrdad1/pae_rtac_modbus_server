@@ -152,7 +152,6 @@ class DevicePointCreateRequest(BaseModel):
     unit: Optional[str] = None
     byte_order: str = "big-endian"
     word_order: str = "msw_first"
-    register_offset: float = 0.0
     bitfield_detail: Optional[Dict[str, str]] = None
     enum_detail: Optional[Dict[str, str]] = None
     category: Literal["NATIVE", "STANDARDIZED", "VIRTUAL"] = "NATIVE"
@@ -169,7 +168,6 @@ class DevicePointUpdateRequest(BaseModel):
     unit: Optional[str] = None
     byte_order: Optional[str] = None
     word_order: Optional[str] = None
-    register_offset: Optional[float] = None
     bitfield_detail: Optional[Dict[str, str]] = None
     enum_detail: Optional[Dict[str, str]] = None
 

@@ -1,10 +1,11 @@
+"""Device point management endpoints."""
+
 from fastapi import APIRouter, HTTPException, Query, status
-from typing import List, Literal, Optional
+from typing import List, Literal, NoReturn, Optional
 
 from helpers.device_points import (
     get_device_points,
     get_deleted_device_points,
-    get_device_point,
     update_device_point,
     delete_device_points,
     restore_device_point,
@@ -19,26 +20,34 @@ from schemas.api_models.requests import (
     DeviceScanRanges,
 )
 from utils.exceptions import AppError
+from logger import get_logger
 
 router = APIRouter(
     prefix="/device-points",
     tags=["device-points"],
 )
+logger = get_logger(__name__)
 
 
-def _point_error(e: Exception):
+def _point_error(e: Exception) -> NoReturn:
+    """Map an exception to an HTTPException. Never returns."""
     if isinstance(e, AppError):
         detail = {"error": type(e).__name__, "message": e.message}
         if e.payload:
             detail.update(e.payload)
         raise HTTPException(status_code=e.http_status_code, detail=detail)
+    logger.error(f"Unexpected error: {e}", exc_info=True)
     raise HTTPException(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        detail=str(e),
+        detail="An internal server error occurred",
     )
 
 
-@router.get("/site/{site_id}/device/{device_id}", response_model=List[DevicePointResponse])
+@router.get(
+    "/site/{site_id}/device/{device_id}",
+    response_model=List[DevicePointResponse],
+    summary="List a device's points",
+)
 async def get_points_for_device(
     site_id: int,
     device_id: int,
@@ -47,57 +56,76 @@ async def get_points_for_device(
         description="Filter points by category",
     ),
     include_deleted: bool = Query(default=False, description="Include soft-deleted points"),
-):
+) -> List[DevicePointResponse]:
     """Get all registered points for a specific device."""
     try:
         await get_device_by_id(site_id, device_id)
         points = await get_device_points(device_id, category=category, include_deleted=include_deleted)
-        return points
+        return [DevicePointResponse.model_validate(p, from_attributes=True) for p in points]
+    except HTTPException:
+        raise
     except Exception as e:
         _point_error(e)
 
 
-@router.get("/site/{site_id}/device/{device_id}/deleted", response_model=List[DevicePointResponse])
+@router.get(
+    "/site/{site_id}/device/{device_id}/deleted",
+    response_model=List[DevicePointResponse],
+    summary="List a device's soft-deleted points",
+)
 async def get_deleted_points_for_device(
     site_id: int,
     device_id: int,
-):
+) -> List[DevicePointResponse]:
     """Get all soft-deleted points for a specific device, ordered by most recently deleted."""
     try:
         await get_device_by_id(site_id, device_id)
         points = await get_deleted_device_points(device_id)
-        return points
+        return [DevicePointResponse.model_validate(p, from_attributes=True) for p in points]
+    except HTTPException:
+        raise
     except Exception as e:
         _point_error(e)
 
 
 # --- Fixed-path PUT/DELETE routes MUST come before /{point_id} variants ---
 
-@router.put("/site/{site_id}/device/{device_id}/scan-ranges", response_model=DeviceScanRanges)
+@router.put(
+    "/site/{site_id}/device/{device_id}/scan-ranges",
+    response_model=DeviceScanRanges,
+    summary="Override and lock a device's scan ranges",
+)
 async def override_scan_ranges(
     site_id: int,
     device_id: int,
     body: DeviceScanRanges,
-):
+) -> DeviceScanRanges:
     """Manually set scan ranges and lock them (auto-recompute disabled until reset)."""
     try:
         await get_device_by_id(site_id, device_id)
         await lock_device_scan_ranges(device_id, body)
         return body
+    except HTTPException:
+        raise
     except Exception as e:
         _point_error(e)
 
 
-@router.delete("/site/{site_id}/device/{device_id}/scan-ranges", response_model=DeviceScanRanges)
+@router.delete(
+    "/site/{site_id}/device/{device_id}/scan-ranges",
+    response_model=DeviceScanRanges,
+    summary="Reset a device's scan ranges to auto-computed",
+)
 async def reset_scan_ranges(
     site_id: int,
     device_id: int,
-):
+) -> DeviceScanRanges:
     """Clear the scan ranges lock and recompute from current NATIVE points."""
     try:
         await get_device_by_id(site_id, device_id)
-        ranges = await reset_device_scan_ranges(device_id)
-        return ranges
+        return await reset_device_scan_ranges(device_id)
+    except HTTPException:
+        raise
     except Exception as e:
         _point_error(e)
 
@@ -105,12 +133,13 @@ async def reset_scan_ranges(
 @router.put(
     "/site/{site_id}/device/{device_id}/bulk",
     response_model=List[DevicePointResponse],
+    summary="Bulk create/update a device's points",
 )
 async def bulk_upsert_points(
     site_id: int,
     device_id: int,
     body: DevicePointsBulkRequest,
-):
+) -> List[DevicePointResponse]:
     """
     Upsert multiple device points in one call.
     Points matched by name: existing names are updated, new names are created.
@@ -120,34 +149,46 @@ async def bulk_upsert_points(
         await get_device_by_id(site_id, device_id)
         points = await bulk_upsert_device_points(site_id, device_id, body)
         return [DevicePointResponse.model_validate(p, from_attributes=True) for p in points]
+    except HTTPException:
+        raise
     except Exception as e:
         _point_error(e)
 
 
-@router.put("/site/{site_id}/device/{device_id}/{point_id}", response_model=DevicePointResponse)
+@router.put(
+    "/site/{site_id}/device/{device_id}/{point_id}",
+    response_model=DevicePointResponse,
+    summary="Update a device point",
+)
 async def update_point(
     site_id: int,
     device_id: int,
     point_id: int,
     body: DevicePointUpdateRequest,
-):
+) -> DevicePointResponse:
     """Update a device point. Triggers scan range recompute unless locked."""
     try:
         await get_device_by_id(site_id, device_id)
         point = await update_device_point(point_id, body)
         return DevicePointResponse.model_validate(point, from_attributes=True)
+    except HTTPException:
+        raise
     except Exception as e:
         _point_error(e)
 
 
-@router.delete("/site/{site_id}/device/{device_id}", response_model=List[DevicePointResponse])
+@router.delete(
+    "/site/{site_id}/device/{device_id}",
+    response_model=List[DevicePointResponse],
+    summary="Soft- or hard-delete device points",
+)
 async def delete_points(
     site_id: int,
     device_id: int,
-    point_ids: str = Query(..., description="Comma-separated point IDs, e.g. 1,2,3"),
+    point_ids: List[int] = Query(..., description="Point IDs to delete, e.g. ?point_ids=1&point_ids=2"),
     mode: Literal["soft", "hard"] = Query(default="soft", description="soft=preserve readings, hard=cascade delete"),
     confirm: bool = Query(default=False, description="Required for mode=hard"),
-):
+) -> List[DevicePointResponse]:
     """Delete one or more device points. Returns the deleted points. Soft delete preserves readings; hard delete is permanent."""
     try:
         if mode == "hard" and not confirm:
@@ -155,9 +196,8 @@ async def delete_points(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail={"error": "ConfirmationRequired", "message": "Set confirm=true to permanently delete points and all their readings"},
             )
-        ids = [int(i.strip()) for i in point_ids.split(",") if i.strip()]
         await get_device_by_id(site_id, device_id)
-        missing, deleted = await delete_device_points(device_id, ids, hard=(mode == "hard"))
+        missing, deleted = await delete_device_points(device_id, point_ids, hard=(mode == "hard"))
         if missing:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -170,16 +210,22 @@ async def delete_points(
         _point_error(e)
 
 
-@router.post("/site/{site_id}/device/{device_id}/{point_id}/restore", response_model=DevicePointResponse)
+@router.post(
+    "/site/{site_id}/device/{device_id}/{point_id}/restore",
+    response_model=DevicePointResponse,
+    summary="Restore a soft-deleted device point",
+)
 async def restore_point(
     site_id: int,
     device_id: int,
     point_id: int,
-):
+) -> DevicePointResponse:
     """Restore a soft-deleted device point. Triggers scan range recompute."""
     try:
         await get_device_by_id(site_id, device_id)
         point = await restore_device_point(point_id)
         return DevicePointResponse.model_validate(point, from_attributes=True)
+    except HTTPException:
+        raise
     except Exception as e:
         _point_error(e)

@@ -154,7 +154,6 @@ class DevicePointResponse(BaseModel):
     bitfield_detail: Optional[Dict[str, str]] = Field(None, description="Bitfield detail mapping")
     byte_order: str = Field("big-endian", description="Byte order for interpretation")
     word_order: str = Field("msw_first", description="Word order for multi-register types")
-    register_offset: float = Field(0.0, description="Linear offset applied after scaling")
     poll_kind: Optional[str] = Field(None, description="Register type: holding, input, or coils")
     category: str = Field("NATIVE", description="Point category: NATIVE, STANDARDIZED, or VIRTUAL")
     deleted_at: Optional[datetime] = Field(None, description="Soft-delete timestamp; null means active")
