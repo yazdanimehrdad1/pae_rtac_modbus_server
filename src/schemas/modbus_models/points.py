@@ -1,7 +1,9 @@
 """Modbus register point models."""
 
-from typing import Literal, Optional, Dict
+from typing import Optional, Dict
 from pydantic import BaseModel, Field, field_validator
+
+from schemas.api_models.types import NumericDataType
 
 
 class RegisterPoint(BaseModel):
@@ -12,17 +14,9 @@ class RegisterPoint(BaseModel):
     """
     register_address: int = Field(..., ge=0, le=65535, description="Modbus register address")
     register_name: str = Field(..., description="Human-readable name/label for this register")
-    data_type: Literal[
-        "int16",
-        "uint16",
-        "int32",
-        "uint32",
-        "float32",
-        "int64",
-        "uint64",
-        "float64",
-        "bool",
-    ] = Field(default="uint16", description="Data type interpretation")
+    data_type: NumericDataType = Field(
+        default="uint16", description="Data type interpretation"
+    )
     size: int = Field(..., ge=1, le=2000, description="Number of registers/bits to read")
     scale_factor: Optional[float] = Field(
         default=1.0, description="Scale factor to apply to raw value"

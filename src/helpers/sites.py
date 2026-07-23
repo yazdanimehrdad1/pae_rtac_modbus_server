@@ -10,7 +10,6 @@ from schemas.api_models import (
     Coordinates,
     DevicePointResponse,
     DevicePointsCategoryGrouped,
-    DeviceWithConfigs,
     DeviceWithPoints,
     Location,
     SiteComprehensiveResponse,
@@ -68,11 +67,6 @@ async def get_complete_site_data_with_points(site_id: int) -> Optional[SiteCompr
             **_site_base_kwargs(site, coordinates, location),
             devices=device_items,
         )
-
-
-async def get_complete_site_data_with_configs(site_id: int) -> Optional[SiteComprehensiveResponse]:
-    """Alias for get_complete_site_data_with_points (configs removed)."""
-    return await get_complete_site_data_with_points(site_id)
 
 
 # Backwards-compatible alias

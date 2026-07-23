@@ -5,17 +5,11 @@ Modbus data mapping helpers.
 import struct
 from dataclasses import dataclass
 from datetime import datetime
-from typing import List, Optional, Literal
+from typing import Optional, Literal
 
 from schemas.db_models.orm_models import DevicePoint, DevicePointsReading
-from schemas.api_models import ModbusRegisterValues
 from schemas.internal_models import RegisterMap
 from logger import get_logger
-from helpers.modbus.modbus_data_converter import (
-    concat_register_values,
-    convert_multi_register_value,
-)
-from helpers.modbus.validation import validate_point_mapping_fields
 
 logger = get_logger(__name__)
 
@@ -136,7 +130,6 @@ def _decode_modbus_point_value(
     byte_order: str = "big",
     word_order: str = "msw_first",
     scale: float = 1.0,
-    offset: float = 0.0,
 ) -> DecodeResult:
     """
     Decode raw Modbus registers into final engineering value.
@@ -160,10 +153,10 @@ def _decode_modbus_point_value(
         if data_type == "bool":
             value = bool(ordered_registers[0])
 
-        elif data_type in ("uint16", "status_word", "raw"):
+        elif data_type in ("uint16", "raw", "status_word16", "status_word32"):
             value = int.from_bytes(raw_bytes, byteorder="big", signed=False)
 
-        elif data_type in ("bitfield", "enum"):
+        elif data_type in ("bitfield16", "bitfield32", "enum16", "enum32"):
             value = int.from_bytes(raw_bytes, byteorder="big", signed=False)
 
         elif data_type == "int16":
@@ -196,7 +189,7 @@ def _decode_modbus_point_value(
             )
 
         if isinstance(value, (int, float)) and data_type != "bool":
-            value = round((value * scale) + offset, 5)
+            value = round(value * scale, 5)
 
         return DecodeResult(
             success=True,
@@ -250,7 +243,6 @@ def map_modbus_data_to_device_points(
             byte_order=point.byte_order or "big",
             word_order=point.word_order or "msw_first",
             scale=point.scale_factor or 1.0,
-            offset=point.register_offset or 0.0,
         )
 
         if not decoded.success:

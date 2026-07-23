@@ -170,6 +170,7 @@ async def poll_single_device_modbus(site_name: str, device: DeviceWithPoints) ->
             )
             return result
 
+        # Check if any readings have a non-null derived_value
         has_any_reading = any(reading.derived_value is not None for reading in mapped_raw_registers_to_device_points_all)
         if not has_any_reading:
             result["error"] = "All readings null — complete poll failure"

@@ -11,12 +11,11 @@ from fastapi import FastAPI
 from config import settings
 from logger import setup_logging, get_logger
 from scheduler.engine import start_scheduler, stop_scheduler
-from api.middlewear.time_range import validate_time_range
+from api.middleware.time_range import validate_time_range
 
 # Router imports
 from api.routers import (
     health,
-    readings_device,
     readings_raw_modbus,
     cache,
     devices,
@@ -42,9 +41,6 @@ from db.connection import (
     check_db_health,
     close_all_db_connections
 )
-
-# Register map loader import (disabled - devices must be created via API)
-# from utils.config_loader import load_device_configs
 
 # Setup logging
 setup_logging(log_level=settings.log_level)
@@ -107,7 +103,6 @@ def create_app() -> FastAPI:
 
     # Mount routers with /api prefix
     app.include_router(health.router, prefix="/api", tags=["health"])
-    app.include_router(readings_device.router, prefix="/api", tags=["modbus"])
     app.include_router(readings_raw_modbus.router, prefix="/api", tags=["raw-modbus"])
     app.include_router(cache.router, prefix="/api", tags=["cache"])
     app.include_router(devices.router, prefix="/api", tags=["devices"])

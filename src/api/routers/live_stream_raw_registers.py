@@ -80,7 +80,7 @@ async def list_live_stream_sessions(
     return LiveStreamSessionsResponse(sessions=sessions)
 
 
-@router.post("/stream/{session_id}/resume", response_class=StreamingResponse)
+@router.get("/stream/{session_id}/resume", response_class=StreamingResponse)
 async def resume_live_stream_raw_registers(session_id: str):
     """Resume a stopped session under the same session_id. History continues accumulating."""
     if session_id in set(session_store.list_active()):
@@ -101,7 +101,7 @@ async def resume_live_stream_raw_registers(session_id: str):
     )
 
 
-@router.post("/stream/{session_id}/stop", status_code=200, response_model=LiveStreamStopSessionResponse)
+@router.get("/stream/{session_id}/stop", status_code=200, response_model=LiveStreamStopSessionResponse)
 async def stop_live_stream_raw_registers(session_id: str):
     """Stop polling. Redis data (session params + history) remains accessible until TTL expires."""
     if not session_store.cancel(session_id):

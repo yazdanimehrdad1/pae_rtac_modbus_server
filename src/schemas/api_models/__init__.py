@@ -1,6 +1,18 @@
 """API request/response models."""
 
-from schemas.api_models.types import DevicePointData, ModbusRegisterValues, PollResult
+from schemas.api_models.types import (
+    DataType,
+    DevicePointData,
+    DeviceType,
+    ExtendedDataType,
+    ModbusRegisterValues,
+    NumericDataType,
+    PollResult,
+    register_size,
+    SUPPORTED_DATA_TYPES,
+    SUPPORTED_DEVICE_TYPES,
+    SUPPORTED_NUMERIC_DATA_TYPES,
+)
 from schemas.api_models.requests import (
     ReadRequest,
     DeviceCreateRequest,
@@ -16,9 +28,8 @@ from schemas.api_models.requests import (
     DevicePointUpdateRequest,
     DevicePointsBulkRequest,
 )
-from schemas.api_models.mappers import RegisterData, RegisterValue
+from schemas.api_models.mappers import RegisterValue
 from schemas.api_models.responses import (
-    ReadResponse,
     SimpleReadResponse,
     HealthResponse,
     DeviceListItem,
@@ -39,15 +50,23 @@ from schemas.api_models.responses import (
     LatestMeta,
     TimeseriesResponse,
     LatestResponse,
+    DeviceHealthStatus,
+    SiteDevicesHealthResponse,
 )
 
 __all__ = [
+    "DataType",
+    "DeviceType",
+    "ExtendedDataType",
+    "NumericDataType",
+    "SUPPORTED_DATA_TYPES",
+    "SUPPORTED_DEVICE_TYPES",
+    "SUPPORTED_NUMERIC_DATA_TYPES",
+    "register_size",
     "DevicePointData",
     "ModbusRegisterValues",
     "PollResult",
     "ReadRequest",
-    "ReadResponse",
-    "RegisterData",
     "RegisterValue",
     "SimpleReadResponse",
     "HealthResponse",
@@ -74,4 +93,6 @@ __all__ = [
     "DevicePointResponse",
     "Coordinates",
     "Location",
+    "DeviceHealthStatus",
+    "SiteDevicesHealthResponse",
 ]

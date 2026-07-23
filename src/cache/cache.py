@@ -140,30 +140,6 @@ class CacheService:
             logger.warning(f"Cache exists check failed for key '{key}': {e}")
             return False
     
-    async def clear_pattern(self, pattern: str) -> int:
-        """
-        Delete all keys matching a pattern.
-        
-        Args:
-            pattern: Pattern to match (e.g., "device:*")
-            
-        Returns:
-            Number of keys deleted
-        """
-        try:
-            client = await get_redis_client()
-            full_pattern = self._make_key(pattern)
-            deleted = 0
-            
-            async for key in client.scan_iter(match=full_pattern):
-                await client.delete(key)
-                deleted += 1
-            
-            return deleted
-        except Exception as e:
-            logger.warning(f"Cache clear_pattern failed for pattern '{pattern}': {e}")
-            return 0
-    
     async def get_ttl(self, key: str) -> Optional[int]:
         """
         Get remaining TTL for a key.

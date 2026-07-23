@@ -1,11 +1,11 @@
 """Device points CRUD operations."""
 
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Optional, cast
 from sqlalchemy import select, update
 
 from db.connection import get_async_session_factory
-from schemas.api_models import DevicePointData
+from schemas.api_models import DataType, DevicePointData, SUPPORTED_DATA_TYPES, register_size
 from schemas.api_models.requests import DevicePointUpdateRequest, DevicePointsBulkRequest
 from schemas.api_models.responses import DevicePointResponse
 from schemas.db_models.orm_models import Device, DevicePoint
@@ -143,6 +143,17 @@ async def update_device_point(
             # active NATIVE point on this device within the same poll_kind address space.
             validate_no_register_overlap(native_candidates)
 
+        # Enforce size <-> data_type consistency against the effective (post-patch) values.
+        # The request validator only catches the case where both are supplied together.
+        eff_data_type = data.data_type if data.data_type is not None else point.data_type
+        eff_size_val = data.size if data.size is not None else point.size
+        if eff_data_type in SUPPORTED_DATA_TYPES:
+            expected_size = register_size(cast(DataType, eff_data_type))
+            if eff_size_val != expected_size:
+                raise ValidationError(
+                    f"data_type '{eff_data_type}' requires size={expected_size}, got size={eff_size_val}"
+                )
+
         if data.poll_kind is not None:
             point.poll_kind = data.poll_kind
         if data.address is not None:
@@ -159,8 +170,6 @@ async def update_device_point(
             point.byte_order = data.byte_order
         if data.word_order is not None:
             point.word_order = data.word_order
-        if data.register_offset is not None:
-            point.register_offset = data.register_offset
         if data.bitfield_detail is not None:
             point.bitfield_detail = data.bitfield_detail
         if data.enum_detail is not None:
@@ -297,8 +306,6 @@ async def bulk_upsert_device_points(
                     point.byte_order = data.byte_order
                 if data.word_order is not None:
                     point.word_order = data.word_order
-                if data.register_offset is not None:
-                    point.register_offset = data.register_offset
                 if data.bitfield_detail is not None:
                     point.bitfield_detail = data.bitfield_detail
                 if data.enum_detail is not None:
@@ -317,7 +324,6 @@ async def bulk_upsert_device_points(
                     unit=data.unit,
                     byte_order=data.byte_order,
                     word_order=data.word_order,
-                    register_offset=data.register_offset,
                     bitfield_detail=data.bitfield_detail,
                     enum_detail=data.enum_detail,
                     category=data.category,
