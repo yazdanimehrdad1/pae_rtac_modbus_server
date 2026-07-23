@@ -10,6 +10,7 @@ from typing_extensions import TypedDict
 from sqlalchemy.dialects.postgresql import insert
 
 from db.session import get_session
+from schemas.api_models import DataType
 from schemas.db_models.orm_models import DevicePointsReading
 from logger import get_logger
 
@@ -26,7 +27,7 @@ class LatestDevicePointReadingDict(TypedDict):
     device_point_id: int
     register_address: int
     name: str
-    data_type: str
+    data_type: DataType
     size: int
     unit: Optional[str]
     scale_factor: Optional[float]
@@ -47,7 +48,7 @@ class TimeSeriesDevicePointReadingDict(TypedDict):
     device_point_id: int
     register_address: int
     name: str
-    data_type: str
+    data_type: DataType
     size: int
     unit: Optional[str]
     scale_factor: Optional[float]

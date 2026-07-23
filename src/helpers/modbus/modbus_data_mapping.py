@@ -5,13 +5,11 @@ Modbus data mapping helpers.
 import struct
 from dataclasses import dataclass
 from datetime import datetime
-from typing import List, Optional, Literal
+from typing import Optional, Literal
 
 from schemas.db_models.orm_models import DevicePoint, DevicePointsReading
-from schemas.api_models import ModbusRegisterValues
 from schemas.internal_models import RegisterMap
 from logger import get_logger
-from helpers.modbus.modbus_data_converter import convert_multi_register_value
 
 logger = get_logger(__name__)
 
@@ -155,10 +153,10 @@ def _decode_modbus_point_value(
         if data_type == "bool":
             value = bool(ordered_registers[0])
 
-        elif data_type in ("uint16", "status_word", "raw"):
+        elif data_type in ("uint16", "raw", "status_word16", "status_word32"):
             value = int.from_bytes(raw_bytes, byteorder="big", signed=False)
 
-        elif data_type in ("bitfield", "enum"):
+        elif data_type in ("bitfield16", "bitfield32", "enum16", "enum32"):
             value = int.from_bytes(raw_bytes, byteorder="big", signed=False)
 
         elif data_type == "int16":

@@ -1,7 +1,14 @@
 """API request models."""
 
 from typing import Optional, List, Literal, Dict
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+from schemas.api_models.types import DataType, DeviceType, register_size
+
+
+def _normalize_device_type(device_type: object) -> object:
+    """Accept any casing for device type; canonical storage form is UPPERCASE."""
+    return device_type.upper() if isinstance(device_type, str) else device_type
 
 
 class Coordinates(BaseModel):
@@ -41,8 +48,8 @@ class ReadRequest(BaseModel):
 class DeviceCreateRequest(BaseModel):
     """Request model for creating a new device."""
     name: str = Field(..., min_length=1, max_length=255, description="Unique device name/identifier")
-    type: Literal["meter", "relay", "RTAC", "inverter", "BESS"] = Field(
-        ..., description="Device type"
+    type: DeviceType = Field(
+        ..., description="Device type. Case-insensitive on input; stored uppercase."
     )
     protocol: Literal["Modbus", "DNP"] = Field(
         default="Modbus", description="Communication protocol"
@@ -62,12 +69,14 @@ class DeviceCreateRequest(BaseModel):
     )
     scan_ranges: Optional["DeviceScanRanges"] = Field(None, description="Initial scan ranges (optional)")
 
+    _normalize_type = field_validator("type", mode="before")(_normalize_device_type)
+
 
 class DeviceUpdate(BaseModel):
     """Request model for updating a device."""
     name: Optional[str] = Field(None, min_length=1, max_length=255, description="Device name/identifier")
-    type: Optional[Literal["meter", "relay", "RTAC", "inverter", "BESS"]] = Field(
-        None, description="Device type"
+    type: Optional[DeviceType] = Field(
+        None, description="Device type. Case-insensitive on input; stored uppercase."
     )
     protocol: Optional[Literal["Modbus", "DNP"]] = Field(
         None, description="Communication protocol"
@@ -90,6 +99,8 @@ class DeviceUpdate(BaseModel):
         description="zero_based: use addresses as-is; one_based: subtract 1 before sending to pymodbus"
     )
     scan_ranges: Optional["DeviceScanRanges"] = Field(None, description="Updated scan ranges (does not lock)")
+
+    _normalize_type = field_validator("type", mode="before")(_normalize_device_type)
 
 
 class SiteCreateRequest(BaseModel):
@@ -147,7 +158,10 @@ class DevicePointCreateRequest(BaseModel):
     poll_kind: Optional[Literal["holding", "input", "coils"]] = None
     address: Optional[int] = Field(None, ge=0, le=65535)
     size: int = Field(..., ge=1)
-    data_type: str
+    data_type: DataType = Field(
+        ...,
+        description="Register interpretation. Width is encoded in the type (e.g. enum32, bitfield16); `size` must match register_size(data_type).",
+    )
     scale_factor: Optional[float] = None
     unit: Optional[str] = None
     byte_order: str = "big-endian"
@@ -156,6 +170,15 @@ class DevicePointCreateRequest(BaseModel):
     enum_detail: Optional[Dict[str, str]] = None
     category: Literal["NATIVE", "STANDARDIZED", "VIRTUAL"] = "NATIVE"
 
+    @model_validator(mode="after")
+    def _check_size_matches_type(self) -> "DevicePointCreateRequest":
+        expected = register_size(self.data_type)
+        if self.size != expected:
+            raise ValueError(
+                f"data_type '{self.data_type}' requires size={expected}, got size={self.size}"
+            )
+        return self
+
 
 class DevicePointUpdateRequest(BaseModel):
     """Request model for updating a device point."""
@@ -163,13 +186,28 @@ class DevicePointUpdateRequest(BaseModel):
     poll_kind: Optional[Literal["holding", "input", "coils"]] = None
     address: Optional[int] = Field(None, ge=0, le=65535)
     size: Optional[int] = Field(None, ge=1)
-    data_type: Optional[str] = None
+    data_type: Optional[DataType] = Field(
+        None,
+        description="Register interpretation. Width is encoded in the type (e.g. enum32, bitfield16); `size` must match register_size(data_type).",
+    )
     scale_factor: Optional[float] = None
     unit: Optional[str] = None
     byte_order: Optional[str] = None
     word_order: Optional[str] = None
     bitfield_detail: Optional[Dict[str, str]] = None
     enum_detail: Optional[Dict[str, str]] = None
+
+    @model_validator(mode="after")
+    def _check_size_matches_type(self) -> "DevicePointUpdateRequest":
+        # Partial updates can only be validated here when both are supplied; the mixed
+        # case (one field set) is enforced against effective values in the CRUD layer.
+        if self.data_type is not None and self.size is not None:
+            expected = register_size(self.data_type)
+            if self.size != expected:
+                raise ValueError(
+                    f"data_type '{self.data_type}' requires size={expected}, got size={self.size}"
+                )
+        return self
 
 
 class DevicePointsBulkRequest(BaseModel):

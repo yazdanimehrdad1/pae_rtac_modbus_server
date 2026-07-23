@@ -1,9 +1,13 @@
 """Shared register decode logic for live stream and poll history."""
 
-from typing import Any, Optional, Protocol
+from typing import Protocol
 
 from helpers.modbus.modbus_data_mapping import _decode_modbus_point_value
-from schemas.api_models.live_stream_raw_registers import LiveStreamRawRegistersRegister
+from schemas.api_models import NumericDataType, register_size
+from schemas.api_models.live_stream_raw_registers import (
+    LiveStreamRawRegistersRegister,
+    LiveStreamRawRegistersRegisterConfig,
+)
 
 
 class RegisterDecodeParams(Protocol):
@@ -12,15 +16,7 @@ class RegisterDecodeParams(Protocol):
     byte_order: str
     word_order: str
 
-    def int_register_configs(self) -> dict[int, Any]: ...
-
-
-def register_size(data_type: str) -> int:
-    if data_type in ("uint32", "int32", "float32"):
-        return 2
-    if data_type in ("uint64", "int64", "float64"):
-        return 4
-    return 1
+    def int_register_configs(self) -> dict[int, LiveStreamRawRegistersRegisterConfig]: ...
 
 
 def build_registers(
@@ -31,8 +27,8 @@ def build_registers(
     count = params.end_address - params.start_address + 1
 
     consumed: set[int] = set()
-    for addr, cfg in configs.items():
-        for j in range(1, register_size(cfg.data_type)):
+    for addr, configured in configs.items():
+        for j in range(1, register_size(configured.data_type)):
             consumed.add(addr + j)
 
     registers: dict[str, LiveStreamRawRegistersRegister] = {}
@@ -45,7 +41,7 @@ def build_registers(
             i += 1
             continue
 
-        data_type = cfg.data_type if cfg else "int16"
+        data_type: NumericDataType = cfg.data_type if cfg else "int16"
         size = register_size(data_type)
         raw_vals = registers_raw[i:i + size]
 

@@ -1,6 +1,18 @@
 """API request/response models."""
 
-from schemas.api_models.types import DevicePointData, ModbusRegisterValues, PollResult
+from schemas.api_models.types import (
+    DataType,
+    DevicePointData,
+    DeviceType,
+    ExtendedDataType,
+    ModbusRegisterValues,
+    NumericDataType,
+    PollResult,
+    register_size,
+    SUPPORTED_DATA_TYPES,
+    SUPPORTED_DEVICE_TYPES,
+    SUPPORTED_NUMERIC_DATA_TYPES,
+)
 from schemas.api_models.requests import (
     ReadRequest,
     DeviceCreateRequest,
@@ -43,6 +55,14 @@ from schemas.api_models.responses import (
 )
 
 __all__ = [
+    "DataType",
+    "DeviceType",
+    "ExtendedDataType",
+    "NumericDataType",
+    "SUPPORTED_DATA_TYPES",
+    "SUPPORTED_DEVICE_TYPES",
+    "SUPPORTED_NUMERIC_DATA_TYPES",
+    "register_size",
     "DevicePointData",
     "ModbusRegisterValues",
     "PollResult",

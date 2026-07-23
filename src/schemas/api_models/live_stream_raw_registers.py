@@ -5,24 +5,22 @@ from typing import Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-
-_VALID_DATA_TYPES: frozenset[str] = frozenset({
-    "int16", "uint16", "bool", "raw",
-    "int32", "uint32", "float32",
-    "int64", "uint64", "float64",
-})
+from schemas.api_models.types import SUPPORTED_NUMERIC_DATA_TYPES, NumericDataType
 
 
 class LiveStreamRawRegistersRegisterConfig(BaseModel):
     label: Optional[str] = None
-    data_type: str = "int16"
+    data_type: NumericDataType = "int16"
     byte_order: Optional[Literal["big", "little"]] = None
     word_order: Optional[Literal["msw_first", "lsw_first"]] = None
 
     @field_validator("data_type", mode="before")
     @classmethod
     def _coerce_data_type(cls, v: object) -> str:
-        if v not in _VALID_DATA_TYPES:
+        # Unknown/unsupported types fall back to int16 rather than rejecting the whole
+        # stream. enum/bitfield/status_word are excluded on purpose: this path decodes
+        # ad-hoc registers with no detail map to translate them against.
+        if v not in SUPPORTED_NUMERIC_DATA_TYPES:
             return "int16"
         return str(v)
 
@@ -64,7 +62,7 @@ class LiveStreamRawRegistersParams(BaseModel):
 class LiveStreamRawRegistersRegister(BaseModel):
     value: Optional[Union[int, float]] = None
     label: str = "unknown"
-    data_type: str = "int16"
+    data_type: NumericDataType = "int16"
 
 
 class LiveStreamRawRegistersEvent(BaseModel):

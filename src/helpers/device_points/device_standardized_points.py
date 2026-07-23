@@ -2,7 +2,7 @@
 
 from pydantic import BaseModel
 
-from schemas.api_models import DevicePointData
+from schemas.api_models import DevicePointData, DeviceType
 
 
 class StandardizedPointTemplate(BaseModel):
@@ -11,7 +11,7 @@ class StandardizedPointTemplate(BaseModel):
 
 
 class DeviceStandardizedPoints(BaseModel):
-    device_type: str
+    device_type: DeviceType
     points: list[StandardizedPointTemplate]
 
 
@@ -84,7 +84,7 @@ _STANDARDIZED_POINTS: dict[str, DeviceStandardizedPoints] = {
 
 
 def generate_standardized_points(
-    device_type: str,
+    device_type: DeviceType,
     device_id: int,
     site_id: int,
 ) -> list[DevicePointData]:
