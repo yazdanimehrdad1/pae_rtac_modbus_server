@@ -44,3 +44,7 @@ the DAS data-acquisition API (`pae-das-api`), or any downstream dashboard/analyt
   and rejects bad start/end query params.
 - `main.py` hardcodes `reload=True`; the Dockerfile runs a single uvicorn process
   (the gunicorn config exists but is commented out).
+
+## Output style (keep token usage down)
+- Keep responses short. Lead with the answer; no recap tables or restated diffs unless asked.
+- Don't re-print file contents you just edited.
