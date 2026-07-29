@@ -29,8 +29,7 @@ help:
 
 # Ensure the shared Docker network exists (idempotent)
 network:
-	@docker network inspect pae-shared-network >/dev/null 2>&1 || \
-	  (docker network create pae-shared-network && echo "Created pae-shared-network")
+	-@docker network create pae-shared-network 2>&1
 	@echo "pae-shared-network ready"
 
 # Start containers (ensures postgres is healthy, then starts services)

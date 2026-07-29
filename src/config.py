@@ -14,7 +14,10 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
-        case_sensitive=False
+        case_sensitive=False,
+        # Deployment environments carry vars this service doesn't consume
+        # (e.g. legacy MAIN_SEL_751_POLL_*); don't fail startup on them.
+        extra="ignore",
     )
     
     # Modbus Configuration
