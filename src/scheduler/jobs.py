@@ -1,8 +1,8 @@
 """Polling jobs for Modbus data collection."""
 
 from db.sites import get_all_sites
-from logger import get_logger
 from helpers.modbus.poll_device import poll_modbus_registers_per_site
+from logger import get_logger
 
 logger = get_logger(__name__)
 

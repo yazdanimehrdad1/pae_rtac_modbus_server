@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 
 from helpers.date_time import parse_iso_datetime
 
+
 # TODO : take care of datetime format
 async def validate_time_range(request: Request, call_next):
     start_time = request.query_params.get("start_time")

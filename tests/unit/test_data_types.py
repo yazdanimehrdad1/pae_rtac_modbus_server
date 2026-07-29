@@ -15,10 +15,10 @@ from helpers.modbus.modbus_data_mapping import _decode_modbus_point_value
 from helpers.reads.calculate_reads import translate_reading
 from schemas.api_models.requests import DeviceCreateRequest, DevicePointCreateRequest
 from schemas.api_models.types import (
-    register_size,
     SUPPORTED_DATA_TYPES,
     SUPPORTED_DEVICE_TYPES,
     SUPPORTED_NUMERIC_DATA_TYPES,
+    register_size,
 )
 
 # Register count each type needs: 16-bit -> 1, 32-bit -> 2, 64-bit -> 4.

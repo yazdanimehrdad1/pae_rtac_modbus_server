@@ -1,21 +1,19 @@
 """Polling helpers for Modbus data collection."""
 
 import asyncio
-from datetime import datetime, timezone
-from typing import List
+from datetime import UTC, datetime
 
-from helpers.modbus import translate_modbus_error
 from config import settings
-from logger import get_logger
-from helpers.modbus.modbus_data_mapping import map_modbus_data_to_device_points
-from helpers.sites import get_complete_site_data_with_points
-from schemas.api_models import DeviceListItem, DeviceWithPoints, PollResult, PollingConfig
-from schemas.internal_models import RegisterMap, DevicePollResult, FailedScanRange
-from helpers.modbus.store_data_readings import store_device_data_in_db, DbStoreResult
-from helpers.device_points import get_device_points
-from helpers.workers.device_poll import get_enabled_devices_to_poll, read_device_registers
-
 from constants import MODBUS_MAX_REGISTERS_PER_READ
+from helpers.device_points import get_device_points
+from helpers.modbus import translate_modbus_error
+from helpers.modbus.modbus_data_mapping import map_modbus_data_to_device_points
+from helpers.modbus.store_data_readings import DbStoreResult, store_device_data_in_db
+from helpers.sites import get_complete_site_data_with_points
+from helpers.workers.device_poll import get_enabled_devices_to_poll, read_device_registers
+from logger import get_logger
+from schemas.api_models import DeviceListItem, DeviceWithPoints, PollingConfig, PollResult
+from schemas.internal_models import DevicePollResult, FailedScanRange, RegisterMap
 
 logger = get_logger(__name__)
 
@@ -45,12 +43,12 @@ async def poll_modbus_registers_per_site(site_id: int) -> None:
 
         enabled_devices_to_poll = await get_enabled_devices_to_poll(devices_list, site_name)
 
-        results: List[PollResult] = await asyncio.gather(
+        results: list[PollResult] = await asyncio.gather(
             *[poll_single_device_modbus(site_name, device) for device in enabled_devices_to_poll],
             return_exceptions=True
         )
 
-        processed_results: List[PollResult] = []
+        processed_results: list[PollResult] = []
         for i, result in enumerate(results):
             if isinstance(result, Exception):
                 device_name = enabled_devices_to_poll[i].name if i < len(enabled_devices_to_poll) else "unknown"
@@ -143,7 +141,7 @@ async def poll_single_device_modbus(site_name: str, device: DeviceWithPoints) ->
     total_db_failed = 0
     try:
         device_points_all = await get_device_points(device.device_id)
-        timestamp_dt = datetime.now(timezone.utc)
+        timestamp_dt = datetime.now(UTC)
 
         scan_poll_result: DevicePollResult = await _poll_device_scan_ranges(
             device, site_name

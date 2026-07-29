@@ -2,16 +2,15 @@
 
 import asyncio
 import time
-from typing import Dict, Any, List
+from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, Response, status
 from pymodbus.client import ModbusTcpClient
 from sqlalchemy import text
 
 from api.controllers.devices import get_all_devices, get_device_by_id
-from fastapi import HTTPException
+from cache.connection import check_redis_health, get_redis_client
 from config import settings
-from cache.connection import get_redis_client
 from db.connection import check_db_health, get_async_engine, get_db_pool
 from schemas.api_models import DeviceHealthStatus, HealthResponse, SiteDevicesHealthResponse
 from services.modbus.client import ModbusClient
@@ -31,6 +30,29 @@ async def health_check():
         device_id=settings.modbus_device_id,
         detail="API is healthy"
     )
+
+
+@router.get("/readyz")
+async def readiness_check(response: Response) -> dict[str, Any]:
+    """
+    Readiness probe for Kubernetes.
+
+    Gates on the hard runtime dependencies — Postgres and Redis — using the
+    lightweight shared health checks (a `SELECT 1` and a Redis PING). Returns
+    HTTP 503 if either is unreachable so k8s stops routing traffic to the pod.
+    Kept intentionally cheap; the detailed /db_health and /redis_health endpoints
+    are too heavy to run on every probe interval.
+    """
+    db_ok = await check_db_health()
+    redis_ok = await check_redis_health()
+
+    ready = db_ok and redis_ok
+    if not ready:
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    return {
+        "ready": ready,
+        "checks": {"database": db_ok, "redis": redis_ok},
+    }
 
 
 @router.get("/health_modbus_client", response_model=HealthResponse)
@@ -100,7 +122,7 @@ async def site_devices_health(site_id: int):
     except Exception:
         devices = []
 
-    results: List[DeviceHealthStatus] = await asyncio.gather(
+    results: list[DeviceHealthStatus] = await asyncio.gather(
         *[_check_device_reachability(d) for d in devices]
     )
 
@@ -120,27 +142,27 @@ async def device_health(site_id: int, device_id: int):
     try:
         device = await get_device_by_id(site_id, device_id)
     except Exception:
-        raise HTTPException(status_code=404, detail=f"Device {device_id} not found in site {site_id}")
+        raise HTTPException(status_code=404, detail=f"Device {device_id} not found in site {site_id}") from None
     return await _check_device_reachability(device)
 
 
 @router.get("/redis_health")
-async def redis_health() -> Dict[str, Any]:
+async def redis_health() -> dict[str, Any]:
     """
     Redis health check endpoint with detailed information.
-    
+
     Returns:
         Dictionary containing Redis connection status, configuration, and server information
     """
     try:
         client = await get_redis_client()
-        
+
         # Test connection
         ping_result = await client.ping()
-        
+
         # Get Redis server info
         info = await client.info()
-        
+
         # Get connection pool info
         pool = client.connection_pool
         pool_info = {
@@ -151,7 +173,7 @@ async def redis_health() -> Dict[str, Any]:
                 "db": pool.connection_kwargs.get("db"),
             }
         }
-        
+
         return {
             "status": "healthy" if ping_result else "unhealthy",
             "connected": ping_result,
@@ -190,50 +212,50 @@ async def redis_health() -> Dict[str, Any]:
 
 
 @router.get("/db_health")
-async def db_health() -> Dict[str, Any]:
+async def db_health() -> dict[str, Any]:
     """
     Database health check endpoint with detailed information.
-    
+
     Returns:
         Dictionary containing database connection status, configuration, and server information
     """
     try:
         # Test connection first
         health_ok = await check_db_health()
-        
+
         # Get database information
         engine = get_async_engine()
         async with engine.connect() as conn:
             # Get PostgreSQL version
             version_result = await conn.execute(text("SELECT version()"))
             version = version_result.scalar()
-            
+
             # Get database size
             size_result = await conn.execute(
                 text("SELECT pg_size_pretty(pg_database_size(current_database()))")
             )
             db_size = size_result.scalar()
-            
+
             # Get connection count
             conn_count_result = await conn.execute(
                 text("SELECT count(*) FROM pg_stat_activity WHERE datname = current_database()")
             )
             active_connections = conn_count_result.scalar()
-            
+
             # Get max connections
             max_conn_result = await conn.execute(text("SHOW max_connections"))
             max_connections = max_conn_result.scalar()
-            
+
             # Check for TimescaleDB extension
             timescale_result = await conn.execute(
                 text("SELECT extversion FROM pg_extension WHERE extname = 'timescaledb'")
             )
             timescale_version = timescale_result.scalar_one_or_none()
-            
+
             # Get database name
             db_name_result = await conn.execute(text("SELECT current_database()"))
             db_name = db_name_result.scalar()
-            
+
             # Get pool info from engine
             pool = engine.pool
             pool_info = {
@@ -243,7 +265,7 @@ async def db_health() -> Dict[str, Any]:
                 "overflow": pool.overflow(),
                 "max_overflow": pool._max_overflow,
             }
-            
+
             # Try to get asyncpg pool info if available
             asyncpg_pool_info = None
             try:
@@ -256,7 +278,7 @@ async def db_health() -> Dict[str, Any]:
                 }
             except Exception:
                 pass  # asyncpg pool might not be initialized
-            
+
             server_info = {
                 "postgresql_version": version.split(",")[0] if version else "Unknown",
                 "database_name": db_name,
@@ -266,7 +288,7 @@ async def db_health() -> Dict[str, Any]:
                 "connection_usage_percent": round((active_connections / int(max_connections)) * 100, 2) if max_connections else 0,
                 "timescaledb_version": timescale_version if timescale_version else None,
             }
-            
+
             return {
                 "status": "healthy" if health_ok else "unhealthy",
                 "connected": health_ok,

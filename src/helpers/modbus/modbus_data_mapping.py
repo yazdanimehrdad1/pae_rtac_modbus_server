@@ -5,11 +5,11 @@ Modbus data mapping helpers.
 import struct
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional, Literal
+from typing import Literal
 
+from logger import get_logger
 from schemas.db_models.orm_models import DevicePoint, DevicePointsReading
 from schemas.internal_models import RegisterMap
-from logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -27,15 +27,15 @@ class RegisterExtractionResult:
     success: bool
     values: list[int]
     quality: Quality
-    reason: Optional[str] = None
+    reason: str | None = None
 
 
 @dataclass
 class DecodeResult:
     success: bool
-    value: Optional[float | int | bool]
+    value: float | int | bool | None
     quality: Quality
-    reason: Optional[str] = None
+    reason: str | None = None
 
 
 def _extract_register_values(

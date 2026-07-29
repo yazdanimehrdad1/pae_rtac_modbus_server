@@ -1,0 +1,88 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: rtac-modbus-dev
+
+resources:
+  - namespace.yaml
+  - ../../base
+
+images:
+  - name: pae-rtac-server
+    newName: REPLACE_AR_HOST/REPLACE_PROJECT/pae/pae-rtac-server
+    newTag: latest
+
+replicas:
+  - name: pae-rtac-server
+    count: 1
+
+configMapGenerator:
+  - name: pae-rtac-server-config
+    behavior: merge
+    literals:
+      - LOG_LEVEL=DEBUG
+      - REDIS_HOST=REPLACE_MEMORYSTORE_DEV_IP
+      - AGGREGATOR_MODBUS_HOST=REPLACE_AGGREGATOR_DEV_HOST
+
+patches:
+  - target:
+      kind: Deployment
+      name: pae-rtac-server
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: pae-rtac-server
+      spec:
+        template:
+          spec:
+            initContainers:
+              - name: cloud-sql-proxy
+                env:
+                  - name: INSTANCE_CONNECTION_NAME
+                    value: REPLACE_PROJECT:REGION:rtac-pg-dev
+            containers:
+              - name: app
+                resources:
+                  requests:
+                    cpu: 100m
+                    memory: 256Mi
+                  limits:
+                    memory: 512Mi
+  - target:
+      kind: Job
+      name: pae-rtac-server-migrate
+    patch: |-
+      apiVersion: batch/v1
+      kind: Job
+      metadata:
+        name: pae-rtac-server-migrate
+      spec:
+        template:
+          spec:
+            initContainers:
+              - name: cloud-sql-proxy
+                env:
+                  - name: INSTANCE_CONNECTION_NAME
+                    value: REPLACE_PROJECT:REGION:rtac-pg-dev
+  - target:
+      kind: ServiceAccount
+      name: pae-rtac-server
+    patch: |-
+      apiVersion: v1
+      kind: ServiceAccount
+      metadata:
+        name: pae-rtac-server
+        annotations:
+          iam.gke.io/gcp-service-account: rtac-modbus-dev@REPLACE_PROJECT.iam.gserviceaccount.com
+  - target:
+      kind: HorizontalPodAutoscaler
+      name: pae-rtac-server
+    patch: |-
+      apiVersion: autoscaling/v2
+      kind: HorizontalPodAutoscaler
+      metadata:
+        name: pae-rtac-server
+      spec:
+        minReplicas: 1
+        maxReplicas: 2

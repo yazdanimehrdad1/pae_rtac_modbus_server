@@ -1,7 +1,6 @@
 """Redis-backed session history store for the live stream raw registers feature."""
 
 import json
-from typing import Optional
 
 from cache.connection import get_redis_client
 from config import settings
@@ -21,7 +20,7 @@ class LiveStreamHistoryStore:
         client = await get_redis_client()
         await client.setex(self._params_key(session_id), _SESSION_TTL, params.model_dump_json())
 
-    async def get_session_params(self, session_id: str) -> Optional[dict]:
+    async def get_session_params(self, session_id: str) -> dict | None:
         client = await get_redis_client()
         raw = await client.get(self._params_key(session_id))
         return json.loads(raw) if raw else None

@@ -5,14 +5,14 @@ Handles CRUD operations for device_points_readings time-series table.
 """
 
 from datetime import datetime
-from typing import List, Optional
-from typing_extensions import TypedDict
+
 from sqlalchemy.dialects.postgresql import insert
+from typing_extensions import TypedDict
 
 from db.session import get_session
+from logger import get_logger
 from schemas.api_models import DataType
 from schemas.db_models.orm_models import DevicePointsReading
-from logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -20,7 +20,7 @@ logger = get_logger(__name__)
 class DevicePointReadingDict(TypedDict):
     timestamp: datetime
     device_point_id: int
-    derived_value: Optional[float]
+    derived_value: float | None
 
 
 class LatestDevicePointReadingDict(TypedDict):
@@ -29,12 +29,12 @@ class LatestDevicePointReadingDict(TypedDict):
     name: str
     data_type: DataType
     size: int
-    unit: Optional[str]
-    scale_factor: Optional[float]
+    unit: str | None
+    scale_factor: float | None
     timestamp: datetime
-    derived_value: Optional[float]
-    bitfield_detail: Optional[dict[str, str]]
-    enum_detail: Optional[dict[str, str]]
+    derived_value: float | None
+    bitfield_detail: dict[str, str] | None
+    enum_detail: dict[str, str] | None
 
 
 class LatestDevicePointReadingWithDeviceDict(LatestDevicePointReadingDict):
@@ -44,22 +44,22 @@ class LatestDevicePointReadingWithDeviceDict(LatestDevicePointReadingDict):
 
 class TimeSeriesDevicePointReadingDict(TypedDict):
     timestamp: datetime
-    derived_value: Optional[float]
+    derived_value: float | None
     device_point_id: int
     register_address: int
     name: str
     data_type: DataType
     size: int
-    unit: Optional[str]
-    scale_factor: Optional[float]
-    bitfield_detail: Optional[dict[str, str]]
-    enum_detail: Optional[dict[str, str]]
+    unit: str | None
+    scale_factor: float | None
+    bitfield_detail: dict[str, str] | None
+    enum_detail: dict[str, str] | None
 
 
 async def insert_register_readings_batch(
-    site_id: Optional[str],
+    site_id: str | None,
     device_id: int,
-    points_readings_list: List[DevicePointsReading],
+    points_readings_list: list[DevicePointsReading],
     timestamp_dt: datetime
 ) -> int:
     """
@@ -102,7 +102,7 @@ async def insert_register_readings_batch(
         statement = insert(DevicePointsReading).values(values)
         statement = statement.on_conflict_do_update(
             index_elements=['device_point_id', 'timestamp'],
-            set_=dict(derived_value=statement.excluded.derived_value)
+            set_={"derived_value": statement.excluded.derived_value}
         )
         await session.execute(statement)
         await session.commit()
@@ -113,7 +113,7 @@ async def insert_register_readings_batch(
 
 
 async def insert_register_reading_single(
-    site_id: Optional[str],
+    site_id: str | None,
     device_id: int,
     reading: DevicePointsReading,
 ) -> bool:
@@ -133,7 +133,7 @@ async def insert_register_reading_single(
             statement = insert(DevicePointsReading).values([values])
             statement = statement.on_conflict_do_update(
                 index_elements=['device_point_id', 'timestamp'],
-                set_=dict(derived_value=statement.excluded.derived_value)
+                set_={"derived_value": statement.excluded.derived_value}
             )
             await session.execute(statement)
             await session.commit()

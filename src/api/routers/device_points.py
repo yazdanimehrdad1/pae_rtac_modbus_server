@@ -1,26 +1,27 @@
 """Device point management endpoints."""
 
-from fastapi import APIRouter, HTTPException, Query, status
-from typing import List, Literal, NoReturn, Optional
+from typing import Literal, NoReturn
 
-from helpers.device_points import (
-    get_device_points,
-    get_deleted_device_points,
-    update_device_point,
-    delete_device_points,
-    restore_device_point,
-    bulk_upsert_device_points,
-)
+from fastapi import APIRouter, HTTPException, Query, status
+
 from api.controllers.devices import get_device_by_id
 from db.devices import lock_device_scan_ranges, reset_device_scan_ranges
+from helpers.device_points import (
+    bulk_upsert_device_points,
+    delete_device_points,
+    get_deleted_device_points,
+    get_device_points,
+    restore_device_point,
+    update_device_point,
+)
+from logger import get_logger
 from schemas.api_models import DevicePointResponse
 from schemas.api_models.requests import (
-    DevicePointUpdateRequest,
     DevicePointsBulkRequest,
+    DevicePointUpdateRequest,
     DeviceScanRanges,
 )
 from utils.exceptions import AppError
-from logger import get_logger
 
 router = APIRouter(
     prefix="/device-points",
@@ -45,18 +46,18 @@ def _point_error(e: Exception) -> NoReturn:
 
 @router.get(
     "/site/{site_id}/device/{device_id}",
-    response_model=List[DevicePointResponse],
+    response_model=list[DevicePointResponse],
     summary="List a device's points",
 )
 async def get_points_for_device(
     site_id: int,
     device_id: int,
-    category: Optional[Literal["NATIVE", "STANDARDIZED", "VIRTUAL"]] = Query(
+    category: Literal["NATIVE", "STANDARDIZED", "VIRTUAL"] | None = Query(
         default=None,
         description="Filter points by category",
     ),
     include_deleted: bool = Query(default=False, description="Include soft-deleted points"),
-) -> List[DevicePointResponse]:
+) -> list[DevicePointResponse]:
     """Get all registered points for a specific device."""
     try:
         await get_device_by_id(site_id, device_id)
@@ -70,13 +71,13 @@ async def get_points_for_device(
 
 @router.get(
     "/site/{site_id}/device/{device_id}/deleted",
-    response_model=List[DevicePointResponse],
+    response_model=list[DevicePointResponse],
     summary="List a device's soft-deleted points",
 )
 async def get_deleted_points_for_device(
     site_id: int,
     device_id: int,
-) -> List[DevicePointResponse]:
+) -> list[DevicePointResponse]:
     """Get all soft-deleted points for a specific device, ordered by most recently deleted."""
     try:
         await get_device_by_id(site_id, device_id)
@@ -132,14 +133,14 @@ async def reset_scan_ranges(
 
 @router.put(
     "/site/{site_id}/device/{device_id}/bulk",
-    response_model=List[DevicePointResponse],
+    response_model=list[DevicePointResponse],
     summary="Bulk create/update a device's points",
 )
 async def bulk_upsert_points(
     site_id: int,
     device_id: int,
     body: DevicePointsBulkRequest,
-) -> List[DevicePointResponse]:
+) -> list[DevicePointResponse]:
     """
     Upsert multiple device points in one call.
     Points matched by name: existing names are updated, new names are created.
@@ -179,16 +180,16 @@ async def update_point(
 
 @router.delete(
     "/site/{site_id}/device/{device_id}",
-    response_model=List[DevicePointResponse],
+    response_model=list[DevicePointResponse],
     summary="Soft- or hard-delete device points",
 )
 async def delete_points(
     site_id: int,
     device_id: int,
-    point_ids: List[int] = Query(..., description="Point IDs to delete, e.g. ?point_ids=1&point_ids=2"),
+    point_ids: list[int] = Query(..., description="Point IDs to delete, e.g. ?point_ids=1&point_ids=2"),
     mode: Literal["soft", "hard"] = Query(default="soft", description="soft=preserve readings, hard=cascade delete"),
     confirm: bool = Query(default=False, description="Required for mode=hard"),
-) -> List[DevicePointResponse]:
+) -> list[DevicePointResponse]:
     """Delete one or more device points. Returns the deleted points. Soft delete preserves readings; hard delete is permanent."""
     try:
         if mode == "hard" and not confirm:

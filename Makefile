@@ -1,4 +1,4 @@
-.PHONY: help network up down build rebuild up-build up-rebuild restart logs shell clean ps health dev test-setup test lint format migrate apply-migration run seed-db
+.PHONY: help network up down build rebuild up-build up-rebuild restart logs shell clean ps health dev test-setup test lint lint-fix format migrate apply-migration run seed-db
 
 # Default target
 help:
@@ -29,8 +29,7 @@ help:
 
 # Ensure the shared Docker network exists (idempotent)
 network:
-	@docker network inspect pae-shared-network >/dev/null 2>&1 || \
-	  (docker network create pae-shared-network && echo "Created pae-shared-network")
+	-@docker network create pae-shared-network 2>&1
 	@echo "pae-shared-network ready"
 
 # Start containers (ensures postgres is healthy, then starts services)
@@ -114,10 +113,14 @@ test: test-setup
 	@echo "Running tests..."
 	@PYTHONPATH=src pytest tests/ -v
 
-# Run linting
+# Run linting (ruff is the CI-blocking gate). Runs in Docker so no local Python
+# is required; $(CURDIR) resolves to a Docker-compatible path on Linux and Windows.
 lint:
-	@ruff check src/ tests/
-	@mypy src/
+	docker run --rm -v "$(CURDIR):/io" ghcr.io/astral-sh/ruff:0.16.0 check src/ tests/
+
+# Auto-fix lint issues (ruff only; B904 exception chaining must be fixed by hand).
+lint-fix:
+	docker run --rm -v "$(CURDIR):/io" ghcr.io/astral-sh/ruff:0.16.0 check --fix src/ tests/
 
 # Format code
 format:

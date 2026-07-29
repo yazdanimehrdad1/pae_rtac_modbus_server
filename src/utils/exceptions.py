@@ -4,7 +4,8 @@ Custom application exceptions.
 Provides a structured way to handle errors across the application layers.
 """
 
-from typing import Any, Optional, Dict
+from typing import Any
+
 from fastapi import status
 
 
@@ -12,7 +13,7 @@ class AppError(Exception):
     """Base class for all application errors."""
     http_status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
 
-    def __init__(self, message: str, payload: Optional[Dict[str, Any]] = None):
+    def __init__(self, message: str, payload: dict[str, Any] | None = None):
         super().__init__(message)
         self.message = message
         self.payload = payload

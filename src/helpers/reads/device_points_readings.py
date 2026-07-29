@@ -1,23 +1,23 @@
 """DB queries for device_points_readings table, keyed by device_point_id."""
 
 from datetime import datetime
-from typing import List, Optional
 
-from sqlalchemy import select, and_, func as sql_func
+from sqlalchemy import and_, select
+from sqlalchemy import func as sql_func
 
-from db.session import get_session
-from schemas.db_models.orm_models import DevicePointsReading, DevicePoint
 from db.register_readings import LatestDevicePointReadingDict, TimeSeriesDevicePointReadingDict
+from db.session import get_session
 from logger import get_logger
+from schemas.db_models.orm_models import DevicePoint, DevicePointsReading
 
 logger = get_logger(__name__)
 
 
 async def get_latest_readings_by_point_ids(
-    point_ids: List[int],
-    site_id: Optional[int] = None,
-    device_id: Optional[int] = None,
-) -> List[LatestDevicePointReadingDict]:
+    point_ids: list[int],
+    site_id: int | None = None,
+    device_id: int | None = None,
+) -> list[LatestDevicePointReadingDict]:
     """
     Get the single latest reading per point.
 
@@ -73,13 +73,13 @@ async def get_latest_readings_by_point_ids(
 
 
 async def get_timeseries_by_point_ids(
-    point_ids: List[int],
-    site_id: Optional[int] = None,
-    device_id: Optional[int] = None,
-    start_time: Optional[datetime] = None,
-    end_time: Optional[datetime] = None,
+    point_ids: list[int],
+    site_id: int | None = None,
+    device_id: int | None = None,
+    start_time: datetime | None = None,
+    end_time: datetime | None = None,
     limit: int = 1000,
-) -> List[TimeSeriesDevicePointReadingDict]:
+) -> list[TimeSeriesDevicePointReadingDict]:
     """
     Get time-series readings per point, ordered by (device_point_id, timestamp ASC).
 

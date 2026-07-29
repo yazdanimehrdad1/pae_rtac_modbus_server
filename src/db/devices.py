@@ -5,29 +5,30 @@ Handles CRUD operations for devices table.
 Uses SQLAlchemy 2.0+ async ORM.
 """
 
-from datetime import datetime, timezone
-from typing import Literal, Optional
+from datetime import UTC, datetime
+from typing import Literal
+
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from db.connection import get_async_session_factory
+from logger import get_logger
 from schemas.api_models import (
     DeviceCreateRequest,
-    DeviceUpdate,
     DeviceListItem,
-    DevicePoints,
-    DeviceWithPoints,
     DevicePointResponse,
+    DevicePoints,
+    DeviceUpdate,
+    DeviceWithPoints,
 )
 from schemas.api_models.requests import DeviceScanRanges
 from schemas.db_models.orm_models import Device, DevicePoint, Site
-from utils.exceptions import ConflictError, NotFoundError, ValidationError, InternalError
-from logger import get_logger
+from utils.exceptions import ConflictError, InternalError, NotFoundError, ValidationError
 
 logger = get_logger(__name__)
 
 
-def _orm_scan_ranges(device: Device) -> Optional[DeviceScanRanges]:
+def _orm_scan_ranges(device: Device) -> DeviceScanRanges | None:
     if device.scan_ranges:
         return DeviceScanRanges.model_validate(device.scan_ranges)
     return None
@@ -192,7 +193,7 @@ async def get_all_devices(site_id: int, include_deleted: bool = False) -> list[D
 
 async def get_device_by_id(
     device_id: int, site_id: int, include_deleted: bool = False
-) -> Optional[DeviceWithPoints]:
+) -> DeviceWithPoints | None:
     session_factory = get_async_session_factory()
     async with session_factory() as session:
         query = select(Device).where(Device.device_id == device_id, Device.site_id == site_id)
@@ -213,7 +214,7 @@ async def get_device_by_id(
         return _device_to_with_points(device, device_points)
 
 
-async def get_device_by_id_internal(device_id: int) -> Optional[DeviceWithPoints]:
+async def get_device_by_id_internal(device_id: int) -> DeviceWithPoints | None:
     """Backward-compatible helper to get a device by ID."""
     session_factory = get_async_session_factory()
     async with session_factory() as session:
@@ -232,7 +233,7 @@ async def get_device_by_id_internal(device_id: int) -> Optional[DeviceWithPoints
         return _device_to_with_points(device, _group_points(points_result.scalars().all()))
 
 
-async def get_device_id_by_name(device_name: str) -> Optional[int]:
+async def get_device_id_by_name(device_name: str) -> int | None:
     session_factory = get_async_session_factory()
     async with session_factory() as session:
         result = await session.execute(
@@ -244,7 +245,7 @@ async def get_device_id_by_name(device_name: str) -> Optional[int]:
         return result.scalar_one_or_none()
 
 
-async def get_device_id_by_name_internal(device_name: str) -> Optional[int]:
+async def get_device_id_by_name_internal(device_name: str) -> int | None:
     return await get_device_id_by_name(device_name)
 
 
@@ -322,7 +323,7 @@ async def delete_device(
     site_id: int,
     mode: Literal["soft", "hard"] = "soft",
     confirm: bool = False,
-) -> Optional[DeviceListItem]:
+) -> DeviceListItem | None:
     if mode == "hard" and not confirm:
         raise ValidationError("Set confirm=true to permanently delete a device and all its data")
 
@@ -362,7 +363,7 @@ async def delete_device(
             )
 
             if mode == "soft":
-                now = datetime.now(timezone.utc)
+                now = datetime.now(UTC)
                 device.deleted_at = now
                 device_response.deleted_at = now
                 # Cascade soft-delete all active DevicePoints
@@ -390,7 +391,7 @@ async def delete_device(
             raise InternalError(f"Failed to delete device: {e}") from e
 
 
-async def restore_device(device_id: int, site_id: int) -> Optional[DeviceWithPoints]:
+async def restore_device(device_id: int, site_id: int) -> DeviceWithPoints | None:
     """Restore a soft-deleted device and all its soft-deleted DevicePoints."""
     session_factory = get_async_session_factory()
     async with session_factory() as session:

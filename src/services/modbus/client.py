@@ -5,7 +5,6 @@ Handles all Modbus TCP communication logic, connection management,
 and error translation. Separated from the FastAPI application layer.
 """
 
-from typing import Tuple, List, Optional, Union
 from contextlib import contextmanager
 
 from pymodbus.client import ModbusTcpClient
@@ -18,7 +17,7 @@ __all__ = ["ModbusClient"]
 
 
 @contextmanager
-def modbus_client(host: Optional[str] = None, port: Optional[int] = None):
+def modbus_client(host: str | None = None, port: int | None = None):
     """
     Context manager for Modbus TCP client connections.
     Ensures proper cleanup of sockets after use.
@@ -50,7 +49,7 @@ class ModbusClient:
         server_id: int,
         host: str,
         port: int,
-    ) -> List[Union[int, bool]]:
+    ) -> list[int | bool]:
         """
         Read Modbus registers or coils/discrete inputs.
 
@@ -99,7 +98,7 @@ class ModbusClient:
             else:
                 raise ValueError(f"Invalid kind: {kind}")
 
-    def modbus_server_health_check(self) -> Tuple[bool, str]:
+    def modbus_server_health_check(self) -> tuple[bool, str]:
         """
         Perform a health check by connecting and reading a single holding register.
 

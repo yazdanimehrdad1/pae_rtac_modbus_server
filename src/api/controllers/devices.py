@@ -5,11 +5,11 @@ Sits between the router and db.devices.
 No cache layer — all reads and writes go directly to the DB.
 """
 
-from typing import List, Literal, Optional
+from typing import Literal
 
 import db.devices as devices_db
-from helpers.device_points.device_standardized_points import generate_standardized_points
 from helpers.device_points.device_points_crud import create_device_points
+from helpers.device_points.device_standardized_points import generate_standardized_points
 from logger import get_logger
 from schemas.api_models import (
     DeviceCreateRequest,
@@ -22,7 +22,7 @@ from utils.exceptions import NotFoundError
 logger = get_logger(__name__)
 
 
-async def get_all_devices(site_id: int, include_deleted: bool = False) -> List[DeviceWithPoints]:
+async def get_all_devices(site_id: int, include_deleted: bool = False) -> list[DeviceWithPoints]:
     return await devices_db.get_all_devices(site_id, include_deleted=include_deleted)
 
 
@@ -52,7 +52,7 @@ async def delete_device(
     site_id: int,
     mode: Literal["soft", "hard"] = "soft",
     confirm: bool = False,
-) -> Optional[DeviceListItem]:
+) -> DeviceListItem | None:
     return await devices_db.delete_device(device_id, site_id=site_id, mode=mode, confirm=confirm)
 
 

@@ -8,39 +8,30 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from config import settings
-from logger import setup_logging, get_logger
-from scheduler.engine import start_scheduler, stop_scheduler
 from api.middleware.time_range import validate_time_range
 
 # Router imports
 from api.routers import (
-    health,
-    readings_raw_modbus,
     cache,
-    devices,
-    sites,
     csv_exports,
     device_points,
     device_points_readings,
+    devices,
+    health,
     live_stream_raw_registers,
     live_stream_register_snapshot,
+    readings_raw_modbus,
+    sites,
 )
 
 # Cache connection imports
-from cache.connection import (
-    get_redis_client,
-    check_redis_health,
-    close_redis_client
-)
+from cache.connection import check_redis_health, close_redis_client, get_redis_client
+from config import settings
 
 # Database connection imports
-from db.connection import (
-    get_db_pool,
-    get_async_engine,
-    check_db_health,
-    close_all_db_connections
-)
+from db.connection import check_db_health, close_all_db_connections, get_async_engine, get_db_pool
+from logger import get_logger, setup_logging
+from scheduler.engine import start_scheduler, stop_scheduler
 
 # Setup logging
 setup_logging(log_level=settings.log_level)

@@ -1,15 +1,9 @@
 """Site management endpoints."""
 
-from typing import List, Literal
+from typing import Literal
+
 from fastapi import APIRouter, HTTPException, Query, status
 
-from schemas.api_models import (
-    SiteComprehensiveResponse,
-    SiteCreateRequest,
-    SiteUpdateRequest,
-    SiteResponse,
-    SiteDeleteResponse,
-)
 from api.controllers.sites import (
     create_site,
     delete_site,
@@ -19,27 +13,34 @@ from api.controllers.sites import (
     restore_site,
     update_site,
 )
-from utils.exceptions import AppError
 from logger import get_logger
+from schemas.api_models import (
+    SiteComprehensiveResponse,
+    SiteCreateRequest,
+    SiteDeleteResponse,
+    SiteResponse,
+    SiteUpdateRequest,
+)
+from utils.exceptions import AppError
 
 router = APIRouter(prefix="/sites", tags=["sites"])
 logger = get_logger(__name__)
 
 
-@router.get("", response_model=List[SiteResponse], summary="List all sites")
+@router.get("", response_model=list[SiteResponse], summary="List all sites")
 async def get_all_sites_endpoint(
     include_deleted: bool = Query(False, description="Include soft-deleted sites"),
-) -> List[SiteResponse]:
+) -> list[SiteResponse]:
     try:
         return await get_all_sites(include_deleted=include_deleted)
     except AppError as e:
         detail = {"error": type(e).__name__, "message": e.message}
         if e.payload:
             detail.update(e.payload)
-        raise HTTPException(status_code=e.http_status_code, detail=detail)
+        raise HTTPException(status_code=e.http_status_code, detail=detail) from e
     except Exception as e:
         logger.error(f"Unexpected error: {e}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An internal server error occurred")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An internal server error occurred") from e
 
 
 @router.post("", response_model=SiteResponse, status_code=status.HTTP_201_CREATED, summary="Create a site")
@@ -50,10 +51,10 @@ async def create_new_site(site: SiteCreateRequest) -> SiteResponse:
         detail = {"error": type(e).__name__, "message": e.message}
         if e.payload:
             detail.update(e.payload)
-        raise HTTPException(status_code=e.http_status_code, detail=detail)
+        raise HTTPException(status_code=e.http_status_code, detail=detail) from e
     except Exception as e:
         logger.error(f"Unexpected error: {e}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An internal server error occurred")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An internal server error occurred") from e
 
 
 @router.get("/{site_id}", response_model=SiteResponse, summary="Get a site by ID")
@@ -67,10 +68,10 @@ async def get_site(
         detail = {"error": type(e).__name__, "message": e.message}
         if e.payload:
             detail.update(e.payload)
-        raise HTTPException(status_code=e.http_status_code, detail=detail)
+        raise HTTPException(status_code=e.http_status_code, detail=detail) from e
     except Exception as e:
         logger.error(f"Unexpected error: {e}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An internal server error occurred")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An internal server error occurred") from e
 
     if site is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Site with id {site_id} not found")
@@ -85,10 +86,10 @@ async def update_site_endpoint(site_id: int, site_update: SiteUpdateRequest) -> 
         detail = {"error": type(e).__name__, "message": e.message}
         if e.payload:
             detail.update(e.payload)
-        raise HTTPException(status_code=e.http_status_code, detail=detail)
+        raise HTTPException(status_code=e.http_status_code, detail=detail) from e
     except Exception as e:
         logger.error(f"Unexpected error: {e}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An internal server error occurred")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An internal server error occurred") from e
 
 
 @router.delete("/{site_id}", response_model=SiteDeleteResponse, summary="Soft- or hard-delete a site")
@@ -106,10 +107,10 @@ async def delete_site_endpoint(
         detail = {"error": type(e).__name__, "message": e.message}
         if e.payload:
             detail.update(e.payload)
-        raise HTTPException(status_code=e.http_status_code, detail=detail)
+        raise HTTPException(status_code=e.http_status_code, detail=detail) from e
     except Exception as e:
         logger.error(f"Unexpected error: {e}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An internal server error occurred")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An internal server error occurred") from e
 
     if deleted_site is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Site with id {site_id} not found")
@@ -125,10 +126,10 @@ async def restore_site_endpoint(site_id: int) -> SiteResponse:
         detail = {"error": type(e).__name__, "message": e.message}
         if e.payload:
             detail.update(e.payload)
-        raise HTTPException(status_code=e.http_status_code, detail=detail)
+        raise HTTPException(status_code=e.http_status_code, detail=detail) from e
     except Exception as e:
         logger.error(f"Unexpected error: {e}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An internal server error occurred")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An internal server error occurred") from e
 
     if site is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Site with id {site_id} not found")
@@ -147,10 +148,10 @@ async def get_comprehensive_site_endpoint(site_id: int) -> SiteComprehensiveResp
         detail = {"error": type(e).__name__, "message": e.message}
         if e.payload:
             detail.update(e.payload)
-        raise HTTPException(status_code=e.http_status_code, detail=detail)
+        raise HTTPException(status_code=e.http_status_code, detail=detail) from e
     except Exception as e:
         logger.error(f"Unexpected error: {e}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An internal server error occurred")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An internal server error occurred") from e
 
     if site is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Site with id {site_id} not found")

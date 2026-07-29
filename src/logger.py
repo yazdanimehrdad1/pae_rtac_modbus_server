@@ -7,13 +7,12 @@ Supports structured logging with structlog/loguru/stdlib.
 import logging
 import sys
 from pathlib import Path
-from typing import Optional
 
 
-def setup_logging(log_level: str = "INFO", config_file: Optional[Path] = None) -> None:
+def setup_logging(log_level: str = "INFO", config_file: Path | None = None) -> None:
     """
     Initialize logging configuration.
-    
+
     Args:
         log_level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
         config_file: Optional path to YAML logging config file
@@ -32,7 +31,7 @@ def setup_logging(log_level: str = "INFO", config_file: Optional[Path] = None) -
             format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
             stream=sys.stdout
         )
-    
+
     # TODO: Add structured logging with structlog/loguru
     # Example with structlog:
     # import structlog

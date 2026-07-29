@@ -25,7 +25,8 @@ function Show-Help {
     Write-Host "  .\make.ps1 test-setup - Prepare test environment (ensure containers are running)"
     Write-Host "  .\make.ps1 test       - Run tests (ensures containers are up first)"
     Write-Host "  .\make.ps1 format     - Format all Python files (black, ruff)"
-    Write-Host "  .\make.ps1 lint       - Run linters (ruff, mypy)"
+    Write-Host "  .\make.ps1 lint       - Run ruff linter (CI-enforced; via Docker)"
+    Write-Host "  .\make.ps1 lint-fix   - Auto-fix lint issues with ruff (via Docker)"
     Write-Host ""
     Write-Host "Or use: make.ps1 <command>"
 }
@@ -231,17 +232,22 @@ switch ($Command.ToLower()) {
         Write-Host "Formatting complete!" -ForegroundColor Green
     }
     "lint" {
-        Write-Host "Running ruff linter..." -ForegroundColor Green
-        ruff check src/ tests/
+        # Runs ruff in a throwaway container (no local Python needed on this machine).
+        # ruff is the CI-blocking gate; keep it clean before pushing.
+        Write-Host "Running ruff linter (via Docker)..." -ForegroundColor Green
+        docker run --rm -v "${PWD}:/app" -w /app python:3.11-slim bash -c "pip install -q ruff && ruff check src/ tests/"
         if ($LASTEXITCODE -ne 0) {
-            Write-Host "Ruff found issues" -ForegroundColor Yellow
+            Write-Host "Ruff found issues. Run '.\make.ps1 lint-fix' to auto-fix what it can." -ForegroundColor Yellow
+            exit $LASTEXITCODE
         }
-        
-        Write-Host "Running mypy type checker..." -ForegroundColor Green
-        mypy src/
-        if ($LASTEXITCODE -ne 0) {
-            Write-Host "MyPy found type issues" -ForegroundColor Yellow
-        }
+        Write-Host "Lint clean!" -ForegroundColor Green
+    }
+    "lint-fix" {
+        # Auto-fixes what ruff can (imports, typing, whitespace). B904 exception
+        # chaining is not auto-fixable and must be fixed by hand.
+        Write-Host "Auto-fixing lint issues with ruff (via Docker)..." -ForegroundColor Green
+        docker run --rm -v "${PWD}:/app" -w /app python:3.11-slim bash -c "pip install -q ruff && ruff check --fix src/ tests/"
+        Write-Host "Done. Re-run '.\make.ps1 lint' to see anything left (e.g. B904 needs manual fixes)." -ForegroundColor Green
     }
     default {
         Show-Help

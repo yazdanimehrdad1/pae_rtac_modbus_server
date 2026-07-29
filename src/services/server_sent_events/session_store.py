@@ -2,9 +2,8 @@
 
 import asyncio
 import uuid
-from typing import Dict
 
-_sessions: Dict[str, asyncio.Event] = {}
+_sessions: dict[str, asyncio.Event] = {}
 
 
 def register() -> tuple[str, asyncio.Event]:

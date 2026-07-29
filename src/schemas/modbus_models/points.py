@@ -1,6 +1,6 @@
 """Modbus register point models."""
 
-from typing import Optional, Dict
+
 from pydantic import BaseModel, Field, field_validator
 
 from schemas.api_models.types import NumericDataType
@@ -18,14 +18,14 @@ class RegisterPoint(BaseModel):
         default="uint16", description="Data type interpretation"
     )
     size: int = Field(..., ge=1, le=2000, description="Number of registers/bits to read")
-    scale_factor: Optional[float] = Field(
+    scale_factor: float | None = Field(
         default=1.0, description="Scale factor to apply to raw value"
     )
-    unit: Optional[str] = Field(None, description="Physical unit (e.g., 'V', 'A', 'kW')")
-    bitfield_detail: Optional[Dict[str, str]] = Field(
+    unit: str | None = Field(None, description="Physical unit (e.g., 'V', 'A', 'kW')")
+    bitfield_detail: dict[str, str] | None = Field(
         default=None, description="Bitfield detail mapping (optional)"
     )
-    enum_detail: Optional[Dict[str, str]] = Field(
+    enum_detail: dict[str, str] | None = Field(
         default=None, description="Enum detail mapping (optional)"
     )
 

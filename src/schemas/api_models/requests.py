@@ -1,6 +1,7 @@
 """API request models."""
 
-from typing import Optional, List, Literal, Dict
+from typing import Literal, Optional
+
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from schemas.api_models.types import DataType, DeviceType, register_size
@@ -33,14 +34,14 @@ class ReadRequest(BaseModel):
     )
     address: int = Field(..., ge=0, le=65535, description="Starting address")
     count: int = Field(..., ge=1, le=2000, description="Number of registers/bits to read")
-    device_id: Optional[int] = Field(
+    device_id: int | None = Field(
         None, ge=1, le=255, description="Modbus unit/slave ID (optional)"
     )
-    host: Optional[str] = Field(
+    host: str | None = Field(
         None,
         description="Modbus server hostname or IP address (optional, uses default if not provided)",
     )
-    port: Optional[int] = Field(
+    port: int | None = Field(
         None, ge=1, le=65535, description="Modbus TCP port (optional, uses default if not provided)"
     )
 
@@ -54,13 +55,13 @@ class DeviceCreateRequest(BaseModel):
     protocol: Literal["Modbus", "DNP"] = Field(
         default="Modbus", description="Communication protocol"
     )
-    vendor: Optional[str] = Field(default=None, max_length=255, description="Device vendor")
-    model: Optional[str] = Field(default=None, max_length=255, description="Device model")
+    vendor: str | None = Field(default=None, max_length=255, description="Device vendor")
+    model: str | None = Field(default=None, max_length=255, description="Device model")
     host: str = Field(..., min_length=1, max_length=255, description="Device hostname or IP address")
     port: int = Field(default=502, ge=1, le=65535, description="Device port (default: 502)")
-    timeout: Optional[float] = Field(default=None, ge=0, description="Optional timeout (seconds)")
+    timeout: float | None = Field(default=None, ge=0, description="Optional timeout (seconds)")
     server_address: int = Field(default=1, ge=1, description="Server address (default: 1)")
-    description: Optional[str] = Field(default=None, description="Optional device description")
+    description: str | None = Field(default=None, description="Optional device description")
     poll_enabled: bool = Field(True, description="Whether polling is enabled for this device")
     read_from_aggregator: bool = Field(True, description="Whether to read from edge aggregator")
     modbus_address_mode: Literal["zero_based", "one_based"] = Field(
@@ -74,27 +75,27 @@ class DeviceCreateRequest(BaseModel):
 
 class DeviceUpdate(BaseModel):
     """Request model for updating a device."""
-    name: Optional[str] = Field(None, min_length=1, max_length=255, description="Device name/identifier")
-    type: Optional[DeviceType] = Field(
+    name: str | None = Field(None, min_length=1, max_length=255, description="Device name/identifier")
+    type: DeviceType | None = Field(
         None, description="Device type. Case-insensitive on input; stored uppercase."
     )
-    protocol: Optional[Literal["Modbus", "DNP"]] = Field(
+    protocol: Literal["Modbus", "DNP"] | None = Field(
         None, description="Communication protocol"
     )
-    vendor: Optional[str] = Field(None, max_length=255, description="Device vendor")
-    model: Optional[str] = Field(None, description="Device model")
-    host: Optional[str] = Field(
+    vendor: str | None = Field(None, max_length=255, description="Device vendor")
+    model: str | None = Field(None, description="Device model")
+    host: str | None = Field(
         None, min_length=1, max_length=255, description="Device hostname or IP address"
     )
-    port: Optional[int] = Field(None, ge=1, le=65535, description="Device port")
-    timeout: Optional[float] = Field(default=None, ge=0, description="Optional timeout (seconds)")
-    server_address: Optional[int] = Field(None, ge=1, description="Server address")
-    description: Optional[str] = Field(None, description="Device description")
-    poll_enabled: Optional[bool] = Field(None, description="Whether polling is enabled for this device")
-    read_from_aggregator: Optional[bool] = Field(
+    port: int | None = Field(None, ge=1, le=65535, description="Device port")
+    timeout: float | None = Field(default=None, ge=0, description="Optional timeout (seconds)")
+    server_address: int | None = Field(None, ge=1, description="Server address")
+    description: str | None = Field(None, description="Device description")
+    poll_enabled: bool | None = Field(None, description="Whether polling is enabled for this device")
+    read_from_aggregator: bool | None = Field(
         None, description="Whether to read from edge aggregator"
     )
-    modbus_address_mode: Optional[Literal["zero_based", "one_based"]] = Field(
+    modbus_address_mode: Literal["zero_based", "one_based"] | None = Field(
         None,
         description="zero_based: use addresses as-is; one_based: subtract 1 before sending to pymodbus"
     )
@@ -110,23 +111,23 @@ class SiteCreateRequest(BaseModel):
     location: Location = Field(..., description="Site location details")
     operator: str = Field(..., min_length=1, max_length=255, description="Site operator")
     capacity: str = Field(..., min_length=1, max_length=255, description="Site capacity")
-    description: Optional[str] = Field(default=None, description="Optional site description")
-    coordinates: Optional[Coordinates] = Field(
+    description: str | None = Field(default=None, description="Optional site description")
+    coordinates: Coordinates | None = Field(
         default=None, description="Geographic coordinates"
     )
 
 
 class SiteUpdateRequest(BaseModel):
     """Request model for updating a site."""
-    client_id: Optional[str] = Field(
+    client_id: str | None = Field(
         None, min_length=1, max_length=255, description="Client identifier"
     )
-    name: Optional[str] = Field(None, min_length=1, max_length=255, description="Site name")
-    location: Optional[Location] = Field(None, description="Site location details")
-    operator: Optional[str] = Field(None, description="Site operator")
-    capacity: Optional[str] = Field(None, min_length=1, max_length=255, description="Site capacity")
-    description: Optional[str] = Field(None, description="Site description")
-    coordinates: Optional[Coordinates] = Field(None, description="Geographic coordinates")
+    name: str | None = Field(None, min_length=1, max_length=255, description="Site name")
+    location: Location | None = Field(None, description="Site location details")
+    operator: str | None = Field(None, description="Site operator")
+    capacity: str | None = Field(None, min_length=1, max_length=255, description="Site capacity")
+    description: str | None = Field(None, description="Site description")
+    coordinates: Coordinates | None = Field(None, description="Geographic coordinates")
 
 
 
@@ -147,27 +148,27 @@ class RegisterRange(BaseModel):
 
 class DeviceScanRanges(BaseModel):
     """Scan ranges categorized by register type."""
-    holding: List[RegisterRange] = Field(default_factory=list)
-    input: List[RegisterRange] = Field(default_factory=list)
-    coils: List[RegisterRange] = Field(default_factory=list)
+    holding: list[RegisterRange] = Field(default_factory=list)
+    input: list[RegisterRange] = Field(default_factory=list)
+    coils: list[RegisterRange] = Field(default_factory=list)
 
 
 class DevicePointCreateRequest(BaseModel):
     """Request model for creating a device point directly (Config-free)."""
     name: str = Field(..., min_length=1, max_length=255)
-    poll_kind: Optional[Literal["holding", "input", "coils"]] = None
-    address: Optional[int] = Field(None, ge=0, le=65535)
+    poll_kind: Literal["holding", "input", "coils"] | None = None
+    address: int | None = Field(None, ge=0, le=65535)
     size: int = Field(..., ge=1)
     data_type: DataType = Field(
         ...,
         description="Register interpretation. Width is encoded in the type (e.g. enum32, bitfield16); `size` must match register_size(data_type).",
     )
-    scale_factor: Optional[float] = None
-    unit: Optional[str] = None
+    scale_factor: float | None = None
+    unit: str | None = None
     byte_order: str = "big-endian"
     word_order: str = "msw_first"
-    bitfield_detail: Optional[Dict[str, str]] = None
-    enum_detail: Optional[Dict[str, str]] = None
+    bitfield_detail: dict[str, str] | None = None
+    enum_detail: dict[str, str] | None = None
     category: Literal["NATIVE", "STANDARDIZED", "VIRTUAL"] = "NATIVE"
 
     @model_validator(mode="after")
@@ -182,20 +183,20 @@ class DevicePointCreateRequest(BaseModel):
 
 class DevicePointUpdateRequest(BaseModel):
     """Request model for updating a device point."""
-    name: Optional[str] = Field(None, min_length=1, max_length=255)
-    poll_kind: Optional[Literal["holding", "input", "coils"]] = None
-    address: Optional[int] = Field(None, ge=0, le=65535)
-    size: Optional[int] = Field(None, ge=1)
-    data_type: Optional[DataType] = Field(
+    name: str | None = Field(None, min_length=1, max_length=255)
+    poll_kind: Literal["holding", "input", "coils"] | None = None
+    address: int | None = Field(None, ge=0, le=65535)
+    size: int | None = Field(None, ge=1)
+    data_type: DataType | None = Field(
         None,
         description="Register interpretation. Width is encoded in the type (e.g. enum32, bitfield16); `size` must match register_size(data_type).",
     )
-    scale_factor: Optional[float] = None
-    unit: Optional[str] = None
-    byte_order: Optional[str] = None
-    word_order: Optional[str] = None
-    bitfield_detail: Optional[Dict[str, str]] = None
-    enum_detail: Optional[Dict[str, str]] = None
+    scale_factor: float | None = None
+    unit: str | None = None
+    byte_order: str | None = None
+    word_order: str | None = None
+    bitfield_detail: dict[str, str] | None = None
+    enum_detail: dict[str, str] | None = None
 
     @model_validator(mode="after")
     def _check_size_matches_type(self) -> "DevicePointUpdateRequest":
@@ -212,4 +213,4 @@ class DevicePointUpdateRequest(BaseModel):
 
 class DevicePointsBulkRequest(BaseModel):
     """Bulk upsert: create new points and update existing ones (matched by name) in one call."""
-    points: List[DevicePointCreateRequest] = Field(..., min_length=1)
+    points: list[DevicePointCreateRequest] = Field(..., min_length=1)

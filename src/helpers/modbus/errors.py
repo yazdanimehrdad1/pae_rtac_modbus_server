@@ -5,10 +5,9 @@ Contains shared Modbus error translation logic for API and jobs.
 """
 
 import os
-from typing import Optional, Tuple
 
 from dotenv import load_dotenv
-from pymodbus.exceptions import ModbusException, ConnectionException
+from pymodbus.exceptions import ConnectionException, ModbusException
 
 # Load environment variables from .env file
 load_dotenv()
@@ -21,9 +20,9 @@ MODBUS_TIMEOUT_S = float(os.getenv("MODBUS_TIMEOUT_S", "5.0"))
 
 def translate_modbus_error(
     error: Exception,
-    host: Optional[str] = None,
-    port: Optional[int] = None
-) -> Tuple[int, str]:
+    host: str | None = None,
+    port: int | None = None
+) -> tuple[int, str]:
     """
     Translate Modbus exceptions into appropriate HTTP status codes and messages.
     """

@@ -1,11 +1,12 @@
 """API response models."""
 
 from datetime import datetime
-from typing import Literal, Optional, Dict, List, Union
+from typing import Literal
+
 from pydantic import AliasChoices, BaseModel, Field
 
 from schemas.api_models.mappers import RegisterValue
-from schemas.api_models.requests import Coordinates, Location, DeviceScanRanges
+from schemas.api_models.requests import Coordinates, DeviceScanRanges, Location
 
 
 class SimpleReadResponse(BaseModel):
@@ -16,7 +17,7 @@ class SimpleReadResponse(BaseModel):
     address: int
     count: int
     device_id: int = Field(..., description="Modbus unit/slave ID")
-    data: List[RegisterValue] = Field(
+    data: list[RegisterValue] = Field(
         default_factory=list, description="Array of register number and value pairs"
     )
 
@@ -27,7 +28,7 @@ class HealthResponse(BaseModel):
     host: str
     port: int
     device_id: int = Field(..., description="Modbus unit/slave ID")
-    detail: Optional[str] = None
+    detail: str | None = None
 
 
 class DeviceListItem(BaseModel):
@@ -37,21 +38,21 @@ class DeviceListItem(BaseModel):
     name: str = Field(..., description="Device name")
     type: str = Field(..., description="Device type")
     protocol: str = Field(..., description="Communication protocol")
-    vendor: Optional[str] = Field(None, description="Device vendor")
-    model: Optional[str] = Field(None, description="Device model")
+    vendor: str | None = Field(None, description="Device vendor")
+    model: str | None = Field(None, description="Device model")
     host: str = Field(..., description="Device hostname or IP address")
     port: int = Field(..., description="Device port")
-    timeout: Optional[float] = Field(default=None, description="Optional timeout (seconds)")
+    timeout: float | None = Field(default=None, description="Optional timeout (seconds)")
     server_address: int = Field(..., description="Server address")
-    description: Optional[str] = Field(None, description="Device description")
+    description: str | None = Field(None, description="Device description")
     poll_enabled: bool = Field(True, description="Whether polling is enabled for this device")
     read_from_aggregator: bool = Field(True, description="Whether to read from edge aggregator")
-    scan_ranges: Optional[DeviceScanRanges] = Field(None, description="Auto-computed or manually locked scan ranges")
+    scan_ranges: DeviceScanRanges | None = Field(None, description="Auto-computed or manually locked scan ranges")
     scan_ranges_locked: bool = Field(False, description="Whether scan ranges are locked against auto-recompute")
     modbus_address_mode: str = Field("zero_based", description="zero_based or one_based — controls pymodbus address offset")
     created_at: datetime = Field(..., description="Timestamp when device was created")
     updated_at: datetime = Field(..., description="Timestamp when device was last updated")
-    deleted_at: Optional[datetime] = Field(None, description="Soft-delete timestamp; null means active")
+    deleted_at: datetime | None = Field(None, description="Soft-delete timestamp; null means active")
 
     model_config = {
         "from_attributes": True,
@@ -68,9 +69,9 @@ class DeviceDeleteResponse(BaseModel):
 
 class DevicePointsCategoryGrouped(BaseModel):
     """Device points grouped by category."""
-    standardized: List["DevicePointResponse"] = Field(default_factory=list)
-    native: List["DevicePointResponse"] = Field(default_factory=list)
-    virtual: List["DevicePointResponse"] = Field(default_factory=list)
+    standardized: list["DevicePointResponse"] = Field(default_factory=list)
+    native: list["DevicePointResponse"] = Field(default_factory=list)
+    virtual: list["DevicePointResponse"] = Field(default_factory=list)
 
 
 # Backwards-compatible alias
@@ -93,16 +94,16 @@ class SiteResponse(BaseModel):
     site_id: int = Field(..., description="Site ID (4-digit number)")
     client_id: str = Field(..., description="Client identifier")
     name: str = Field(..., description="Site name")
-    location: Optional[Location] = Field(None, description="Site location details")
+    location: Location | None = Field(None, description="Site location details")
     operator: str = Field(..., description="Site operator")
     capacity: str = Field(..., description="Site capacity")
     device_count: int = Field(..., description="Number of devices at this site")
-    description: Optional[str] = Field(None, description="Site description")
-    coordinates: Optional[Coordinates] = Field(None, description="Geographic coordinates")
+    description: str | None = Field(None, description="Site description")
+    coordinates: Coordinates | None = Field(None, description="Geographic coordinates")
     created_at: datetime = Field(..., description="Timestamp when site was created")
     updated_at: datetime = Field(..., description="Timestamp when site was last updated")
     last_update: datetime = Field(..., description="Timestamp of last update")
-    deleted_at: Optional[datetime] = Field(None, description="Soft-delete timestamp; null means active")
+    deleted_at: datetime | None = Field(None, description="Soft-delete timestamp; null means active")
 
     model_config = {
         "from_attributes": True,
@@ -121,13 +122,13 @@ class SiteComprehensiveResponse(BaseModel):
     site_id: int = Field(..., description="Site ID (4-digit number)")
     client_id: str = Field(..., description="Client identifier")
     name: str = Field(..., description="Site name")
-    location: Optional[Location] = Field(None, description="Site location details")
+    location: Location | None = Field(None, description="Site location details")
     operator: str = Field(..., description="Site operator")
     capacity: str = Field(..., description="Site capacity")
     device_count: int = Field(..., description="Number of devices at this site")
-    description: Optional[str] = Field(None, description="Site description")
-    coordinates: Optional[Coordinates] = Field(None, description="Geographic coordinates")
-    devices: List[DeviceWithPoints] = Field(default_factory=list, description="Devices with categorized points")
+    description: str | None = Field(None, description="Site description")
+    coordinates: Coordinates | None = Field(None, description="Geographic coordinates")
+    devices: list[DeviceWithPoints] = Field(default_factory=list, description="Devices with categorized points")
     created_at: datetime = Field(..., description="Timestamp when site was created")
     updated_at: datetime = Field(..., description="Timestamp when site was last updated")
     last_update: datetime = Field(..., description="Timestamp of last update")
@@ -148,15 +149,15 @@ class DevicePointResponse(BaseModel):
     address: int = Field(..., description="Point address")
     size: int = Field(..., description="Point size")
     data_type: str = Field(..., description="Data type")
-    scale_factor: Optional[float] = Field(None, description="Scale factor")
-    unit: Optional[str] = Field(None, description="Unit")
-    enum_detail: Optional[Dict[str, str]] = Field(None, description="Enum detail mapping")
-    bitfield_detail: Optional[Dict[str, str]] = Field(None, description="Bitfield detail mapping")
+    scale_factor: float | None = Field(None, description="Scale factor")
+    unit: str | None = Field(None, description="Unit")
+    enum_detail: dict[str, str] | None = Field(None, description="Enum detail mapping")
+    bitfield_detail: dict[str, str] | None = Field(None, description="Bitfield detail mapping")
     byte_order: str = Field("big-endian", description="Byte order for interpretation")
     word_order: str = Field("msw_first", description="Word order for multi-register types")
-    poll_kind: Optional[str] = Field(None, description="Register type: holding, input, or coils")
+    poll_kind: str | None = Field(None, description="Register type: holding, input, or coils")
     category: str = Field("NATIVE", description="Point category: NATIVE, STANDARDIZED, or VIRTUAL")
-    deleted_at: Optional[datetime] = Field(None, description="Soft-delete timestamp; null means active")
+    deleted_at: datetime | None = Field(None, description="Soft-delete timestamp; null means active")
 
     model_config = {
         "from_attributes": True,
@@ -165,8 +166,8 @@ class DevicePointResponse(BaseModel):
 
 class TimeseriesPoint(BaseModel):
     time: datetime = Field(validation_alias=AliasChoices("time", "timestamp"))
-    value: Optional[float] = Field(None, validation_alias=AliasChoices("value", "derived_value"))
-    translated_value: Optional[Union[str, Dict[str, int]]] = None
+    value: float | None = Field(None, validation_alias=AliasChoices("value", "derived_value"))
+    translated_value: str | dict[str, int] | None = None
 
     model_config = {"populate_by_name": True}
 
@@ -175,11 +176,11 @@ class PointTimeseries(BaseModel):
     id: int = Field(validation_alias=AliasChoices("id", "device_point_id"))
     name: str
     data_type: str
-    unit: Optional[str] = None
+    unit: str | None = None
     count: int = 0
-    enum_map: Optional[Dict[str, str]] = None
-    bit_labels: Optional[List[str]] = None
-    timeseries: List[TimeseriesPoint] = Field(default_factory=list)
+    enum_map: dict[str, str] | None = None
+    bit_labels: list[str] | None = None
+    timeseries: list[TimeseriesPoint] = Field(default_factory=list)
 
     model_config = {"populate_by_name": True}
 
@@ -188,10 +189,10 @@ class PointLatest(BaseModel):
     id: int = Field(validation_alias=AliasChoices("id", "device_point_id"))
     name: str
     data_type: str
-    unit: Optional[str] = None
-    time: Optional[datetime] = Field(None, validation_alias=AliasChoices("time", "timestamp"))
-    value: Optional[float] = Field(None, validation_alias=AliasChoices("value", "derived_value"))
-    translated_value: Optional[Union[str, Dict[str, int]]] = None
+    unit: str | None = None
+    time: datetime | None = Field(None, validation_alias=AliasChoices("time", "timestamp"))
+    value: float | None = Field(None, validation_alias=AliasChoices("value", "derived_value"))
+    translated_value: str | dict[str, int] | None = None
 
     model_config = {"populate_by_name": True}
 
@@ -199,27 +200,27 @@ class PointLatest(BaseModel):
 class TimeseriesMeta(BaseModel):
     site_id: int
     device_id: int
-    point_ids: Optional[List[int]]
+    point_ids: list[int] | None
     total_count: int
-    start_time: Optional[datetime] = None
-    end_time: Optional[datetime] = None
+    start_time: datetime | None = None
+    end_time: datetime | None = None
 
 
 class LatestMeta(BaseModel):
     site_id: int
     device_id: int
-    point_ids: Optional[List[int]]
+    point_ids: list[int] | None
     total_count: int
 
 
 class TimeseriesResponse(BaseModel):
     meta: TimeseriesMeta
-    readings: Dict[str, PointTimeseries]
+    readings: dict[str, PointTimeseries]
 
 
 class LatestResponse(BaseModel):
     meta: LatestMeta
-    readings: Dict[str, PointLatest]
+    readings: dict[str, PointLatest]
 
 
 class DeviceHealthStatus(BaseModel):
@@ -230,8 +231,8 @@ class DeviceHealthStatus(BaseModel):
     read_from_aggregator: bool
     poll_enabled: bool
     reachable: bool
-    latency_ms: Optional[float] = None
-    error: Optional[str] = None
+    latency_ms: float | None = None
+    error: str | None = None
 
 
 class SiteDevicesHealthResponse(BaseModel):
@@ -239,4 +240,4 @@ class SiteDevicesHealthResponse(BaseModel):
     total: int
     reachable: int
     unreachable: int
-    devices: List[DeviceHealthStatus]
+    devices: list[DeviceHealthStatus]

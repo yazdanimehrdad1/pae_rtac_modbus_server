@@ -1,17 +1,18 @@
 """Device points CRUD operations."""
 
-from datetime import datetime, timezone
-from typing import Optional, cast
-from sqlalchemy import select, update
+from datetime import UTC, datetime
+from typing import cast
+
+from sqlalchemy import select
 
 from db.connection import get_async_session_factory
-from schemas.api_models import DataType, DevicePointData, SUPPORTED_DATA_TYPES, register_size
-from schemas.api_models.requests import DevicePointUpdateRequest, DevicePointsBulkRequest
+from helpers.device_points.address_overlap import NativePointRange, validate_no_register_overlap
+from helpers.device_points.scan_range_computation import compute_device_scan_ranges
+from schemas.api_models import SUPPORTED_DATA_TYPES, DataType, DevicePointData, register_size
+from schemas.api_models.requests import DevicePointsBulkRequest, DevicePointUpdateRequest
 from schemas.api_models.responses import DevicePointResponse
 from schemas.db_models.orm_models import Device, DevicePoint
-from helpers.device_points.scan_range_computation import compute_device_scan_ranges
-from helpers.device_points.address_overlap import NativePointRange, validate_no_register_overlap
-from utils.exceptions import InternalError, NotFoundError, ConflictError, ValidationError
+from utils.exceptions import ConflictError, InternalError, NotFoundError, ValidationError
 
 
 async def _recompute_scan_ranges(session, device_id: int) -> None:
@@ -51,7 +52,7 @@ async def create_device_points(device_points_list: list[DevicePointData]) -> boo
             await session.commit()
         return True
     except Exception as e:
-        raise InternalError(f"Failed to create device points: {str(e)}")
+        raise InternalError(f"Failed to create device points: {str(e)}") from e
 
 
 async def get_device_points(
@@ -87,7 +88,7 @@ async def get_deleted_device_points(device_id: int) -> list[DevicePoint]:
         return list(result.scalars().all())
 
 
-async def get_device_point(point_id: int) -> Optional[DevicePoint]:
+async def get_device_point(point_id: int) -> DevicePoint | None:
     """Get a single device point by primary key."""
     session_factory = get_async_session_factory()
     async with session_factory() as session:
@@ -212,7 +213,7 @@ async def delete_device_points(
             await _recompute_scan_ranges(session, device_id)
             await session.commit()
         else:
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             for point in found.values():
                 point.deleted_at = now
             await session.flush()

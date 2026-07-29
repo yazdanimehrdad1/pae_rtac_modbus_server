@@ -35,9 +35,17 @@ Thumbs.db
 # Documentation
 README.md
 *.md
+docs/
+Readme-dev/
 
-# Docker
-docker-compose.yml
-Dockerfile
+# Docker / deploy artifacts (not needed inside the build context)
+docker-compose.yaml
+docker-compose*.yaml
+docker/Dockerfile
 .dockerignore
+k8s/
+.github/
+
+# Tests are not shipped into the runtime image
+tests/
 
