@@ -39,17 +39,26 @@ if [ $timeout -eq 0 ]; then
     exit 1
 fi
 
-# Run database migrations
-echo "Running database migrations..."
-python scripts/migrate_db.py
-MIGRATION_EXIT_CODE=$?
+# Run database migrations unless disabled.
+# Default is "true" so docker-compose / local dev behaviour is unchanged. In
+# Kubernetes the app Deployment sets RUN_MIGRATIONS_ON_START=false and a dedicated
+# migration Job (ArgoCD PreSync hook) owns the schema, so replicas don't race.
+RUN_MIGRATIONS_ON_START="${RUN_MIGRATIONS_ON_START:-true}"
 
-if [ $MIGRATION_EXIT_CODE -ne 0 ]; then
-    echo "ERROR: Database migration failed with exit code $MIGRATION_EXIT_CODE"
-    exit $MIGRATION_EXIT_CODE
+if [ "$RUN_MIGRATIONS_ON_START" = "true" ]; then
+    echo "Running database migrations..."
+    python scripts/migrate_db.py
+    MIGRATION_EXIT_CODE=$?
+
+    if [ $MIGRATION_EXIT_CODE -ne 0 ]; then
+        echo "ERROR: Database migration failed with exit code $MIGRATION_EXIT_CODE"
+        exit $MIGRATION_EXIT_CODE
+    fi
+
+    echo "Migrations completed successfully. Starting application..."
+else
+    echo "RUN_MIGRATIONS_ON_START=$RUN_MIGRATIONS_ON_START — skipping migrations. Starting application..."
 fi
-
-echo "Migrations completed successfully. Starting application..."
 
 # Start the application (use exec to replace shell process)
 exec "$@"

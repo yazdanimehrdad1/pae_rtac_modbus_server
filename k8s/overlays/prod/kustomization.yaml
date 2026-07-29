@@ -1,0 +1,96 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: rtac-modbus-prod
+
+resources:
+  - namespace.yaml
+  - ../../base
+
+# CI pins the tag to the built git SHA via:
+#   kustomize edit set image pae-rtac-server=<AR_HOST>/<PROJECT>/pae/pae-rtac-server:<sha>
+images:
+  - name: pae-rtac-server
+    newName: REPLACE_AR_HOST/REPLACE_PROJECT/pae/pae-rtac-server
+    newTag: latest
+
+replicas:
+  - name: pae-rtac-server
+    count: 2
+
+# Override env-specific, non-secret config. Merged onto the base ConfigMap; the
+# resulting content hash rolls the Deployment when any value changes.
+configMapGenerator:
+  - name: pae-rtac-server-config
+    behavior: merge
+    literals:
+      - LOG_LEVEL=INFO
+      - REDIS_HOST=REPLACE_MEMORYSTORE_PROD_IP
+      - AGGREGATOR_MODBUS_HOST=REPLACE_AGGREGATOR_PROD_HOST
+
+patches:
+  # Cloud SQL instance + prod app resources.
+  - target:
+      kind: Deployment
+      name: pae-rtac-server
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: pae-rtac-server
+      spec:
+        template:
+          spec:
+            initContainers:
+              - name: cloud-sql-proxy
+                env:
+                  - name: INSTANCE_CONNECTION_NAME
+                    value: REPLACE_PROJECT:REGION:rtac-pg-prod
+            containers:
+              - name: app
+                resources:
+                  requests:
+                    cpu: 250m
+                    memory: 512Mi
+                  limits:
+                    memory: 1Gi
+  # Cloud SQL instance for the migration Job.
+  - target:
+      kind: Job
+      name: pae-rtac-server-migrate
+    patch: |-
+      apiVersion: batch/v1
+      kind: Job
+      metadata:
+        name: pae-rtac-server-migrate
+      spec:
+        template:
+          spec:
+            initContainers:
+              - name: cloud-sql-proxy
+                env:
+                  - name: INSTANCE_CONNECTION_NAME
+                    value: REPLACE_PROJECT:REGION:rtac-pg-prod
+  # Workload Identity binding for prod.
+  - target:
+      kind: ServiceAccount
+      name: pae-rtac-server
+    patch: |-
+      apiVersion: v1
+      kind: ServiceAccount
+      metadata:
+        name: pae-rtac-server
+        annotations:
+          iam.gke.io/gcp-service-account: rtac-modbus-prod@REPLACE_PROJECT.iam.gserviceaccount.com
+  # Autoscaling range for prod.
+  - target:
+      kind: HorizontalPodAutoscaler
+      name: pae-rtac-server
+    patch: |-
+      apiVersion: autoscaling/v2
+      kind: HorizontalPodAutoscaler
+      metadata:
+        name: pae-rtac-server
+      spec:
+        minReplicas: 2
+        maxReplicas: 6

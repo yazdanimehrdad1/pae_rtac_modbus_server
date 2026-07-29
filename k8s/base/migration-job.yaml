@@ -1,0 +1,71 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: pae-rtac-server-migrate
+  annotations:
+    # ArgoCD runs this before syncing the rest, so schema is up to date before the
+    # new app version rolls out. Only one Job runs per sync — replicas never race.
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: 600
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: pae-rtac-server
+        app.kubernetes.io/component: migrate
+    spec:
+      restartPolicy: Never
+      serviceAccountName: pae-rtac-server
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: cloud-sql-proxy
+          restartPolicy: Always
+          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.14.1
+          args:
+            - "--structured-logs"
+            - "--port=5432"
+            - "$(INSTANCE_CONNECTION_NAME)"
+          env:
+            - name: INSTANCE_CONNECTION_NAME
+              value: REPLACE_PROJECT:REGION:INSTANCE
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 128Mi
+      containers:
+        - name: migrate
+          image: pae-rtac-server
+          # Bypass the image ENTRYPOINT (which starts uvicorn) and just migrate.
+          command: ["python", "scripts/migrate_db.py"]
+          envFrom:
+            - configMapRef:
+                name: pae-rtac-server-config
+            - secretRef:
+                name: pae-rtac-server-secrets
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 512Mi

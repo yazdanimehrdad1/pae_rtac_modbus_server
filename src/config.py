@@ -49,7 +49,10 @@ class Settings(BaseSettings):
     postgres_port: int = Field(default=5432, alias="POSTGRES_PORT")
     postgres_db: str = Field(default="rtac_modbus", alias="POSTGRES_DB")
     postgres_user: str = Field(default="rtac_user", alias="POSTGRES_USER")
-    postgres_password: str = Field(default="rtac_password", alias="POSTGRES_PASSWORD")
+    # Secret: no default on purpose — a missing POSTGRES_PASSWORD must fail loudly at
+    # startup rather than silently connect with a known-bad value. Supplied via .env
+    # locally and a k8s Secret (from GCP Secret Manager) in the cluster.
+    postgres_password: str = Field(alias="POSTGRES_PASSWORD")
     database_pool_size: int = Field(default=10, alias="DATABASE_POOL_SIZE")
     database_max_overflow: int = Field(default=20, alias="DATABASE_MAX_OVERFLOW")
     
@@ -69,12 +72,7 @@ class Settings(BaseSettings):
     poll_interval_seconds: int = Field(default=10, alias="POLL_INTERVAL_SECONDS")
     poll_cache_ttl: int = Field(default=3600, alias="POLL_CACHE_TTL")  # 1 hour default
     poll_device_name: str = Field(default="main-sel-751", alias="POLL_DEVICE_NAME")  # Device name for polling and database storage
-    
-    main_sel_751_poll_address: int = Field(default=1400, alias="MAIN_SEL_751_POLL_ADDRESS")  # Fixed Modbus address to read from
-    main_sel_751_poll_count: int = Field(default=100, alias="MAIN_SEL_751_POLL_COUNT")  # Fixed number of registers to read
-    main_sel_751_poll_kind: str = Field(default="holding", alias="MAIN_SEL_751_POLL_KIND")  # Register type: holding, input, coils, discretes
-    main_sel_751_poll_device_id: int = Field(default=1, alias="MAIN_SEL_751_POLL_DEVICE_ID")  # Modbus device ID
-    
+
     # Pod identification (for Kubernetes)
     pod_name: str = Field(default="", alias="POD_NAME")  # Falls back to HOSTNAME if not set
     

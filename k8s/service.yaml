@@ -1,9 +1,0 @@
-# Kubernetes Service (placeholder)
-# TODO: Implement Kubernetes service manifest
-apiVersion: v1
-kind: Service
-metadata:
-  name: pae-rtac-server
-spec:
-  # TODO: Add service spec
-

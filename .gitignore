@@ -81,3 +81,7 @@ Thumbs.db
 *.tmp
 *.bak
 *.swp
+
+
+# GCloud
+gcloud-notes.md

@@ -4,14 +4,14 @@ import asyncio
 import time
 from typing import Dict, Any, List
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Response, status
 from pymodbus.client import ModbusTcpClient
 from sqlalchemy import text
 
 from api.controllers.devices import get_all_devices, get_device_by_id
 from fastapi import HTTPException
 from config import settings
-from cache.connection import get_redis_client
+from cache.connection import get_redis_client, check_redis_health
 from db.connection import check_db_health, get_async_engine, get_db_pool
 from schemas.api_models import DeviceHealthStatus, HealthResponse, SiteDevicesHealthResponse
 from services.modbus.client import ModbusClient
@@ -31,6 +31,29 @@ async def health_check():
         device_id=settings.modbus_device_id,
         detail="API is healthy"
     )
+
+
+@router.get("/readyz")
+async def readiness_check(response: Response) -> Dict[str, Any]:
+    """
+    Readiness probe for Kubernetes.
+
+    Gates on the hard runtime dependencies — Postgres and Redis — using the
+    lightweight shared health checks (a `SELECT 1` and a Redis PING). Returns
+    HTTP 503 if either is unreachable so k8s stops routing traffic to the pod.
+    Kept intentionally cheap; the detailed /db_health and /redis_health endpoints
+    are too heavy to run on every probe interval.
+    """
+    db_ok = await check_db_health()
+    redis_ok = await check_redis_health()
+
+    ready = db_ok and redis_ok
+    if not ready:
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    return {
+        "ready": ready,
+        "checks": {"database": db_ok, "redis": redis_ok},
+    }
 
 
 @router.get("/health_modbus_client", response_model=HealthResponse)

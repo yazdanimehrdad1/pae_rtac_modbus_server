@@ -39,7 +39,7 @@ the DAS data-acquisition API (`pae-das-api`), or any downstream dashboard/analyt
   `schema_migrations` by `scripts/migrate_db.py`. No Alembic — add a new `NNN_*.sql` to change schema.
 - Scheduler uses Redis leader election: only ONE replica polls (job `modbus_poll`, every
   `POLL_INTERVAL_SECONDS`, default 10). It won't start if Redis is down; `SCHEDULER_ENABLED=false`
-  disables it. Polling targets a fixed address via `MAIN_SEL_751_POLL_*`.
+  disables it. Polling targets are read from the DB (sites → devices → device-points).
 - A global `validate_time_range` middleware (`src/api/middleware/`) runs on every request
   and rejects bad start/end query params.
 - `main.py` hardcodes `reload=True`; the Dockerfile runs a single uvicorn process

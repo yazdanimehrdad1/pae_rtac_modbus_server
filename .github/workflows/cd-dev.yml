@@ -1,0 +1,78 @@
+name: CD Dev
+
+# Scaffold for the future dev environment. Mirrors cd-prod but targets the `dev`
+# branch and the dev overlay. Enable once a dev GKE namespace + ArgoCD Application
+# exist (see docs/DEPLOYMENT.md). Uses the same repo variables/secrets as prod.
+
+on:
+  push:
+    branches: [dev]
+
+concurrency:
+  group: cd-dev
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  build-push-bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud (WIF)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker "${{ vars.AR_HOST }}" --quiet
+
+      - name: Compute image reference
+        id: image
+        run: |
+          IMAGE="${{ vars.AR_HOST }}/${{ vars.GCP_PROJECT_ID }}/${{ vars.AR_REPO }}/pae-rtac-server"
+          echo "ref=${IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "tag=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.image.outputs.ref }}:${{ steps.image.outputs.tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Install kustomize
+        run: |
+          curl -sSL https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh | bash
+          sudo mv kustomize /usr/local/bin/
+
+      - name: Bump dev overlay image tag
+        run: |
+          cd k8s/overlays/dev
+          kustomize edit set image "pae-rtac-server=${{ steps.image.outputs.ref }}:${{ steps.image.outputs.tag }}"
+
+      - name: Commit tag bump (GitOps)
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet; then
+            echo "No image change to commit."
+            exit 0
+          fi
+          git add k8s/overlays/dev/kustomization.yaml
+          git commit -m "chore(dev): deploy pae-rtac-server ${{ steps.image.outputs.tag }} [skip ci]"
+          git push
