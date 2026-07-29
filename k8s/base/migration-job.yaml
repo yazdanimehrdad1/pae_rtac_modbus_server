@@ -3,14 +3,17 @@ kind: Job
 metadata:
   name: pae-rtac-server-migrate
   annotations:
-    # ArgoCD runs this before syncing the rest, so schema is up to date before the
-    # new app version rolls out. Only one Job runs per sync — replicas never race.
-    argocd.argoproj.io/hook: PreSync
-    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    # Ordered by ArgoCD sync-wave within the normal sync (NOT a PreSync hook, which
+    # would run before the ServiceAccount/ConfigMap this Job depends on exist):
+    #   wave 0 = ServiceAccount/ConfigMap/Service, wave 1 = this Job, wave 2 = Deployment.
+    # So schema is migrated once, after its deps exist and before the app rolls out.
+    # Replace=true recreates the (immutable) Job when the image changes, so new
+    # migrations run on each deploy.
+    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/sync-options: Replace=true
 spec:
   backoffLimit: 3
   activeDeadlineSeconds: 600
-  ttlSecondsAfterFinished: 600
   template:
     metadata:
       labels:

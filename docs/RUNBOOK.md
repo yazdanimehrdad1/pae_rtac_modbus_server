@@ -676,29 +676,82 @@ IP (A6), and the WIF provider string (A9). The deployer email is
   kubectl get nodes            # lists nodes → you're connected
   ```
 - [ ] **C3. Create the namespace and the app Secret** (the one thing not in git)
-  ```bash
-  kubectl create namespace rtac-modbus-prod
-  kubectl -n rtac-modbus-prod create secret generic pae-rtac-server-secrets \
-    --from-literal=POSTGRES_PASSWORD="$(gcloud secrets versions access latest --secret=rtac-postgres-password)" \
-    --from-literal=REDIS_PASSWORD=""
-  ```
+  - **Bash / Git Bash:**
+    ```bash
+    kubectl create namespace rtac-modbus-prod
+    kubectl -n rtac-modbus-prod create secret generic pae-rtac-server-secrets \
+      --from-literal=POSTGRES_PASSWORD="$(gcloud secrets versions access latest --secret=rtac-postgres-password)" \
+      --from-literal=REDIS_PASSWORD=""
+    ```
+  - **Windows PowerShell** (no `\` continuations; capture the password first):
+    ```powershell
+    kubectl create namespace rtac-modbus-prod
+    $pgpw = gcloud secrets versions access latest --secret=rtac-postgres-password
+    kubectl -n rtac-modbus-prod create secret generic pae-rtac-server-secrets --from-literal=POSTGRES_PASSWORD="$pgpw" --from-literal=REDIS_PASSWORD=""
+    ```
 - [ ] **C4. Install ArgoCD** (once per cluster)
   ```bash
   kubectl create namespace argocd
   kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
   ```
-  Optional — open the ArgoCD UI:
+  Optional — open the ArgoCD UI. First get the initial admin password:
+  - **Bash / Git Bash:**
+    ```bash
+    kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
+    ```
+  - **Windows PowerShell** (no `base64` command; decode via .NET — kept as a single
+    line so it can't break when pasted):
+    ```powershell
+    [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String((kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}")))
+    ```
+  Then, in a **separate terminal** (this command blocks to keep the tunnel open):
   ```bash
-  kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
   kubectl -n argocd port-forward svc/argocd-server 8080:443
-  # browse https://localhost:8080  (user: admin)
   ```
-  If your repo is **private**: ArgoCD UI → Settings → Repositories → Connect repo,
-  add a token/deploy key so ArgoCD can read it.
-- [ ] **C5. Register the app with ArgoCD**
+  **Log in at https://localhost:8080:**
+  - **Username:** `admin`
+  - **Password:** the auto-generated `argocd-initial-admin-secret` value. Reprint it
+    anytime with (PowerShell):
+    ```powershell
+    [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String((kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}")))
+    ```
+  - The browser warns about the self-signed cert → **Advanced → proceed**.
+  - Keep the `port-forward` terminal running while using the UI (Ctrl+C drops it).
+  - Recommended once in: change the password (**User Info → Update Password**), then
+    delete the initial secret: `kubectl -n argocd delete secret argocd-initial-admin-secret`.
+
+  **If your repo is private, connect it before C5** (else the Application shows
+  `ComparisonError: repository not accessible`):
+
+  1. **Create a GitHub token (read-only on this repo).** GitHub → **Settings** →
+     **Developer settings** → **Personal access tokens** → **Fine-grained tokens** →
+     **Generate new token**. Name it `argocd-rtac`, set an expiration, **Resource
+     owner** = your account, **Repository access** = *Only select repositories* →
+     this repo, and **Repository permissions** → **Contents: Read-only**. Generate and
+     copy the token (`github_pat_...`) — shown only once.
+     (Classic-token alternative: Tokens (classic) → scope `repo`.)
+  2. **Connect it in ArgoCD.** UI → **Settings → Repositories → + CONNECT REPO** →
+     method **VIA HTTPS**:
+     - Type `git`, Project `default`
+     - Repository URL: `https://github.com/<owner>/<repo>.git`
+     - Username: your GitHub username (any non-empty value; the token authenticates)
+     - Password: the token from step 1
+     - **CONNECT** → the row should read **Connection status: Successful**.
+- [ ] **C5. Register the app with ArgoCD.** Run this **from the repo root** — the
+  `k8s/...` path is relative, so it fails with "path does not exist" if your shell is
+  elsewhere (your prompt shows the current folder; `~` means home, not the repo).
   ```bash
+  cd "C:\Users\yazda\OneDrive\Desktop\pae-microservices-dev\rtac_modbus_server"
   kubectl apply -f k8s/argocd/application-prod.yaml
   ```
+  (Or from anywhere, use the full path:
+  `kubectl apply -f "C:\...\rtac_modbus_server\k8s\argocd\application-prod.yaml"`.)
+  Expected: `application.argoproj.io/pae-rtac-server-prod created`. Then check it:
+  ```bash
+  kubectl -n argocd get applications
+  ```
+  > The same "run from the repo root" rule applies to every `kubectl ... -f k8s/...`,
+  > `kubectl apply -k k8s/...`, and `make`/`.\make.ps1` command.
 - [ ] **C6. Verify**
   ```bash
   kubectl -n rtac-modbus-prod get pods           # app + sidecar Running

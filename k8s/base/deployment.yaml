@@ -2,6 +2,9 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: pae-rtac-server
+  annotations:
+    # Roll out only after the migration Job (wave 1) completes.
+    argocd.argoproj.io/sync-wave: "2"
 spec:
   # replicas is overridden per overlay; leader election keeps a single poller.
   replicas: 2
