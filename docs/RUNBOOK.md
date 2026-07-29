@@ -632,9 +632,30 @@ IP (A6), and the WIF provider string (A9). The deployer email is
   git checkout main && git pull
   git checkout -b dev && git push -u origin dev
   ```
-- [ ] **B4. (Recommended) Protect `main`.** Repo → **Settings** → **Branches** →
-  **Add branch ruleset** → target `main` → require a pull request and require the
-  **CI** check to pass before merging.
+- [ ] **B4. Protect `main` (branch ruleset).** Repo → **Settings** → **Branches** →
+  **Add branch ruleset** → target `main`. What to enable depends on your workflow —
+  and it interacts with CD, because **`cd-prod.yml` pushes the image-tag-bump commit
+  directly to `main`** (with `[skip ci]`).
+
+  **Now — with the current push-to-`main` deploy flow (recommended for solo):**
+  enable only the low-friction guards, which don't block direct pushes:
+  - ✅ **Block force pushes** — prevents history rewrites on `main`.
+  - ✅ **Restrict deletions** — `main` can't be deleted.
+
+  Do **not** yet enable **Require a pull request before merging** or **Require status
+  checks to pass**: both block direct pushes to `main`, which would break CD's tag-bump
+  commit (and the `[skip ci]` bump has no checks for a status-check rule to see).
+
+  **Future — when you move to a branch → PR → merge workflow** (e.g. with a teammate),
+  tighten to the standard gates *and adjust CD accordingly*:
+  - Enable **Require a pull request before merging** + **Require status checks to pass**
+    (select the **CI** checks).
+  - Because CD still needs to write the tag bump to `main`, either add the GitHub
+    Actions bot to the ruleset's **bypass list**, or change `cd-prod.yml` to open a PR
+    for the tag bump instead of pushing (or move image-tag updates to ArgoCD Image
+    Updater so CI never writes to `main`).
+  - Optionally add **Require signed commits** (needs commit-signing setup) and, once
+    real tests exist, code-scanning / coverage gates.
 
 ---
 
