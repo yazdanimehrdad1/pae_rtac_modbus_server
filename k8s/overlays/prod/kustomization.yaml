@@ -12,7 +12,7 @@ resources:
 images:
 - name: pae-rtac-server
   newName: us-central1-docker.pkg.dev/prd-pae-rtac-server/pae/pae-rtac-server
-  newTag: 7a7b4a6116cbb43e60c593a98cfa9b33f35929fc
+  newTag: 1de513adadc638b99e20881ea5b4c19a8fc3b0f1
 
 replicas:
 - count: 2
