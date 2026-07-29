@@ -1,6 +1,5 @@
 """Site helper functions for comprehensive DB reads."""
 
-from typing import Optional
 
 from sqlalchemy import select
 
@@ -20,7 +19,7 @@ from schemas.db_models.orm_models import Device, DevicePoint, Site
 logger = get_logger(__name__)
 
 
-async def get_complete_site_data_with_points(site_id: int) -> Optional[SiteComprehensiveResponse]:
+async def get_complete_site_data_with_points(site_id: int) -> SiteComprehensiveResponse | None:
     """
     Get a site with devices and their categorized device points.
     Used by the API's comprehensive site endpoint and the scheduler/poller.
@@ -86,44 +85,44 @@ def _build_coordinates_and_location(site):
 
 
 def _site_base_kwargs(site, coordinates, location) -> dict:
-    return dict(
-        site_id=site.id,
-        client_id=site.client_id,
-        name=site.name,
-        location=location,
-        operator=site.operator,
-        capacity=site.capacity,
-        device_count=site.device_count,
-        description=site.description,
-        coordinates=coordinates,
-        created_at=site.created_at,
-        updated_at=site.updated_at,
-        last_update=site.last_update,
-    )
+    return {
+        "site_id": site.id,
+        "client_id": site.client_id,
+        "name": site.name,
+        "location": location,
+        "operator": site.operator,
+        "capacity": site.capacity,
+        "device_count": site.device_count,
+        "description": site.description,
+        "coordinates": coordinates,
+        "created_at": site.created_at,
+        "updated_at": site.updated_at,
+        "last_update": site.last_update,
+    }
 
 
 def _device_base_kwargs(device) -> dict:
     scan_ranges = None
     if device.scan_ranges:
         scan_ranges = DeviceScanRanges.model_validate(device.scan_ranges)
-    return dict(
-        device_id=device.device_id,
-        site_id=device.site_id,
-        name=device.name,
-        type=device.type,
-        vendor=device.vendor,
-        model=device.model,
-        host=device.host,
-        port=device.port,
-        timeout=device.timeout,
-        server_address=device.server_address,
-        description=device.description,
-        poll_enabled=device.poll_enabled if device.poll_enabled is not None else True,
-        read_from_aggregator=device.read_from_aggregator if device.read_from_aggregator is not None else True,
-        protocol=device.protocol,
-        created_at=device.created_at,
-        updated_at=device.updated_at,
-        scan_ranges=scan_ranges,
-        scan_ranges_locked=device.scan_ranges_locked or False,
-        modbus_address_mode=device.modbus_address_mode,
-    )
+    return {
+        "device_id": device.device_id,
+        "site_id": device.site_id,
+        "name": device.name,
+        "type": device.type,
+        "vendor": device.vendor,
+        "model": device.model,
+        "host": device.host,
+        "port": device.port,
+        "timeout": device.timeout,
+        "server_address": device.server_address,
+        "description": device.description,
+        "poll_enabled": device.poll_enabled if device.poll_enabled is not None else True,
+        "read_from_aggregator": device.read_from_aggregator if device.read_from_aggregator is not None else True,
+        "protocol": device.protocol,
+        "created_at": device.created_at,
+        "updated_at": device.updated_at,
+        "scan_ranges": scan_ranges,
+        "scan_ranges_locked": device.scan_ranges_locked or False,
+        "modbus_address_mode": device.modbus_address_mode,
+    }

@@ -1,15 +1,9 @@
 """Device management endpoints."""
 
-from typing import List, Literal
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query, status
 
-from schemas.api_models import (
-    DeviceCreateRequest,
-    DeviceUpdate,
-    DeviceWithPoints,
-    DeviceDeleteResponse,
-)
 from api.controllers.devices import (
     create_device,
     delete_device,
@@ -18,8 +12,14 @@ from api.controllers.devices import (
     restore_device,
     update_device,
 )
-from utils.exceptions import AppError
 from logger import get_logger
+from schemas.api_models import (
+    DeviceCreateRequest,
+    DeviceDeleteResponse,
+    DeviceUpdate,
+    DeviceWithPoints,
+)
+from utils.exceptions import AppError
 
 router = APIRouter(prefix="/devices", tags=["devices"])
 logger = get_logger(__name__)
@@ -27,23 +27,23 @@ logger = get_logger(__name__)
 
 @router.get(
     "/site/{site_id}/devices",
-    response_model=List[DeviceWithPoints],
+    response_model=list[DeviceWithPoints],
     summary="List all devices at a site",
 )
 async def get_all_devices_endpoint(
     site_id: int,
     include_deleted: bool = Query(False, description="Include soft-deleted devices"),
-) -> List[DeviceWithPoints]:
+) -> list[DeviceWithPoints]:
     try:
         return await get_all_devices(site_id, include_deleted=include_deleted)
     except AppError as e:
         detail = {"error": type(e).__name__, "message": e.message}
         if e.payload:
             detail.update(e.payload)
-        raise HTTPException(status_code=e.http_status_code, detail=detail)
+        raise HTTPException(status_code=e.http_status_code, detail=detail) from e
     except Exception as e:
         logger.error(f"Unexpected error: {e}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An internal server error occurred")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An internal server error occurred") from e
 
 
 @router.post(
@@ -59,10 +59,10 @@ async def create_new_device(site_id: int, device: DeviceCreateRequest) -> Device
         detail = {"error": type(e).__name__, "message": e.message}
         if e.payload:
             detail.update(e.payload)
-        raise HTTPException(status_code=e.http_status_code, detail=detail)
+        raise HTTPException(status_code=e.http_status_code, detail=detail) from e
     except Exception as e:
         logger.error(f"Unexpected error: {e}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An internal server error occurred")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An internal server error occurred") from e
 
 
 @router.get(
@@ -81,10 +81,10 @@ async def get_device(
         detail = {"error": type(e).__name__, "message": e.message}
         if e.payload:
             detail.update(e.payload)
-        raise HTTPException(status_code=e.http_status_code, detail=detail)
+        raise HTTPException(status_code=e.http_status_code, detail=detail) from e
     except Exception as e:
         logger.error(f"Unexpected error: {e}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An internal server error occurred")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An internal server error occurred") from e
 
 
 @router.put(
@@ -101,10 +101,10 @@ async def update_existing_device(
         detail = {"error": type(e).__name__, "message": e.message}
         if e.payload:
             detail.update(e.payload)
-        raise HTTPException(status_code=e.http_status_code, detail=detail)
+        raise HTTPException(status_code=e.http_status_code, detail=detail) from e
     except Exception as e:
         logger.error(f"Unexpected error: {e}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An internal server error occurred")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An internal server error occurred") from e
 
 
 @router.delete(
@@ -127,10 +127,10 @@ async def delete_existing_device(
         detail = {"error": type(e).__name__, "message": e.message}
         if e.payload:
             detail.update(e.payload)
-        raise HTTPException(status_code=e.http_status_code, detail=detail)
+        raise HTTPException(status_code=e.http_status_code, detail=detail) from e
     except Exception as e:
         logger.error(f"Unexpected error: {e}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An internal server error occurred")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An internal server error occurred") from e
 
     if deleted_device is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Device with id {device_id} not found in site '{site_id}'")
@@ -150,7 +150,7 @@ async def restore_existing_device(site_id: int, device_id: int) -> DeviceWithPoi
         detail = {"error": type(e).__name__, "message": e.message}
         if e.payload:
             detail.update(e.payload)
-        raise HTTPException(status_code=e.http_status_code, detail=detail)
+        raise HTTPException(status_code=e.http_status_code, detail=detail) from e
     except Exception as e:
         logger.error(f"Unexpected error: {e}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An internal server error occurred")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An internal server error occurred") from e

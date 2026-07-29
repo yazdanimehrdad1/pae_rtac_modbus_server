@@ -5,16 +5,17 @@ Handles CRUD operations for sites table.
 Uses SQLAlchemy 2.0+ async ORM.
 """
 
-from datetime import datetime, timezone
-from typing import Literal, Optional, List
+from datetime import UTC, datetime
+from typing import Literal
+
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from db.connection import get_async_session_factory
-from schemas.api_models import SiteCreateRequest, SiteUpdateRequest, SiteResponse
-from schemas.db_models.orm_models import Device, DevicePoint, Site
-from utils.exceptions import ConflictError, NotFoundError, ValidationError, InternalError
 from logger import get_logger
+from schemas.api_models import SiteCreateRequest, SiteResponse, SiteUpdateRequest
+from schemas.db_models.orm_models import Device, DevicePoint, Site
+from utils.exceptions import ConflictError, InternalError, NotFoundError, ValidationError
 
 logger = get_logger(__name__)
 
@@ -101,7 +102,7 @@ async def create_site(site: SiteCreateRequest) -> SiteResponse:
             raise
 
 
-async def get_all_sites(include_deleted: bool = False) -> List[SiteResponse]:
+async def get_all_sites(include_deleted: bool = False) -> list[SiteResponse]:
     session_factory = get_async_session_factory()
     async with session_factory() as session:
         query = select(Site).order_by(Site.created_at.desc())
@@ -111,7 +112,7 @@ async def get_all_sites(include_deleted: bool = False) -> List[SiteResponse]:
         return [_site_to_response(site) for site in result.scalars().all()]
 
 
-async def get_site_by_id(site_id: int, include_deleted: bool = False) -> Optional[SiteResponse]:
+async def get_site_by_id(site_id: int, include_deleted: bool = False) -> SiteResponse | None:
     session_factory = get_async_session_factory()
     async with session_factory() as session:
         query = select(Site).where(Site.id == site_id)
@@ -151,7 +152,7 @@ async def update_site(site_id: int, site_update: SiteUpdateRequest) -> SiteRespo
             if site_update.coordinates is not None:
                 site.coordinates = {"lat": site_update.coordinates.lat, "lng": site_update.coordinates.lng}
 
-            site.last_update = datetime.now(timezone.utc)
+            site.last_update = datetime.now(UTC)
 
             await session.commit()
             await session.refresh(site)
@@ -162,7 +163,7 @@ async def update_site(site_id: int, site_update: SiteUpdateRequest) -> SiteRespo
         except IntegrityError as e:
             await session.rollback()
             if "unique" in str(e).lower() or "duplicate" in str(e).lower():
-                logger.warning(f"Site name already exists")
+                logger.warning("Site name already exists")
                 raise ConflictError("Site with this name already exists") from e
             else:
                 logger.error(f"Database integrity error updating site: {e}")
@@ -177,7 +178,7 @@ async def delete_site(
     site_id: int,
     mode: Literal["soft", "hard"] = "soft",
     confirm: bool = False,
-) -> Optional[SiteResponse]:
+) -> SiteResponse | None:
     if mode == "hard" and not confirm:
         raise ValidationError("Set confirm=true to permanently delete a site and all its data")
 
@@ -194,7 +195,7 @@ async def delete_site(
             site_response = _site_to_response(site)
 
             if mode == "soft":
-                now = datetime.now(timezone.utc)
+                now = datetime.now(UTC)
                 site.deleted_at = now
                 site_response.deleted_at = now
 
@@ -249,7 +250,7 @@ async def delete_site(
             raise
 
 
-async def restore_site(site_id: int) -> Optional[SiteResponse]:
+async def restore_site(site_id: int) -> SiteResponse | None:
     """Restore a soft-deleted site, all its soft-deleted devices, and their soft-deleted points."""
     session_factory = get_async_session_factory()
     async with session_factory() as session:

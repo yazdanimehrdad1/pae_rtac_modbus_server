@@ -2,9 +2,8 @@
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import List
 
-from db.register_readings import insert_register_readings_batch, insert_register_reading_single
+from db.register_readings import insert_register_reading_single, insert_register_readings_batch
 from logger import get_logger
 from schemas.db_models.orm_models import DevicePointsReading
 
@@ -21,7 +20,7 @@ class DbStoreResult:
 async def store_device_data_in_db(
     device_id: int,
     site_id: str,
-    points_readings_list: List[DevicePointsReading],
+    points_readings_list: list[DevicePointsReading],
     timestamp_dt: datetime,
     device_name: str = "",
 ) -> DbStoreResult:

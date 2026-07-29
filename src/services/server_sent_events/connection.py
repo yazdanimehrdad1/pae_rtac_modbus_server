@@ -1,7 +1,7 @@
 """Persistent Modbus TCP connection for SSE streaming sessions."""
 
 import asyncio
-from typing import List, Literal
+from typing import Literal
 
 from pymodbus.client import ModbusTcpClient
 
@@ -35,7 +35,7 @@ class LiveStreamRawRegistersConnection:
         address: int,
         count: int,
         device_id: int,
-    ) -> List[int]:
+    ) -> list[int]:
         if kind == "holding":
             fn = self._client.read_holding_registers
         else:

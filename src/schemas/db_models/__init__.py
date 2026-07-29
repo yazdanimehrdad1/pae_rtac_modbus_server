@@ -2,11 +2,11 @@
 
 from schemas.db_models.orm_models import (
     Base,
-    Site,
     Device,
     DevicePoint,
     DevicePointsReading,
     RegisterReadingTranslated,
+    Site,
 )
 
 __all__ = [

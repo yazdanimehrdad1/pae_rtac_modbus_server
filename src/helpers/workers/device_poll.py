@@ -1,11 +1,10 @@
 """Device polling helper functions."""
 
-from typing import List
 
-from services.modbus.client import ModbusClient
-from services.modbus.modbus_utills import ModbusUtils
 from logger import get_logger
 from schemas.api_models import DeviceListItem, ModbusRegisterValues, PollingConfig
+from services.modbus.client import ModbusClient
+from services.modbus.modbus_utills import ModbusUtils
 
 logger = get_logger(__name__)
 
@@ -24,7 +23,7 @@ def get_direct_modbus_utils(host: str, port: int) -> ModbusUtils:
     return modbus_utils
 
 
-async def get_enabled_devices_to_poll(site_devices: List[DeviceListItem], site_name: str = "") -> List[DeviceListItem]:
+async def get_enabled_devices_to_poll(site_devices: list[DeviceListItem], site_name: str = "") -> list[DeviceListItem]:
     """
     Get list of devices to poll from database, filtered by poll_enabled.
 

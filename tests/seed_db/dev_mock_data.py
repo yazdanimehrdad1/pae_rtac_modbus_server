@@ -233,5 +233,5 @@ DEVICE_CONFIGS: dict[str, list[dict]] = {
 #             ],
 #         },
 #     ],
-# 
+#
 }

@@ -1,11 +1,10 @@
 """Typed helpers for API models."""
 
 from datetime import datetime
-from typing import Literal, Optional, TypeAlias, Union, get_args
+from typing import Literal, TypeAlias, get_args
+
+from pydantic import BaseModel
 from typing_extensions import TypedDict
-
-from pydantic import BaseModel, Field
-
 
 # Supported Modbus data types. These must stay in sync with the decode branches in
 # helpers/modbus/modbus_data_mapping._decode_modbus_point_value — anything else decodes
@@ -108,10 +107,10 @@ class DevicePointData(BaseModel):
     size: int
     data_type: DataType
     category: Literal["NATIVE", "STANDARDIZED", "VIRTUAL"] = "NATIVE"
-    scale_factor: Optional[float] = None
-    unit: Optional[str] = None
-    bitfield_detail: Optional[dict[str, str]] = None
-    enum_detail: Optional[dict[str, str]] = None
+    scale_factor: float | None = None
+    unit: str | None = None
+    bitfield_detail: dict[str, str] | None = None
+    enum_detail: dict[str, str] | None = None
     byte_order: str = "big-endian"
     word_order: str = "msw_first"
 
@@ -124,7 +123,7 @@ class PollResult(TypedDict, total=False):
     cache_failed: int
     db_successful: int
     db_failed: int
-    error: Optional[str]
+    error: str | None
 
 
 ModbusRegisterValues: TypeAlias = list[int | bool]
@@ -148,7 +147,7 @@ EnumDetailMap: TypeAlias = dict[str, str]
 EnumPayload: TypeAlias = dict[str, EnumEntry]
 
 
-CalculatedValue: TypeAlias = Union[BitfieldPayload, EnumPayload, float]
+CalculatedValue: TypeAlias = BitfieldPayload | EnumPayload | float
 
 
 class MergedPointMetadataToReading(TypedDict):
@@ -156,11 +155,11 @@ class MergedPointMetadataToReading(TypedDict):
     register_address: int
     name: str
     data_type: str
-    unit: Optional[str]
-    scale_factor: Optional[float]
+    unit: str | None
+    scale_factor: float | None
     timestamp: datetime
-    derived_value: Optional[float]
-    calculated_value: Optional[CalculatedValue]
+    derived_value: float | None
+    calculated_value: CalculatedValue | None
 
 
 class LatestDevicePointReadingModel(BaseModel):
@@ -168,13 +167,13 @@ class LatestDevicePointReadingModel(BaseModel):
     register_address: int
     name: str
     data_type: str
-    unit: Optional[str]
-    scale_factor: Optional[float]
+    unit: str | None
+    scale_factor: float | None
     timestamp: datetime
-    derived_value: Optional[float]
-    bitfield_detail: Optional[BitfieldDetailMap] = None
-    enum_detail: Optional[EnumDetailMap] = None
-    bit_count: Optional[int] = None
+    derived_value: float | None
+    bitfield_detail: BitfieldDetailMap | None = None
+    enum_detail: EnumDetailMap | None = None
+    bit_count: int | None = None
 
 
 class MergedPointMetadataToReadingModel(BaseModel):
@@ -182,14 +181,14 @@ class MergedPointMetadataToReadingModel(BaseModel):
     register_address: int
     name: str
     data_type: str
-    unit: Optional[str]
-    scale_factor: Optional[float]
+    unit: str | None
+    scale_factor: float | None
     timestamp: datetime
-    derived_value: Optional[float]
-    calculated_value: Optional[CalculatedValue]
+    derived_value: float | None
+    calculated_value: CalculatedValue | None
 
 
 class PointReadSeriesItemModel(BaseModel):
     timestamp: datetime
-    raw_value: Optional[float] = None
-    calculated_value: Optional[CalculatedValue]
+    raw_value: float | None = None
+    calculated_value: CalculatedValue | None

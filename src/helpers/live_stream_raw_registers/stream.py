@@ -2,8 +2,8 @@
 
 import asyncio
 import time
-from datetime import datetime, timezone
-from typing import AsyncGenerator, Optional
+from collections.abc import AsyncGenerator
+from datetime import UTC, datetime
 
 from pydantic import BaseModel
 
@@ -20,9 +20,9 @@ from schemas.api_models.live_stream_raw_registers import (
 from services.server_sent_events import (
     LiveStreamRawRegistersConnection,
     LiveStreamRawRegistersConnectionError,
+    session_store,
     translate_live_stream_raw_registers_error,
 )
-from services.server_sent_events import session_store
 
 _history_store = LiveStreamHistoryStore()
 
@@ -34,8 +34,8 @@ def _sse(event: str, payload: BaseModel) -> str:
 async def live_stream_raw_registers_generator(
     params: LiveStreamRawRegistersParams,
     *,
-    existing_session_id: Optional[str] = None,
-    existing_cancel_event: Optional[asyncio.Event] = None,
+    existing_session_id: str | None = None,
+    existing_cancel_event: asyncio.Event | None = None,
 ) -> AsyncGenerator[str, None]:
     if existing_session_id and existing_cancel_event:
         session_id, cancel_event = existing_session_id, existing_cancel_event
@@ -79,14 +79,14 @@ async def live_stream_raw_registers_generator(
                 try:
                     await _history_store.push(
                         session_id=session_id,
-                        timestamp=datetime.now(timezone.utc).isoformat(),
+                        timestamp=datetime.now(UTC).isoformat(),
                         values=registers_raw,
                     )
                 except Exception:
                     pass  # history write must never kill the SSE stream
                 registers = build_registers(registers_raw, params)
                 yield _sse("poll", LiveStreamRawRegistersEvent(
-                    timestamp=datetime.now(timezone.utc),
+                    timestamp=datetime.now(UTC),
                     poll=poll_count,
                     registers=registers,
                 ))
@@ -100,7 +100,7 @@ async def live_stream_raw_registers_generator(
             try:
                 await asyncio.wait_for(cancel_event.wait(), timeout=remaining)
                 break  # cancel was set during sleep
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 pass   # normal interval expiry
 
     finally:

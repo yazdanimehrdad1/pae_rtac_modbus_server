@@ -1,10 +1,10 @@
 """Datetime parsing and time-range helpers."""
 
-from datetime import datetime, timedelta, timezone
-from typing import Literal, Optional
+from datetime import UTC, datetime, timedelta
+from typing import Literal
 
 
-def parse_iso_datetime(value: str) -> Optional[datetime]:
+def parse_iso_datetime(value: str) -> datetime | None:
     try:
         return datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError:
@@ -33,5 +33,5 @@ def resolve_time_range(time_range: str) -> tuple[datetime, datetime]:
         raise ValueError(
             f"Unknown time_range '{time_range}'. Valid values: {list(_TIME_RANGE_DELTAS)}"
         )
-    end = datetime.now(timezone.utc)
+    end = datetime.now(UTC)
     return end - delta, end

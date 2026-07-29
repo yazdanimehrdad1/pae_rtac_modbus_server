@@ -25,6 +25,28 @@ the DAS data-acquisition API (`pae-das-api`), or any downstream dashboard/analyt
 - Lint/format: `make lint` (ruff + mypy) / `make format` (black + ruff).
 - Migrate manually: `make migrate` (= `python scripts/migrate_db.py`).
 
+## Linting is CI-enforced — every change must leave `ruff check` clean
+`.github/workflows/ci.yml` runs `ruff check src/ tests/` and **fails the build on any
+error** (mypy also runs but is currently non-blocking). Before finishing any Python
+change, make sure ruff passes with zero errors. Config lives in `pyproject.toml` under
+`[tool.ruff.lint]` (line-length 100; rule sets `E,W,F,I,B,C4,UP`; `E501`/`B008` ignored).
+Concretely, write code that already satisfies these:
+- **Modern typing (UP):** use built-in generics and unions — `list[int]`, `dict[str, X]`,
+  `X | None` — NOT `typing.List`/`Dict`/`Optional`/`Union`. Don't import those from `typing`.
+- **Sorted imports (I001):** stdlib → third-party → first-party, each group alphabetized.
+- **Exception chaining (B904):** inside an `except`, always chain — `raise HTTPException(...)
+  from err` when the caught exception is meaningful, or `... from None` for a deliberate
+  translation (e.g. converting a lookup miss to a 404). Never a bare `raise X(...)` in `except`.
+- **No trailing/blank-line whitespace (W29x)**, files end with a newline, no unused imports (F401).
+- If a rule genuinely shouldn't apply, add a scoped `# noqa: <CODE>` with a reason — don't
+  broaden the global ignore list without asking.
+- No local Python here (the `.venv` is a broken shim). Use the Docker-backed make
+  targets: `make lint` / `.\make.ps1 lint` (check) and `make lint-fix` /
+  `.\make.ps1 lint-fix` (auto-fix imports/typing/whitespace; B904 must be fixed by hand).
+- A pre-commit hook (`.githooks/pre-commit`) runs ruff in Docker and blocks commits with
+  lint errors. Enable it once per clone: `git config core.hooksPath .githooks` (needs
+  Docker running; bypass in emergencies with `git commit --no-verify`).
+
 ## What this service owns
 - Postgres/TimescaleDB tables: `sites`, `devices`, `device_points`, `point_readings`,
   `register_readings_translated`, `schema_migrations`. (`device_register_map` and the

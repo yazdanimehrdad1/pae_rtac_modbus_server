@@ -1,8 +1,9 @@
 """Cache test endpoints for manual testing."""
 
+from typing import Any
+
 from fastapi import APIRouter
 from pydantic import BaseModel
-from typing import Any, Optional
 
 from cache import cache, check_redis_health
 
@@ -12,7 +13,7 @@ router = APIRouter()
 class CacheSetRequest(BaseModel):
     key: str
     value: Any
-    ttl: Optional[int] = None
+    ttl: int | None = None
 
 
 class CacheGetResponse(BaseModel):
@@ -77,19 +78,19 @@ async def cache_exists(key: str):
 
 
 @router.get("/cache/keys")
-async def cache_list_keys(pattern: Optional[str] = None):
+async def cache_list_keys(pattern: str | None = None):
     """
     List all cached keys with TTL, optionally filtered by pattern.
-    
+
     Args:
-        pattern: Optional pattern to match (e.g., "poll:*"). 
+        pattern: Optional pattern to match (e.g., "poll:*").
                 If not provided, returns all keys.
-    
+
     Returns:
         Dictionary with list of keys (with TTL) and count
     """
     keys = await cache.list_keys(pattern=pattern)
-    
+
     # Get TTL for each key
     keys_with_ttl = []
     for key in keys:
@@ -98,7 +99,7 @@ async def cache_list_keys(pattern: Optional[str] = None):
             "key": key,
             "ttl": ttl  # TTL in seconds, None if key doesn't exist or has no TTL
         })
-    
+
     return {
         "keys": keys_with_ttl,
         "count": len(keys),
@@ -110,10 +111,10 @@ async def cache_list_keys(pattern: Optional[str] = None):
 async def cache_clear_all():
     """
     Delete all cache keys and associated data.
-    
+
     WARNING: This is a destructive operation that will permanently delete
     all cached data. Use with caution.
-    
+
     Returns:
         Dictionary with number of keys deleted
     """

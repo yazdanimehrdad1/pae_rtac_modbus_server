@@ -1,6 +1,6 @@
 """Modbus live stream raw registers endpoint — streams register reads over SSE."""
 
-from typing import Literal, Optional
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
@@ -45,7 +45,7 @@ async def start_live_stream_raw_registers(params: LiveStreamRawRegistersParams):
 
 @router.get("/sessions", response_model=LiveStreamSessionsResponse)
 async def list_live_stream_sessions(
-    status: Optional[Literal["active", "stopped"]] = Query(None, description="Filter by status. Omit to return all.")
+    status: Literal["active", "stopped"] | None = Query(None, description="Filter by status. Omit to return all.")
 ):
     """
     List sessions with their configs and status.

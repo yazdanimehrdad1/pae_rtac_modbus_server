@@ -1,6 +1,6 @@
 """Helpers for calculating derived read values."""
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from schemas.api_models.types import (
     BitfieldDetailMap,
@@ -12,7 +12,7 @@ from schemas.api_models.types import (
 )
 
 
-def get_bitfield_value(value: Optional[float], bit_count: int) -> List[int]:
+def get_bitfield_value(value: float | None, bit_count: int) -> list[int]:
     """
     Convert an integer-like value into a list of bits (LSB -> MSB).
 
@@ -25,7 +25,7 @@ def get_bitfield_value(value: Optional[float], bit_count: int) -> List[int]:
     return [(int_value >> bit) & 1 for bit in range(bit_count)]
 
 
-def normalize_detail_keys(detail: Optional[BitfieldDetailMap | EnumDetailMap], prefix: str) -> Dict[str, Any]:
+def normalize_detail_keys(detail: BitfieldDetailMap | EnumDetailMap | None, prefix: str) -> dict[str, Any]:
     """
     Normalize detail keys to include a prefix like "bit-" or "enum-".
 
@@ -35,7 +35,7 @@ def normalize_detail_keys(detail: Optional[BitfieldDetailMap | EnumDetailMap], p
     """
     if not detail:
         return {}
-    normalized: Dict[str, Any] = {}
+    normalized: dict[str, Any] = {}
     for key, value in detail.items():
         normalized[key if key.startswith(prefix) else f"{prefix}{key}"] = value
     return normalized
@@ -69,7 +69,7 @@ def build_bitfield_payload(
     return payload
 
 
-def _parse_enum_detail(raw: str) -> Tuple[Optional[int], Optional[str]]:
+def _parse_enum_detail(raw: str) -> tuple[int | None, str | None]:
     for separator in (":", "|", ","):
         if separator in raw:
             value_str, detail = raw.split(separator, 1)
@@ -83,7 +83,7 @@ def _parse_enum_detail(raw: str) -> Tuple[Optional[int], Optional[str]]:
     return None, raw
 
 
-def translate_enum_value(derived_value: float, enum_detail: EnumDetailMap) -> Optional[str]:
+def translate_enum_value(derived_value: float, enum_detail: EnumDetailMap) -> str | None:
     """
     Return the human-readable label for derived_value from an enum_detail map.
 
@@ -112,14 +112,14 @@ def translate_enum_value(derived_value: float, enum_detail: EnumDetailMap) -> Op
 def translate_bitfield_to_named_map(
     derived_value: float,
     bitfield_detail: BitfieldDetailMap,
-) -> Dict[str, int]:
+) -> dict[str, int]:
     """
     Returns {label: 0|1} for every named bit in bitfield_detail, ordered by bit position.
     Iterates only the named entries — no need to know total bit count.
     """
     int_value = int(derived_value)
     details = normalize_detail_keys(bitfield_detail, "bit-")
-    result: Dict[str, int] = {}
+    result: dict[str, int] = {}
     for key, label in sorted(details.items()):
         try:
             bit_index = int(key.split("-", 1)[1])
@@ -130,10 +130,10 @@ def translate_bitfield_to_named_map(
 
 
 def translate_reading(
-    derived_value: Optional[float],
-    bitfield_detail: Optional[BitfieldDetailMap],
-    enum_detail: Optional[EnumDetailMap],
-) -> "Optional[Dict[str, int] | str]":
+    derived_value: float | None,
+    bitfield_detail: BitfieldDetailMap | None,
+    enum_detail: EnumDetailMap | None,
+) -> "dict[str, int] | str | None":
     """
     Translate a raw derived_value to a human-readable form using the point's detail maps.
 

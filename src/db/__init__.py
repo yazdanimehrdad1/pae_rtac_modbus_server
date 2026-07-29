@@ -1,16 +1,16 @@
 """Database connection and models."""
 
 from db.connection import (
-    get_db_pool,
-    close_db_pool,
     check_db_health,
-    get_async_engine,
-    get_async_session_factory,
-    get_async_session,
-    close_async_engine,
     close_all_db_connections,
+    close_async_engine,
+    close_db_pool,
+    get_async_engine,
+    get_async_session,
+    get_async_session_factory,
+    get_db_pool,
 )
-from db.session import get_session, execute_in_session
+from db.session import execute_in_session, get_session
 
 __all__ = [
     # Legacy asyncpg functions (for backward compatibility)

@@ -1,7 +1,7 @@
 """Pydantic models for the modbus live stream raw registers feature."""
 
 from datetime import datetime
-from typing import Dict, List, Literal, Optional, Union
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -9,10 +9,10 @@ from schemas.api_models.types import SUPPORTED_NUMERIC_DATA_TYPES, NumericDataTy
 
 
 class LiveStreamRawRegistersRegisterConfig(BaseModel):
-    label: Optional[str] = None
+    label: str | None = None
     data_type: NumericDataType = "int16"
-    byte_order: Optional[Literal["big", "little"]] = None
-    word_order: Optional[Literal["msw_first", "lsw_first"]] = None
+    byte_order: Literal["big", "little"] | None = None
+    word_order: Literal["msw_first", "lsw_first"] | None = None
 
     @field_validator("data_type", mode="before")
     @classmethod
@@ -40,7 +40,7 @@ class LiveStreamRawRegistersParams(BaseModel):
     duration: int = Field(3600, ge=1, le=3600, description="Session length in seconds, max 1 hour")
     byte_order: Literal["big", "little"] = Field("big")
     word_order: Literal["msw_first", "lsw_first"] = Field("msw_first")
-    register_configs: Optional[Dict[str, LiveStreamRawRegistersRegisterConfig]] = Field(
+    register_configs: dict[str, LiveStreamRawRegistersRegisterConfig] | None = Field(
         None,
         description="Optional per-address config, e.g. {\"1400\": {\"label\": \"voltage\", \"data_type\": \"float32\"}}",
     )
@@ -60,7 +60,7 @@ class LiveStreamRawRegistersParams(BaseModel):
 
 
 class LiveStreamRawRegistersRegister(BaseModel):
-    value: Optional[Union[int, float]] = None
+    value: int | float | None = None
     label: str = "unknown"
     data_type: NumericDataType = "int16"
 
@@ -68,7 +68,7 @@ class LiveStreamRawRegistersRegister(BaseModel):
 class LiveStreamRawRegistersEvent(BaseModel):
     timestamp: datetime
     poll: int
-    registers: Dict[str, LiveStreamRawRegistersRegister]
+    registers: dict[str, LiveStreamRawRegistersRegister]
 
 
 class LiveStreamRawRegistersErrorEvent(BaseModel):
@@ -102,7 +102,7 @@ class LiveStreamSessionInfo(BaseModel):
 
 
 class LiveStreamSessionsResponse(BaseModel):
-    sessions: List[LiveStreamSessionInfo]
+    sessions: list[LiveStreamSessionInfo]
 
 
 # --- Simple action response models ---
@@ -118,4 +118,4 @@ class LiveStreamDeleteSessionResponse(BaseModel):
 class LiveStreamDeleteAllSessionsResponse(BaseModel):
     cancelled_active_sessions: int
     deleted_count: int
-    deleted_sessions: List[str]
+    deleted_sessions: list[str]

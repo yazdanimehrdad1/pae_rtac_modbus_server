@@ -1,7 +1,6 @@
 """Device point readings endpoints — query timeseries by device_point_id."""
 
 from datetime import datetime
-from typing import Literal, Optional
 
 from fastapi import APIRouter, HTTPException, Query, status
 
@@ -28,7 +27,7 @@ logger = get_logger(__name__)
 
 # --- Helpers ---
 
-def _parse_point_ids(raw: Optional[str]) -> list[int]:
+def _parse_point_ids(raw: str | None) -> list[int]:
     if not raw:
         return []
     try:
@@ -37,7 +36,7 @@ def _parse_point_ids(raw: Optional[str]) -> list[int]:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="point_ids must be a comma-separated list of integers (e.g. '1,2,3')",
-        )
+        ) from None
 
 
 # --- Endpoints ---
@@ -46,7 +45,7 @@ def _parse_point_ids(raw: Optional[str]) -> list[int]:
 async def get_latest_readings(
     site_id: int,
     device_id: int,
-    point_ids: Optional[str] = Query(None, description="Comma-separated device_point_ids (e.g. '1,2,3'). If omitted, returns all points for the device."),
+    point_ids: str | None = Query(None, description="Comma-separated device_point_ids (e.g. '1,2,3'). If omitted, returns all points for the device."),
     translate: bool = Query(False, description="Translate enum/bitfield values to human-readable form"),
 ):
     """Get the latest reading for each requested device point, keyed by device_point_id."""
@@ -56,7 +55,7 @@ async def get_latest_readings(
         rows = await get_latest_readings_by_point_ids(ids, site_id=site_id, device_id=device_id)
     except Exception as e:
         logger.error("get_latest_readings failed site=%s device=%s point_ids=%s: %s", site_id, device_id, ids, e, exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to retrieve readings")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to retrieve readings") from e
 
     readings = {
         str(row["device_point_id"]): PointLatest.model_validate({
@@ -84,10 +83,10 @@ async def get_latest_readings(
 async def get_timeseries_readings(
     site_id: int,
     device_id: int,
-    point_ids: Optional[str] = Query(None, description="Comma-separated device_point_ids (e.g. '1,2,3'). If omitted, returns all points for the device."),
-    start_time: Optional[datetime] = Query(None, description="Start time in ISO format (e.g. '2025-01-18T08:00:00Z'). Cannot be combined with time_range."),
-    end_time: Optional[datetime] = Query(None, description="End time in ISO format (e.g. '2025-01-18T09:00:00Z'). Cannot be combined with time_range."),
-    time_range: Optional[TimeRange] = Query(None, description="Relative time window ending now: 1H, 6H, 12H, 1D, 2D, 3D, 1W, 1M, 3M. Cannot be combined with start_time/end_time."),
+    point_ids: str | None = Query(None, description="Comma-separated device_point_ids (e.g. '1,2,3'). If omitted, returns all points for the device."),
+    start_time: datetime | None = Query(None, description="Start time in ISO format (e.g. '2025-01-18T08:00:00Z'). Cannot be combined with time_range."),
+    end_time: datetime | None = Query(None, description="End time in ISO format (e.g. '2025-01-18T09:00:00Z'). Cannot be combined with time_range."),
+    time_range: TimeRange | None = Query(None, description="Relative time window ending now: 1H, 6H, 12H, 1D, 2D, 3D, 1W, 1M, 3M. Cannot be combined with start_time/end_time."),
     limit: int = Query(1000, ge=1, le=10000, description="Maximum rows per point (each point gets up to this many readings)"),
     translate: bool = Query(False, description="Translate enum/bitfield values to human-readable form"),
 ):
@@ -124,7 +123,7 @@ async def get_timeseries_readings(
         )
     except Exception as e:
         logger.error("get_timeseries_readings failed site=%s device=%s point_ids=%s: %s", site_id, device_id, ids, e, exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to retrieve timeseries")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to retrieve timeseries") from e
 
     readings: dict[str, PointTimeseries] = {}
     for row in rows:
