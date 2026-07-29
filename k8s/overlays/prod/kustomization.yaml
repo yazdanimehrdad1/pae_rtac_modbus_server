@@ -24,7 +24,7 @@ configMapGenerator:
 - behavior: merge
   literals:
   - LOG_LEVEL=INFO
-  - REDIS_HOST=REPLACE_MEMORYSTORE_PROD_IP
+  - REDIS_HOST=10.93.93.251
   - AGGREGATOR_MODBUS_HOST=REPLACE_AGGREGATOR_PROD_HOST
   name: pae-rtac-server-config
 
@@ -44,8 +44,8 @@ patches:
           initContainers:
             - name: cloud-sql-proxy
               env:
-                - name: INSTANCE_CONNECTION_NAME
-                  value: REPLACE_PROJECT:REGION:rtac-pg-prod
+                - name: prd-pae-rtac-server:us-central1:rtac-pg-prod
+                  value: prd-pae-rtac-server:us-central1:rtac-pg-prod
           containers:
             - name: app
               resources:
@@ -68,8 +68,8 @@ patches:
           initContainers:
             - name: cloud-sql-proxy
               env:
-                - name: INSTANCE_CONNECTION_NAME
-                  value: REPLACE_PROJECT:REGION:rtac-pg-prod
+                - name: prd-pae-rtac-server:us-central1:rtac-pg-prod
+                  value: prd-pae-rtac-server:us-central1:rtac-pg-prod
   target:
     kind: Job
     name: pae-rtac-server-migrate
@@ -79,7 +79,7 @@ patches:
     metadata:
       name: pae-rtac-server
       annotations:
-        iam.gke.io/gcp-service-account: rtac-modbus-prod@REPLACE_PROJECT.iam.gserviceaccount.com
+        iam.gke.io/gcp-service-account: rtac-modbus-prod@prd-pae-rtac-server.iam.gserviceaccount.com
   target:
     kind: ServiceAccount
     name: pae-rtac-server

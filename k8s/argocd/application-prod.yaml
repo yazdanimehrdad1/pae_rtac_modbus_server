@@ -9,7 +9,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: REPLACE_GIT_REPO_URL       # e.g. https://github.com/<org>/rtac_modbus_server.git
+    repoURL: https://github.com/yazdanimehrdad1/pae_rtac_modbus_server.git
     targetRevision: main
     path: k8s/overlays/prod
   destination:
