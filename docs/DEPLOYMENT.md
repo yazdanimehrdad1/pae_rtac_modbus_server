@@ -96,12 +96,12 @@ kubectl apply -k k8s/overlays/prod
 
 ## CI/CD
 
-- **`.github/workflows/ci.yml`** — on PRs/pushes to `main`/`dev`: ruff, mypy
-  (non-blocking until types are clean), migrations + pytest against service
-  containers, docker build, and `kubeconform` on both overlays.
+- **`.github/workflows/ci.yml`** — on PRs targeting `main` and pushes to `main`:
+  ruff, mypy (non-blocking until types are clean), migrations + pytest against
+  service containers, docker build, and `kubeconform` on the prod overlay.
 - **`.github/workflows/cd-prod.yml`** — on push to `main`: WIF auth → build+push
   `:<git-sha>` to Artifact Registry → `kustomize edit set image` in
-  `overlays/prod` → commit `[skip ci]`. `cd-dev.yml` mirrors this for `dev`.
+  `overlays/prod` → commit `[skip ci]`.
 
 Images are tagged by immutable git SHA. The bot commit carries `[skip ci]` so it
 does not retrigger CD.
@@ -114,7 +114,12 @@ does not retrigger CD.
 
 ## Environments
 
-Only `prod` is wired today (pushes to `main`). The `dev` overlay, `cd-dev.yml`,
-and `application-dev.yaml` are scaffolded — enable them by creating the dev GKE
-namespace + Cloud SQL/Memorystore instances, filling the dev overlay
-placeholders, and applying `application-dev.yaml`.
+`prod` is the only environment. `main` is the only long-lived branch: work on a
+short-lived `feat/*` branch, open a PR into `main`, and merging deploys to prod.
+
+There is no staging/dev environment. A scaffolded one (`dev` branch,
+`k8s/overlays/dev`, `cd-dev.yml`, `application-dev.yaml`) was removed because it
+was never wired up — its ArgoCD Application still held a placeholder `repoURL`
+and the overlay had unfilled `REPLACE_*` values for Cloud SQL, Memorystore, and
+the aggregator host, so nothing ever synced it. To add one later, copy the prod
+overlay and `cd-prod.yml`, then stand up the matching GCP resources.
