@@ -2,6 +2,10 @@ apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
   name: pae-rtac-server
+  annotations:
+    # Created after the Deployment (wave 2) exists — an HPA with no scale target
+    # reports Degraded, which would stall the sync if it ran in an earlier wave.
+    argocd.argoproj.io/sync-wave: "3"
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
