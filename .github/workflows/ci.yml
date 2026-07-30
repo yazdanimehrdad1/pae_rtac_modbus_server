@@ -2,9 +2,9 @@ name: CI
 
 on:
   pull_request:
-    branches: [main, dev]
+    branches: [main]
   push:
-    branches: [main, dev]
+    branches: [main]
 
 # Cancel superseded runs on the same ref.
 concurrency:
@@ -122,7 +122,7 @@ jobs:
 
       - name: Validate overlays
         run: |
-          for env in prod dev; do
+          for env in prod; do
             echo "== $env =="
             kustomize build "k8s/overlays/$env" \
               | kubeconform -strict -summary -ignore-missing-schemas \

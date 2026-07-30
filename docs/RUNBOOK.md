@@ -24,7 +24,7 @@ experience assumed. If a term is new, check the **[Glossary](#2-glossary)** firs
    - [6.B One-time setup — GitHub configuration](#6b-github)
    - [6.C One-time setup — bootstrap the cluster](#6c-cluster)
    - [6.D DAILY — deploy to PROD](#6d-prod)
-   - [6.E DAILY — deploy to DEV](#6e-dev)
+   - [6.E DAILY — work on a feature](#6e-feature)
    - [6.F DAILY — run locally (no cloud)](#6f-local)
    - [6.G WHEN THINGS BREAK — rollback & emergencies](#6g-rollback)
    - [6.H OCCASIONAL — rotate the DB password](#6h-rotate)
@@ -57,8 +57,8 @@ So **"deploying" = "making a commit that changes what git says should run."**
   tests, trial build, manifest validation. Answers *"is this change safe?"* It
   never touches the cluster. File: `.github/workflows/ci.yml`.
 - **CD (Continuous Delivery)** = automation that *ships* a change: build the image,
-  push it, update git. Answers *"get it running."* Files:
-  `.github/workflows/cd-prod.yml`, `.github/workflows/cd-dev.yml`.
+  push it, update git. Answers *"get it running."* File:
+  `.github/workflows/cd-prod.yml`.
 
 ### The sequence of one prod deploy, start to finish
 
@@ -90,13 +90,17 @@ the cluster pulls the change to itself. **GitHub never reaches into the cluster.
 
 ### Branch → environment map
 
-| Branch | Workflow      | Overlay             | Namespace          | ArgoCD app             |
-|--------|---------------|---------------------|--------------------|------------------------|
-| `main` | `cd-prod.yml` | `k8s/overlays/prod` | `rtac-modbus-prod` | `pae-rtac-server-prod` |
-| `dev`  | `cd-dev.yml`  | `k8s/overlays/dev`  | `rtac-modbus-dev`  | `pae-rtac-server-dev`  |
+| Branch    | Workflow      | Overlay             | Namespace          | ArgoCD app             |
+|-----------|---------------|---------------------|--------------------|------------------------|
+| `main`    | `cd-prod.yml` | `k8s/overlays/prod` | `rtac-modbus-prod` | `pae-rtac-server-prod` |
+| `feat/*`  | `ci.yml` only | —                   | —                  | — (never deploys)      |
 
-Same image, same base manifests. Only the **overlay** differs per environment
-(replicas, resources, which database, which Redis, log level).
+`main` is the only long-lived branch and the only one that deploys. Feature
+branches run CI via their pull request and deploy nothing until merged.
+
+There is **no dev/staging environment**. If you add one later, it's a second
+overlay + a copy of `cd-prod.yml` + real GCP resources (Cloud SQL, Memorystore,
+namespace) — the overlay alone does nothing without them.
 
 ---
 
@@ -136,12 +140,14 @@ Deployment, Service, etc.). You declare *what you want*; Kubernetes makes realit
 match.
 
 **Kustomize / base / overlay** — a tool to reuse manifests without copy-paste.
-`k8s/base/` holds shared manifests; an **overlay** (`k8s/overlays/prod`,
-`k8s/overlays/dev`) patches the base with environment-specific values. "Rendering"
-= `kustomize build` combining base + overlay into final YAML.
+`k8s/base/` holds shared manifests; an **overlay** (`k8s/overlays/prod`) patches
+the base with environment-specific values. "Rendering" = `kustomize build`
+combining base + overlay into final YAML. One overlay per environment; today
+there is only `prod`.
 
-**Namespace** — a virtual partition inside one cluster. `rtac-modbus-prod` and
-`rtac-modbus-dev` keep prod and dev objects isolated even on the same cluster.
+**Namespace** — a virtual partition inside one cluster. Ours is
+`rtac-modbus-prod`; a second environment would get its own namespace so its
+objects stay isolated even on the same cluster.
 
 **Deployment** — the Kubernetes object that runs your app pods, keeps the desired
 number alive, and does rolling updates (new pods up before old pods down).
@@ -628,35 +634,30 @@ IP (A6), and the WIF provider string (A9). The deployer email is
   secret**. Add two:
   - `GCP_WORKLOAD_IDENTITY_PROVIDER` = the long provider string from A9
   - `GCP_DEPLOY_SERVICE_ACCOUNT` = `gh-deployer@MY_PROJECT_ID.iam.gserviceaccount.com`
-- [ ] **B3. Create the `dev` branch** (so dev deploys have something to trigger on)
-  ```bash
-  git checkout main && git pull
-  git checkout -b dev && git push -u origin dev
-  ```
-- [ ] **B4. Protect `main` (branch ruleset).** Repo → **Settings** → **Branches** →
-  **Add branch ruleset** → target `main`. What to enable depends on your workflow —
-  and it interacts with CD, because **`cd-prod.yml` pushes the image-tag-bump commit
-  directly to `main`** (with `[skip ci]`).
+- [ ] **B3. Protect `main` (branch ruleset).** Repo → **Settings** → **Branches** →
+  **Add branch ruleset** → target `main`. `main` is the only long-lived branch, so
+  this is the only ruleset you need. It interacts with CD, because **`cd-prod.yml`
+  pushes the image-tag-bump commit directly to `main`** (with `[skip ci]`).
 
-  **Now — with the current push-to-`main` deploy flow (recommended for solo):**
-  enable only the low-friction guards, which don't block direct pushes:
+  Always enable these — they don't block direct pushes, so CD keeps working:
   - ✅ **Block force pushes** — prevents history rewrites on `main`.
   - ✅ **Restrict deletions** — `main` can't be deleted.
 
-  Do **not** yet enable **Require a pull request before merging** or **Require status
-  checks to pass**: both block direct pushes to `main`, which would break CD's tag-bump
-  commit (and the `[skip ci]` bump has no checks for a status-check rule to see).
+  With the `feat/*` → PR → `main` workflow, also enable:
+  - ✅ **Require a pull request before merging**
+  - ✅ **Require status checks to pass** — select the **CI** checks.
 
-  **Future — when you move to a branch → PR → merge workflow** (e.g. with a teammate),
-  tighten to the standard gates *and adjust CD accordingly*:
-  - Enable **Require a pull request before merging** + **Require status checks to pass**
-    (select the **CI** checks).
-  - Because CD still needs to write the tag bump to `main`, either add the GitHub
-    Actions bot to the ruleset's **bypass list**, or change `cd-prod.yml` to open a PR
-    for the tag bump instead of pushing (or move image-tag updates to ArgoCD Image
-    Updater so CI never writes to `main`).
-  - Optionally add **Require signed commits** (needs commit-signing setup) and, once
-    real tests exist, code-scanning / coverage gates.
+  ⚠️ Both of those block direct pushes to `main`, which would break CD's tag-bump
+  commit. You must pick one fix or prod deploys will start failing:
+  - add the GitHub Actions bot to the ruleset's **bypass list** (simplest), **or**
+  - change `cd-prod.yml` to open a PR for the tag bump instead of pushing, **or**
+  - move image-tag updates to ArgoCD Image Updater so CI never writes to `main`.
+
+  Note the `[skip ci]` bump commit runs no checks, so a status-check rule has
+  nothing to see on it — the bypass list is what makes it through.
+
+  Optionally add **Require signed commits** (needs commit-signing setup) and, once
+  real tests exist, code-scanning / coverage gates.
 
 ---
 
@@ -786,24 +787,30 @@ Once 6.A–6.C are done, this is the whole routine:
 
 ---
 
-<a name="6e-dev"></a>
-### 6.E DAILY — deploy to DEV
+<a name="6e-feature"></a>
+### 6.E DAILY — work on a feature
 
-**First time only (turn dev on):** repeat the cloud bits for dev — create
-`rtac-pg-dev` and `rtac-redis-dev` (A5/A6 with `dev` names), fill the `REPLACE_*`
-placeholders in `k8s/overlays/dev/kustomization.yaml`, set `repoURL` and
-`targetRevision: dev` in `k8s/argocd/application-dev.yaml`, then:
+`main` is the only long-lived branch. Every feature is a short-lived branch that
+goes back into `main` through a pull request:
+
 ```bash
-kubectl create namespace rtac-modbus-dev
-kubectl -n rtac-modbus-dev create secret generic pae-rtac-server-secrets \
-  --from-literal=POSTGRES_PASSWORD="$(gcloud secrets versions access latest --secret=rtac-postgres-password)" \
-  --from-literal=REDIS_PASSWORD=""
-kubectl apply -f k8s/argocd/application-dev.yaml
+git checkout main
+git pull origin main                 # always start from what's in prod
+git checkout -b feat/short-name
+
+# ...edit, commit...
+
+git push -u origin feat/short-name
+gh pr create --base main             # CI runs on the PR
 ```
 
-**Every time after:** push/merge to the `dev` branch → `cd-dev.yml` runs → ArgoCD
-syncs `pae-rtac-server-dev` into `rtac-modbus-dev`. Typical flow: ship to `dev`,
-test, then merge the same change to `main` for prod.
+Merging the PR is what deploys — see 6.D. Delete the branch after merge
+(`git push origin --delete feat/short-name`).
+
+**There is no dev environment to test in first.** Verify locally (6.F) and rely
+on CI plus PR review before merging; merging to `main` goes straight to prod.
+That is the tradeoff of a single-environment setup — if it starts to hurt, add a
+staging overlay rather than a long-lived branch.
 
 ---
 
@@ -938,7 +945,7 @@ error, re-run `gcloud container clusters get-credentials pae-autopilot --region 
 | Image name                    | `<AR_HOST>/<PROJECT>/pae/pae-rtac-server`                    |
 | Cloud SQL instance / db / user| `rtac-pg-prod` / `rtac_modbus` / `rtac_user`                 |
 | Memorystore instance          | `rtac-redis-prod`                                            |
-| Prod namespace / dev namespace| `rtac-modbus-prod` / `rtac-modbus-dev`                       |
+| Prod namespace                | `rtac-modbus-prod`                                           |
 | k8s ServiceAccount            | `pae-rtac-server`                                            |
 | k8s Secret                    | `pae-rtac-server-secrets` (`POSTGRES_PASSWORD`, `REDIS_PASSWORD`) |
 | Secret Manager entry          | `rtac-postgres-password`                                     |
@@ -953,10 +960,10 @@ error, re-run `gcloud container clusters get-credentials pae-autopilot --region 
 | `docker/entrypoint.sh`                  | container startup (migrations toggle)             |
 | `.env.example`                          | documents every env var; copy to `.env` locally   |
 | `k8s/base/`                             | shared manifests (Deployment, Service, Job, …)    |
-| `k8s/overlays/prod` / `overlays/dev`    | per-environment values                            |
-| `k8s/argocd/application-*.yaml`         | ArgoCD app definitions                            |
+| `k8s/overlays/prod`                     | per-environment values                            |
+| `k8s/argocd/application-prod.yaml`      | ArgoCD app definition                             |
 | `.github/workflows/ci.yml`              | CI (lint, test, build, manifest check)            |
-| `.github/workflows/cd-prod.yml` / `cd-dev.yml` | CD (build, push, bump tag)                 |
+| `.github/workflows/cd-prod.yml`         | CD (build, push, bump tag)                        |
 | `scripts/gcp_bootstrap.sh`              | one-shot GCP infra setup                          |
 | `scripts/migrate_db.py`                 | database migrations (run by the migration Job)    |
 
