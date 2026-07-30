@@ -44,7 +44,7 @@ patches:
           initContainers:
             - name: cloud-sql-proxy
               env:
-                - name: prd-pae-rtac-server:us-central1:rtac-pg-prod
+                - name: INSTANCE_CONNECTION_NAME
                   value: prd-pae-rtac-server:us-central1:rtac-pg-prod
           containers:
             - name: app
@@ -68,7 +68,7 @@ patches:
           initContainers:
             - name: cloud-sql-proxy
               env:
-                - name: prd-pae-rtac-server:us-central1:rtac-pg-prod
+                - name: INSTANCE_CONNECTION_NAME
                   value: prd-pae-rtac-server:us-central1:rtac-pg-prod
   target:
     kind: Job

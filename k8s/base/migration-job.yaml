@@ -7,10 +7,11 @@ metadata:
     # would run before the ServiceAccount/ConfigMap this Job depends on exist):
     #   wave 0 = ServiceAccount/ConfigMap/Service, wave 1 = this Job, wave 2 = Deployment.
     # So schema is migrated once, after its deps exist and before the app rolls out.
-    # Replace=true recreates the (immutable) Job when the image changes, so new
-    # migrations run on each deploy.
+    # Force+Replace delete+recreate the (immutable) Job when the image changes, so
+    # new migrations run on each deploy — plain Replace fails on the immutable
+    # auto-generated Job selector once a Job already exists.
     argocd.argoproj.io/sync-wave: "1"
-    argocd.argoproj.io/sync-options: Replace=true
+    argocd.argoproj.io/sync-options: Replace=true,Force=true
 spec:
   backoffLimit: 3
   activeDeadlineSeconds: 600
