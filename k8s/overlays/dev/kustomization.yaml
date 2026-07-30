@@ -20,7 +20,6 @@ configMapGenerator:
 - behavior: merge
   literals:
   - LOG_LEVEL=DEBUG
-  - REDIS_HOST=REPLACE_MEMORYSTORE_DEV_IP
   - AGGREGATOR_MODBUS_HOST=REPLACE_AGGREGATOR_DEV_HOST
   name: pae-rtac-server-config
 

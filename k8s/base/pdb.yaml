@@ -11,3 +11,5 @@ spec:
   selector:
     matchLabels:
       app.kubernetes.io/name: pae-rtac-server
+      # Scope to app pods only (redis/migrate share the name label).
+      app: pae-rtac-api

@@ -20,6 +20,10 @@ spec:
     metadata:
       labels:
         app.kubernetes.io/name: pae-rtac-server
+        # Distinguishes app pods from redis/migrate pods (which share
+        # app.kubernetes.io/name via the base labels transformer) so the app
+        # Service targets only these pods.
+        app: pae-rtac-api
     spec:
       serviceAccountName: pae-rtac-server
       securityContext:

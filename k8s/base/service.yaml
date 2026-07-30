@@ -6,6 +6,8 @@ spec:
   type: ClusterIP
   selector:
     app.kubernetes.io/name: pae-rtac-server
+    # Target only app pods, not the redis/migrate pods that share the name label.
+    app: pae-rtac-api
   ports:
     - name: http
       port: 8000

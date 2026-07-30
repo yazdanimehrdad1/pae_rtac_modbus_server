@@ -9,6 +9,7 @@ resources:
   - serviceaccount.yaml
   - deployment.yaml
   - service.yaml
+  - redis.yaml
   - migration-job.yaml
   - hpa.yaml
   - pdb.yaml
@@ -34,8 +35,8 @@ configMapGenerator:
       - AGGREGATOR_SERVER_ID=1
       - MODBUS_TIMEOUT_S=5.0
       - MODBUS_RETRIES=3
-      # Redis / Memorystore — REDIS_HOST is overridden per overlay (private IP)
-      - REDIS_HOST=REPLACE_MEMORYSTORE_IP
+      # Redis runs in-cluster (see redis.yaml) — reached by its Service DNS name.
+      - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_DB=0
       # Postgres via the Cloud SQL Auth Proxy sidecar on localhost
