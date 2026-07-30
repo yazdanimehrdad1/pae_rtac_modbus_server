@@ -28,6 +28,7 @@ experience assumed. If a term is new, check the **[Glossary](#2-glossary)** firs
    - [6.F DAILY — run locally (no cloud)](#6f-local)
    - [6.G WHEN THINGS BREAK — rollback & emergencies](#6g-rollback)
    - [6.H OCCASIONAL — rotate the DB password](#6h-rotate)
+   - [6.I ACCESS — reach the ArgoCD UI and the app (port-forward)](#6i-access)
 7. [Quick reference — names, values, files](#7-quickref)
 
 ---
@@ -887,6 +888,42 @@ kubectl -n rtac-modbus-prod get job                        # migration Job statu
    ```bash
    kubectl -n rtac-modbus-prod rollout restart deploy/pae-rtac-server
    ```
+
+---
+
+<a name="6i-access"></a>
+### 6.I ACCESS — reach the ArgoCD UI and the app (port-forward)
+
+Both the ArgoCD server and the app are **ClusterIP** (internal only), so you reach them
+through a `kubectl port-forward` tunnel. **`port-forward` is a blocking command** — it
+holds the terminal open to keep the tunnel alive. So:
+- Run each `port-forward` in its **own terminal** and **leave it open** (don't Ctrl+C /
+  close it — that kills the tunnel; "Could not connect to localhost" almost always means
+  the tunnel isn't running).
+- Run `curl`/your browser in a **separate** terminal.
+- If you see `Unable to listen on port …: address already in use`, a dead forward is
+  lingering — use a different local port (e.g. `18080`/`18000`).
+
+**ArgoCD UI:**
+```bash
+kubectl -n argocd port-forward svc/argocd-server 8080:443
+# leave running → browse https://localhost:8080  (user: admin; accept the cert warning)
+```
+Get/refresh the admin password (PowerShell):
+```powershell
+[System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String((kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}")))
+```
+
+**The app API:**
+```bash
+kubectl -n rtac-modbus-prod port-forward svc/pae-rtac-server 8000:8000
+# leave running, then in another terminal:
+curl http://localhost:8000/api/healthz     # {"ok":true,...}
+curl http://localhost:8000/api/readyz       # {"ready":true,...}
+```
+
+Prereq: `kubectl` must be pointed at the cluster — if these fail with an auth/context
+error, re-run `gcloud container clusters get-credentials pae-autopilot --region us-central1`.
 
 ---
 
