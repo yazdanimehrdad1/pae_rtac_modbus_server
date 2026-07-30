@@ -10,6 +10,16 @@ GCP_REGION   ?= us-central1
 SQL_INSTANCE ?= rtac-pg-prod
 K8S_NS       ?= rtac-modbus-prod
 
+ifeq ($(OS),Windows_NT)
+# On Windows, kubectl needs gke-gcloud-auth-plugin, which is on the PowerShell PATH
+# but usually NOT on GNU make's recipe-shell PATH — so `make cloud-down` fails with
+# "gke-gcloud-auth-plugin.exe not found". Delegate to make.ps1, which runs in a fresh
+# PowerShell that has the plugin. (Same logic, one source of truth in make.ps1.)
+cloud-down:
+	@powershell -NoProfile -ExecutionPolicy Bypass -File make.ps1 cloud-down
+cloud-up:
+	@powershell -NoProfile -ExecutionPolicy Bypass -File make.ps1 cloud-up
+else
 # Stop all billable compute (app + redis + ArgoCD scaled to 0, Cloud SQL stopped).
 # Idle cost ≈ Cloud SQL storage only (~$2-3/mo). Data is preserved.
 cloud-down:
@@ -43,6 +53,7 @@ cloud-up:
 	@echo ">> Nudging ArgoCD to reconcile (recreates HPA, marks Synced)..."
 	@kubectl -n argocd annotate application pae-rtac-server-prod argocd.argoproj.io/refresh=hard --overwrite >/dev/null
 	@echo ">> cloud-up complete. App is ready."
+endif
 
 # Default target
 help:
