@@ -12,7 +12,7 @@ resources:
 images:
 - name: pae-rtac-server
   newName: us-central1-docker.pkg.dev/prd-pae-rtac-server/pae/pae-rtac-server
-  newTag: 2ab885377c20e53499c69fb627e25f3d4a2c6932
+  newTag: 7ef0b46eb207568de24a1ad642a4a6ab60babd9d
 
 replicas:
 - count: 2
@@ -31,6 +31,8 @@ configMapGenerator:
   # Cloud SQL instance for the migration Job.
   # Workload Identity binding for prod.
   # Autoscaling range for prod.
+              # Full args set explicitly here (not just in base) so the overlay
+              # render is self-contained and robust to kustomize patch-merge quirks.
               # Full args set explicitly here (not just in base) so the overlay
               # render is self-contained and robust to kustomize patch-merge quirks.
               # Full args set explicitly here (not just in base) so the overlay
