@@ -39,6 +39,11 @@ spec:
           args:
             - "--structured-logs"
             - "--port=5432"
+            # Health-check server for the probes below. Must bind 0.0.0.0 (not the
+            # default localhost) so the kubelet can reach it at the pod IP.
+            - "--health-check"
+            - "--http-address=0.0.0.0"
+            - "--http-port=9801"
             - "$(INSTANCE_CONNECTION_NAME)"
           env:
             - name: INSTANCE_CONNECTION_NAME
