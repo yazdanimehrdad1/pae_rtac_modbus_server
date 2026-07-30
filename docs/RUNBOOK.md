@@ -29,6 +29,7 @@ experience assumed. If a term is new, check the **[Glossary](#2-glossary)** firs
    - [6.G WHEN THINGS BREAK — rollback & emergencies](#6g-rollback)
    - [6.H OCCASIONAL — rotate the DB password](#6h-rotate)
    - [6.I ACCESS — reach the ArgoCD UI and the app (port-forward)](#6i-access)
+   - [6.J COST CONTROL — stop/start all billable cloud resources](#6j-cost)
 7. [Quick reference — names, values, files](#7-quickref)
 
 ---
@@ -924,6 +925,37 @@ curl http://localhost:8000/api/readyz       # {"ready":true,...}
 
 Prereq: `kubectl` must be pointed at the cluster — if these fail with an auth/context
 error, re-run `gcloud container clusters get-credentials pae-autopilot --region us-central1`.
+
+---
+
+<a name="6j-cost"></a>
+### 6.J COST CONTROL — stop/start all billable cloud resources
+
+The GKE cluster, Cloud SQL, and (formerly) Memorystore are **always-on** and bill 24/7
+whether or not you use them. Redis now runs **in-cluster** (see `k8s/base/redis.yaml`),
+so the whole stack can scale to zero. Two commands toggle everything:
+
+```bash
+make cloud-down    # or:  .\make.ps1 cloud-down
+make cloud-up      # or:  .\make.ps1 cloud-up
+```
+
+- **`cloud-down`** scales ArgoCD + app + redis to 0, deletes the HPA (it would
+  otherwise force min replicas), and stops Cloud SQL. Idle cost ≈ Cloud SQL storage
+  only (~$2–3/mo). **Data is preserved** (Cloud SQL is stopped, not deleted).
+- **`cloud-up`** starts Cloud SQL (waits for RUNNABLE), scales ArgoCD back up, scales
+  redis + app back up, and nudges ArgoCD to reconcile (recreating the HPA). App is
+  ready in ~2–3 min; verify with `/api/readyz` (see 6.I).
+
+Notes:
+- Run from a shell where `kubectl` targets the cluster and `gcloud` is authed.
+- Override defaults via env/vars if names differ: `GCP_PROJECT`, `GCP_REGION`,
+  `SQL_INSTANCE`, `K8S_NS` (Makefile) — the `make.ps1` versions hardcode them near the
+  top of each case.
+- After `cloud-up`, ArgoCD may briefly show **Progressing** while the HPA gathers CPU
+  metrics (~1 min), then goes **Healthy** — that's expected.
+- For *absolute* $0 (no Cloud SQL storage charge either) you'd delete the SQL instance
+  instead of stopping it, but then `cloud-up` must recreate it + re-run migrations.
 
 ---
 

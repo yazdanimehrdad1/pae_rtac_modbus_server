@@ -1,4 +1,48 @@
-.PHONY: help network up down build rebuild up-build up-rebuild restart logs shell clean ps health dev test-setup test lint lint-fix format migrate apply-migration run seed-db
+.PHONY: help network up down build rebuild up-build up-rebuild restart logs shell clean ps health dev test-setup test lint lint-fix format migrate apply-migration run seed-db cloud-down cloud-up
+
+# ---------------------------------------------------------------------------
+# Cloud cost control (GKE) — stop everything billable when not in use, and bring
+# it all back "ready". Scale-to-zero approach: keeps the cluster/ArgoCD config and
+# Cloud SQL DATA, just idles compute. Override the vars if your names differ.
+# ---------------------------------------------------------------------------
+GCP_PROJECT  ?= prd-pae-rtac-server
+GCP_REGION   ?= us-central1
+SQL_INSTANCE ?= rtac-pg-prod
+K8S_NS       ?= rtac-modbus-prod
+
+# Stop all billable compute (app + redis + ArgoCD scaled to 0, Cloud SQL stopped).
+# Idle cost ≈ Cloud SQL storage only (~$2-3/mo). Data is preserved.
+cloud-down:
+	@echo ">> Stopping ArgoCD (so it won't scale things back up)..."
+	@kubectl -n argocd scale statefulset --all --replicas=0
+	@kubectl -n argocd scale deploy --all --replicas=0
+	@echo ">> Removing HPA (it would otherwise force min replicas)..."
+	@kubectl -n $(K8S_NS) delete hpa pae-rtac-server --ignore-not-found
+	@echo ">> Scaling app + redis to 0..."
+	@kubectl -n $(K8S_NS) scale deploy pae-rtac-server redis --replicas=0
+	@echo ">> Stopping Cloud SQL..."
+	@gcloud sql instances patch $(SQL_INSTANCE) --project=$(GCP_PROJECT) --activation-policy=NEVER --quiet
+	@echo ">> cloud-down complete. Billing minimized (data preserved)."
+
+# Start Cloud SQL, bring ArgoCD back, scale workloads up, let ArgoCD reconcile.
+cloud-up:
+	@echo ">> Starting Cloud SQL..."
+	@gcloud sql instances patch $(SQL_INSTANCE) --project=$(GCP_PROJECT) --activation-policy=ALWAYS --quiet
+	@echo ">> Waiting for Cloud SQL to be RUNNABLE..."
+	@until [ "$$(gcloud sql instances describe $(SQL_INSTANCE) --project=$(GCP_PROJECT) --format='value(state)')" = "RUNNABLE" ]; do sleep 10; echo "   ...still starting"; done
+	@echo ">> Bringing ArgoCD back..."
+	@kubectl -n argocd scale statefulset --all --replicas=1
+	@kubectl -n argocd scale deploy --all --replicas=1
+	@kubectl -n argocd rollout status statefulset/argocd-application-controller --timeout=180s
+	@kubectl -n argocd rollout status deploy/argocd-repo-server --timeout=120s
+	@echo ">> Scaling redis + app back up..."
+	@kubectl -n $(K8S_NS) scale deploy redis --replicas=1
+	@kubectl -n $(K8S_NS) rollout status deploy/redis --timeout=120s
+	@kubectl -n $(K8S_NS) scale deploy pae-rtac-server --replicas=2
+	@kubectl -n $(K8S_NS) rollout status deploy/pae-rtac-server --timeout=240s
+	@echo ">> Nudging ArgoCD to reconcile (recreates HPA, marks Synced)..."
+	@kubectl -n argocd annotate application pae-rtac-server-prod argocd.argoproj.io/refresh=hard --overwrite >/dev/null
+	@echo ">> cloud-up complete. App is ready."
 
 # Default target
 help:
