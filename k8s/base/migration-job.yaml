@@ -3,15 +3,18 @@ kind: Job
 metadata:
   name: pae-rtac-server-migrate
   annotations:
-    # Ordered by ArgoCD sync-wave within the normal sync (NOT a PreSync hook, which
-    # would run before the ServiceAccount/ConfigMap this Job depends on exist):
-    #   wave 0 = ServiceAccount/ConfigMap/Service, wave 1 = this Job, wave 2 = Deployment.
-    # So schema is migrated once, after its deps exist and before the app rolls out.
-    # Force+Replace delete+recreate the (immutable) Job when the image changes, so
-    # new migrations run on each deploy — plain Replace fails on the immutable
-    # auto-generated Job selector once a Job already exists.
+    # Run as an ArgoCD **Sync hook** at wave 1. Within the Sync phase ArgoCD orders
+    # hooks and regular resources together by wave, so this still runs after wave-0
+    # (ServiceAccount/ConfigMap) and before the wave-2 Deployment — its deps exist and
+    # migrations finish before the app rolls.
+    # Crucially, hooks are EXCLUDED from the app's sync-status diff: a completed Job
+    # never shows OutOfSync, so selfHeal doesn't keep re-running it (no churn/flapping
+    # — the failure mode of the old Replace=true,Force=true approach). BeforeHookCreation
+    # deletes the previous Job and recreates it on each real sync (git change), which
+    # also sidesteps the immutable-Job-selector error without needing Force.
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
     argocd.argoproj.io/sync-wave: "1"
-    argocd.argoproj.io/sync-options: Replace=true,Force=true
 spec:
   backoffLimit: 3
   activeDeadlineSeconds: 600
