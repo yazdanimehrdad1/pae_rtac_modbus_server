@@ -11,6 +11,7 @@ experience assumed. If a term is new, check the **[Glossary](#2-glossary)** firs
 
 ## Table of contents
 
+0. [**Cheatsheet — the commands you actually reach for**](#0-cheatsheet)
 1. [The big picture (read this first)](#1-the-big-picture)
 2. [Glossary — every term and its job](#2-glossary)
 3. [The artifact chain — what actually flows](#3-the-artifact-chain)
@@ -31,6 +32,208 @@ experience assumed. If a term is new, check the **[Glossary](#2-glossary)** firs
    - [6.I ACCESS — reach the ArgoCD UI and the app (port-forward)](#6i-access)
    - [6.J COST CONTROL — stop/start all billable cloud resources](#6j-cost)
 7. [Quick reference — names, values, files](#7-quickref)
+
+---
+
+<a name="0-cheatsheet"></a>
+## 0. Cheatsheet — the commands you actually reach for
+
+Everything here is explained in depth later; this is the copy-paste layer. Cluster
+commands assume `kubectl` already points at the prod cluster (see **Context** below).
+
+**Constants:** project `prd-pae-rtac-server` · cluster `pae-autopilot` · region
+`us-central1` · namespace `rtac-modbus-prod` · app container `app` · sidecar
+`cloud-sql-proxy`
+
+### Context — what am I pointed at?
+
+Always check this first. Most "it doesn't work" moments are a wrong context or project.
+
+```bash
+gcloud config get-value project                 # current GCP project
+kubectl config current-context                  # current cluster
+kubectl config get-contexts                     # all clusters you can switch to
+kubectl cluster-info                            # is the connection actually alive?
+```
+
+Set / fix them:
+
+```bash
+gcloud config set project prd-pae-rtac-server
+gcloud container clusters get-credentials pae-autopilot \
+  --region us-central1 --project prd-pae-rtac-server
+
+kubectl config use-context gke_prd-pae-rtac-server_us-central1_pae-autopilot
+kubectl config set-context --current --namespace=rtac-modbus-prod   # stop typing -n
+```
+
+With that last line set, every `-n rtac-modbus-prod` below becomes optional.
+
+### Port-forward — reaching anything in the cluster
+
+Both the app and ArgoCD are **ClusterIP** (cluster-internal), so nothing on your
+machine can reach them until you open a tunnel. **`port-forward` blocks** — it must
+keep running in its own terminal while you use another one.
+
+| Target | Command | Then open |
+|---|---|---|
+| App API | `kubectl -n rtac-modbus-prod port-forward svc/pae-rtac-server 8000:8000` | `http://localhost:8000` |
+| ArgoCD UI | `kubectl -n argocd port-forward svc/argocd-server 8080:443` | `https://localhost:8080` (user `admin`) |
+| Redis | `kubectl -n rtac-modbus-prod port-forward svc/redis 6379:6379` | `redis-cli -p 6379` |
+
+ArgoCD admin password:
+
+```bash
+kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
+```
+```powershell
+[System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String((kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}")))
+```
+
+**When port-forward misbehaves:**
+- `Couldn't connect to server` on curl → the tunnel isn't running (closed terminal,
+  Ctrl+C, or Cloud Shell timed out after ~20 min idle). Restart it.
+- `address already in use` → pick another local port: `18000:8000`, then curl `:18000`.
+- `no pods found` / `unable to forward` → nothing is running. See **Is it alive?**;
+  you may have run `cloud-down`.
+- Locally, port 8000 may already be taken by another project. Use `18000:8000`.
+
+### Curl the API (with a forward running)
+
+```bash
+curl http://localhost:8000/api/healthz      # liveness — no dependencies, always 200 if up
+curl http://localhost:8000/api/readyz       # readiness — 503 if Postgres or Redis is down
+curl http://localhost:8000/api/db_health    # Postgres only
+curl http://localhost:8000/api/redis_health # Redis only
+curl http://localhost:8000/api/health_modbus_client
+```
+
+Browse `http://localhost:8000/docs` for the interactive Swagger UI — the easiest way
+to see every endpoint and try one without hand-writing the curl.
+
+`readyz` returning 503 is a **real failure**, not a tunnel problem — go read the logs.
+
+Common data endpoints (all prefixed `/api`):
+
+```bash
+curl http://localhost:8000/api/sites
+curl http://localhost:8000/api/devices/site/{site_id}/devices
+curl http://localhost:8000/api/device-points/site/{site_id}/device/{device_id}
+curl http://localhost:8000/api/device-point-readings/site/{site_id}/device/{device_id}/latest
+curl "http://localhost:8000/api/device-point-readings/timeseries/site/{site_id}/device/{device_id}?start=2026-01-01T00:00:00Z&end=2026-01-02T00:00:00Z"
+curl http://localhost:8000/api/cache/health
+curl http://localhost:8000/api/cache/keys
+```
+
+> A global middleware validates `start`/`end` on every request — a malformed time
+> range gets rejected before your handler ever runs.
+
+### Is it alive? — pods, logs, events
+
+```bash
+kubectl -n rtac-modbus-prod get pods                    # expect pae-rtac-server-... Running, all containers ready
+kubectl -n rtac-modbus-prod get all                     # pods, svc, deploy, hpa at a glance
+kubectl -n rtac-modbus-prod rollout status deploy/pae-rtac-server
+
+kubectl -n rtac-modbus-prod logs deploy/pae-rtac-server -c app --tail=100
+kubectl -n rtac-modbus-prod logs deploy/pae-rtac-server -c app -f          # follow
+kubectl -n rtac-modbus-prod logs deploy/pae-rtac-server -c app --previous  # last crash
+kubectl -n rtac-modbus-prod logs -l app.kubernetes.io/name=pae-rtac-server -c app --tail=50
+
+kubectl -n rtac-modbus-prod describe pod <pod-name>     # why a pod won't start
+kubectl -n rtac-modbus-prod get events --sort-by=.lastTimestamp | tail -20
+```
+
+`-c app` matters — the pod also runs the `cloud-sql-proxy` sidecar, and without the
+flag you may get the proxy's logs instead of the app's.
+
+Migrations and a shell inside the pod:
+
+```bash
+kubectl -n rtac-modbus-prod get jobs                              # migration Job status
+kubectl -n rtac-modbus-prod logs job/pae-rtac-server-migrate      # why a migration failed
+kubectl -n rtac-modbus-prod exec -it deploy/pae-rtac-server -c app -- /bin/sh
+kubectl -n rtac-modbus-prod rollout restart deploy/pae-rtac-server
+```
+
+### ArgoCD — what does git say should be running?
+
+```bash
+kubectl -n argocd get applications                  # SYNC STATUS / HEALTH STATUS
+kubectl -n argocd describe application pae-rtac-server-prod
+kubectl -n argocd logs deploy/argocd-application-controller --tail=50
+```
+
+Healthy = `Synced` + `Healthy`. `OutOfSync` means the cluster hasn't caught up with
+git yet (wait, or hit **Sync** in the UI). `Progressing` right after a deploy is
+normal for ~1 min while the HPA collects metrics.
+
+### Cost control — the cluster bills 24/7
+
+```bash
+make cloud-down     # or .\make.ps1 cloud-down — scales app+redis+argocd to 0, stops Cloud SQL
+make cloud-up       # or .\make.ps1 cloud-up   — brings it all back (~2–3 min)
+```
+
+If `get pods` shows `No resources found`, you're almost certainly still scaled down.
+Data survives `cloud-down` — Cloud SQL is stopped, not deleted. Full detail in **6.J**.
+
+### Local development (no cloud at all)
+
+```powershell
+docker network create pae-shared-network    # once per machine
+.\make.ps1 up-build                         # build + start postgres, redis, app
+.\make.ps1 logs                             # tail container logs
+.\make.ps1 down                             # stop
+
+.\make.ps1 test                             # pytest (start postgres too for integration tests)
+.\make.ps1 lint                             # ruff + mypy — CI fails on ruff errors
+.\make.ps1 lint-fix                         # auto-fix imports/typing/whitespace
+.\make.ps1 format                           # black + ruff
+```
+
+Health locally (note: `.\make.ps1 health` targets a dead URL — use this instead):
+
+```powershell
+Invoke-WebRequest http://localhost:8000/api/healthz | Select-Object -Expand Content
+```
+
+Host ports are remapped: app **8000**, postgres **5435**→5432, redis **6380**→6379.
+A local `.env` must target 5435/6380.
+
+### Ship a change
+
+```bash
+git checkout main && git pull origin main
+git checkout -b feat/short-name
+# ...edit, commit...
+git push -u origin feat/short-name
+gh pr create --base main          # CI runs on the PR; merging deploys to prod
+```
+
+Verify the deploy landed, then confirm what's actually running:
+
+```bash
+kubectl -n rtac-modbus-prod rollout status deploy/pae-rtac-server
+kubectl -n rtac-modbus-prod get deploy pae-rtac-server \
+  -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'   # image SHA now live
+```
+
+That SHA should match `newTag` in `k8s/overlays/prod/kustomization.yaml`. If it
+doesn't, ArgoCD hasn't synced yet.
+
+### Emergency
+
+```bash
+# roll back fast: edit newTag in k8s/overlays/prod/kustomization.yaml to a known-good SHA
+git commit -am "rollback(prod): pin <sha> [skip ci]" && git push
+
+git revert <sha-of-bad-merge>                  # proper fix, via a PR
+kubectl apply -k k8s/overlays/prod             # break-glass, only if ArgoCD is down
+```
+
+Always finish by making git match what should be running — ArgoCD's self-heal will
+drag the cluster back to whatever git says. Full detail in **6.G**.
 
 ---
 
