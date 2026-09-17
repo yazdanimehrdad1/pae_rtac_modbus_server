@@ -257,6 +257,8 @@ switch ($Command.ToLower()) {
         # Stop all billable GCP compute (app + redis + ArgoCD -> 0, Cloud SQL stopped).
         # Data is preserved; idle cost ~= Cloud SQL storage only.
         $proj = "prd-pae-rtac-server"; $sql = "rtac-pg-prod"; $ns = "rtac-modbus-prod"
+        # Ensure kubectl + gke-gcloud-auth-plugin are on PATH (robust when invoked via `make`).
+        $env:Path += ";$env:LOCALAPPDATA\Google\Cloud SDK\google-cloud-sdk\bin"
         Write-Host ">> Stopping ArgoCD (so it won't scale things back up)..." -ForegroundColor Yellow
         kubectl -n argocd scale statefulset --all --replicas=0
         kubectl -n argocd scale deploy --all --replicas=0
@@ -271,6 +273,8 @@ switch ($Command.ToLower()) {
     "cloud-up" {
         # Start Cloud SQL, bring ArgoCD back, scale workloads up, let ArgoCD reconcile.
         $proj = "prd-pae-rtac-server"; $sql = "rtac-pg-prod"; $ns = "rtac-modbus-prod"
+        # Ensure kubectl + gke-gcloud-auth-plugin are on PATH (robust when invoked via `make`).
+        $env:Path += ";$env:LOCALAPPDATA\Google\Cloud SDK\google-cloud-sdk\bin"
         Write-Host ">> Starting Cloud SQL..." -ForegroundColor Green
         gcloud sql instances patch $sql --project=$proj --activation-policy=ALWAYS --quiet
         Write-Host ">> Waiting for Cloud SQL to be RUNNABLE..." -ForegroundColor Cyan
