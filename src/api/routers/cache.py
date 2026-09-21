@@ -1,25 +1,11 @@
 """Cache test endpoints for manual testing."""
 
-from typing import Any
-
 from fastapi import APIRouter
-from pydantic import BaseModel
 
 from cache import cache, check_redis_health
+from schemas.api_models import CacheGetResponse, CacheSetRequest
 
 router = APIRouter()
-
-
-class CacheSetRequest(BaseModel):
-    key: str
-    value: Any
-    ttl: int | None = None
-
-
-class CacheGetResponse(BaseModel):
-    key: str
-    value: Any
-    exists: bool
 
 
 @router.get("/cache/health")

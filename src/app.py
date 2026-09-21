@@ -20,7 +20,6 @@ from api.routers import (
     health,
     live_stream_raw_registers,
     live_stream_register_snapshot,
-    readings_raw_modbus,
     sites,
 )
 
@@ -94,7 +93,6 @@ def create_app() -> FastAPI:
 
     # Mount routers with /api prefix
     app.include_router(health.router, prefix="/api", tags=["health"])
-    app.include_router(readings_raw_modbus.router, prefix="/api", tags=["raw-modbus"])
     app.include_router(cache.router, prefix="/api", tags=["cache"])
     app.include_router(devices.router, prefix="/api", tags=["devices"])
     app.include_router(sites.router, prefix="/api", tags=["sites"])

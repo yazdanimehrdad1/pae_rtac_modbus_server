@@ -4,7 +4,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Query, status
 
-from helpers.date_time import TimeRange, resolve_time_range
+from helpers.common.date_time import TimeRange, resolve_time_range
 from helpers.reads.calculate_reads import translate_bitfield_to_named_map, translate_reading
 from helpers.reads.device_points_readings import (
     get_latest_readings_by_point_ids,
@@ -87,12 +87,13 @@ async def get_timeseries_readings(
     start_time: datetime | None = Query(None, description="Start time in ISO format (e.g. '2025-01-18T08:00:00Z'). Cannot be combined with time_range."),
     end_time: datetime | None = Query(None, description="End time in ISO format (e.g. '2025-01-18T09:00:00Z'). Cannot be combined with time_range."),
     time_range: TimeRange | None = Query(None, description="Relative time window ending now: 1H, 6H, 12H, 1D, 2D, 3D, 1W, 1M, 3M. Cannot be combined with start_time/end_time."),
-    limit: int = Query(1000, ge=1, le=10000, description="Maximum rows per point (each point gets up to this many readings)"),
+    limit: int = Query(1000, ge=1, le=10000, description="Maximum readings per point, taking the most recent N (returned newest-first)"),
     translate: bool = Query(False, description="Translate enum/bitfield values to human-readable form"),
 ):
     """
     Get time-series readings for each requested device point, keyed by device_point_id.
-    Each entry contains point metadata and a timeseries array sorted oldest-first.
+    Each entry contains point metadata and a timeseries array sorted newest-first —
+    the most recent reading is always the first element, for any limit or time window.
 
     Time window — pick one approach:
     - time_range: shorthand token (e.g. '1H', '1D', '1W') resolved relative to UTC now

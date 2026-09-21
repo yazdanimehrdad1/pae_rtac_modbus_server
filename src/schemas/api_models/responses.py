@@ -1,25 +1,11 @@
 """API response models."""
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import AliasChoices, BaseModel, Field
 
-from schemas.api_models.mappers import RegisterValue
 from schemas.api_models.requests import Coordinates, DeviceScanRanges, Location
-
-
-class SimpleReadResponse(BaseModel):
-    """Simplified response model for POST /read endpoint with array of register:value pairs."""
-    ok: bool
-    timestamp: str = Field(..., description="ISO format timestamp of when the read operation completed")
-    kind: str
-    address: int
-    count: int
-    device_id: int = Field(..., description="Modbus unit/slave ID")
-    data: list[RegisterValue] = Field(
-        default_factory=list, description="Array of register number and value pairs"
-    )
 
 
 class HealthResponse(BaseModel):
@@ -241,3 +227,10 @@ class SiteDevicesHealthResponse(BaseModel):
     reachable: int
     unreachable: int
     devices: list[DeviceHealthStatus]
+
+
+class CacheGetResponse(BaseModel):
+    """Response model for retrieving a value from the cache."""
+    key: str = Field(..., description="Cache key")
+    value: Any = Field(..., description="Cached value, or None if the key is absent")
+    exists: bool = Field(..., description="Whether the key exists in the cache")

@@ -1,7 +1,7 @@
 """API request/response models."""
 
-from schemas.api_models.mappers import RegisterValue
 from schemas.api_models.requests import (
+    CacheSetRequest,
     Coordinates,
     DeviceCreateRequest,
     DevicePointCreateRequest,
@@ -11,12 +11,12 @@ from schemas.api_models.requests import (
     DeviceUpdate,
     Location,
     PollingConfig,
-    ReadRequest,
     RegisterRange,
     SiteCreateRequest,
     SiteUpdateRequest,
 )
 from schemas.api_models.responses import (
+    CacheGetResponse,
     DeviceDeleteResponse,
     DeviceHealthStatus,
     DeviceListItem,
@@ -31,7 +31,6 @@ from schemas.api_models.responses import (
     LatestResponse,
     PointLatest,
     PointTimeseries,
-    SimpleReadResponse,
     SiteComprehensiveResponse,
     SiteDeleteResponse,
     SiteDevicesHealthResponse,
@@ -66,9 +65,6 @@ __all__ = [
     "DevicePointData",
     "ModbusRegisterValues",
     "PollResult",
-    "ReadRequest",
-    "RegisterValue",
-    "SimpleReadResponse",
     "HealthResponse",
     "DeviceCreateRequest",
     "DeviceUpdate",
@@ -80,6 +76,7 @@ __all__ = [
     "DevicePointCreateRequest",
     "DevicePointUpdateRequest",
     "DevicePointsBulkRequest",
+    "CacheSetRequest",
     "DeviceListItem",
     "DeviceResponse",
     "DeviceDeleteResponse",
@@ -95,4 +92,5 @@ __all__ = [
     "Location",
     "DeviceHealthStatus",
     "SiteDevicesHealthResponse",
+    "CacheGetResponse",
 ]

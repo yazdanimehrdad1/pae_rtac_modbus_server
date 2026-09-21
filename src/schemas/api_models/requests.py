@@ -1,6 +1,6 @@
 """API request models."""
 
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -25,25 +25,6 @@ class Location(BaseModel):
     state: str = Field(..., description="State/province")
     zip_code: int = Field(..., ge=0, description="Zip/postal code")
 
-
-
-class ReadRequest(BaseModel):
-    """Request model for reading Modbus registers."""
-    kind: Literal["holding", "input", "coils", "discretes"] = Field(
-        ..., description="Type of register to read"
-    )
-    address: int = Field(..., ge=0, le=65535, description="Starting address")
-    count: int = Field(..., ge=1, le=2000, description="Number of registers/bits to read")
-    device_id: int | None = Field(
-        None, ge=1, le=255, description="Modbus unit/slave ID (optional)"
-    )
-    host: str | None = Field(
-        None,
-        description="Modbus server hostname or IP address (optional, uses default if not provided)",
-    )
-    port: int | None = Field(
-        None, ge=1, le=65535, description="Modbus TCP port (optional, uses default if not provided)"
-    )
 
 
 class DeviceCreateRequest(BaseModel):
@@ -214,3 +195,10 @@ class DevicePointUpdateRequest(BaseModel):
 class DevicePointsBulkRequest(BaseModel):
     """Bulk upsert: create new points and update existing ones (matched by name) in one call."""
     points: list[DevicePointCreateRequest] = Field(..., min_length=1)
+
+
+class CacheSetRequest(BaseModel):
+    """Request model for setting a value in the cache."""
+    key: str = Field(..., description="Cache key")
+    value: Any = Field(..., description="Value to cache")
+    ttl: int | None = Field(None, description="Time-to-live in seconds; None means no expiry")

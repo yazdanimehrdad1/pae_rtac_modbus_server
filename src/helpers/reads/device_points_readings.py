@@ -81,7 +81,11 @@ async def get_timeseries_by_point_ids(
     limit: int = 1000,
 ) -> list[TimeSeriesDevicePointReadingDict]:
     """
-    Get time-series readings per point, ordered by (device_point_id, timestamp ASC).
+    Get time-series readings per point, ordered by (device_point_id, timestamp DESC).
+
+    Each point yields its most recent `limit` readings, newest-first. This holds whether
+    the window comes from `limit` alone or from start_time/end_time — the most recent
+    reading is always the first element.
 
     If point_ids is empty, returns readings for all points belonging to device_id/site_id.
     """
@@ -113,7 +117,7 @@ async def get_timeseries_by_point_ids(
                 DevicePoint.enum_detail,
                 sql_func.row_number().over(
                     partition_by=DevicePointsReading.device_point_id,
-                    order_by=DevicePointsReading.timestamp.asc(),
+                    order_by=DevicePointsReading.timestamp.desc(),
                 ).label("rn"),
             )
             .join(DevicePoint, DevicePointsReading.device_point_id == DevicePoint.id)
@@ -123,7 +127,7 @@ async def get_timeseries_by_point_ids(
         statement = (
             select(rank_subq)
             .where(rank_subq.c.rn <= limit)
-            .order_by(rank_subq.c.device_point_id, rank_subq.c.timestamp.asc())
+            .order_by(rank_subq.c.device_point_id, rank_subq.c.timestamp.desc())
         )
         result = await session.execute(statement)
         return [

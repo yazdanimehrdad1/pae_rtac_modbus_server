@@ -5,7 +5,6 @@ A FastAPI-based REST API service for communicating with Modbus TCP servers using
 ## Features
 
 - **GET /health**: Health check endpoint with connection test and small read verification
-- **POST /read**: Read holding registers, input registers, coils, or discrete inputs
 - Robust error handling with proper HTTP status codes
 - Environment variable configuration
 - Clean connection management (no socket leaks)
@@ -201,67 +200,6 @@ Expected response:
   "device_id": 1,
   "detail": "Connection and read test successful"
 }
-```
-
-### Read Holding Registers
-
-```bash
-curl -X POST "http://localhost:8000/read" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "kind": "holding",
-    "address": 0,
-    "count": 10,
-    "device_id": 1
-  }' | jq
-```
-
-Expected response:
-```json
-{
-  "ok": true,
-  "kind": "holding",
-  "address": 0,
-  "count": 10,
-  "device_id": 1,
-  "data": [1234, 5678, 9012, 3456, 7890, 1234, 5678, 9012, 3456, 7890]
-}
-```
-
-### Read Input Registers
-
-```bash
-curl -X POST "http://localhost:8000/read" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "kind": "input",
-    "address": 0,
-    "count": 5
-  }' | jq
-```
-
-### Read Coils
-
-```bash
-curl -X POST "http://localhost:8000/read" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "kind": "coils",
-    "address": 0,
-    "count": 8
-  }' | jq
-```
-
-### Read Discrete Inputs
-
-```bash
-curl -X POST "http://localhost:8000/read" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "kind": "discretes",
-    "address": 0,
-    "count": 16
-  }' | jq
 ```
 
 ## Error Handling
