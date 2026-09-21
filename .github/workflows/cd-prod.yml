@@ -41,7 +41,7 @@ jobs:
       - name: Compute image reference
         id: image
         run: |
-          IMAGE="${{ vars.AR_HOST }}/${{ vars.GCP_PROJECT_ID }}/${{ vars.AR_REPO }}/pae-rtac-server"
+          IMAGE="${{ vars.AR_HOST }}/${{ vars.GCP_PROJECT_ID }}/${{ vars.AR_REPO }}/pae-backend-ot"
           echo "ref=${IMAGE}" >> "$GITHUB_OUTPUT"
           echo "tag=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
 
@@ -67,7 +67,7 @@ jobs:
       - name: Bump prod overlay image tag
         run: |
           cd k8s/overlays/prod
-          kustomize edit set image "pae-rtac-server=${{ steps.image.outputs.ref }}:${{ steps.image.outputs.tag }}"
+          kustomize edit set image "pae-backend-ot=${{ steps.image.outputs.ref }}:${{ steps.image.outputs.tag }}"
 
       - name: Commit tag bump (GitOps)
         run: |
@@ -79,5 +79,5 @@ jobs:
           fi
           git add k8s/overlays/prod/kustomization.yaml
           # [skip ci] prevents this bot commit from retriggering CD on main.
-          git commit -m "chore(prod): deploy pae-rtac-server ${{ steps.image.outputs.tag }} [skip ci]"
+          git commit -m "chore(prod): deploy pae-backend-ot ${{ steps.image.outputs.tag }} [skip ci]"
           git push

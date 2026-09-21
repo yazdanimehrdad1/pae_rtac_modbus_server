@@ -3,14 +3,14 @@
 ## ✅ Completed
 
 ### Directory Structure Created
-- ✅ `src/rtac_modbus_service/` - Main application package
-- ✅ `src/rtac_modbus_service/api/` - API layer with routers
-- ✅ `src/rtac_modbus_service/scheduler/` - Polling scheduler
-- ✅ `src/rtac_modbus_service/modbus/` - Modbus client module
-- ✅ `src/rtac_modbus_service/db/` - Database layer
-- ✅ `src/rtac_modbus_service/utils/` - Utility functions
-- ✅ `src/rtac_modbus_service/telemetry/` - Observability
-- ✅ `src/rtac_modbus_service/helpers/` - Helper utilities
+- ✅ `src/pae_backend_ot_service/` - Main application package
+- ✅ `src/pae_backend_ot_service/api/` - API layer with routers
+- ✅ `src/pae_backend_ot_service/scheduler/` - Polling scheduler
+- ✅ `src/pae_backend_ot_service/modbus/` - Modbus client module
+- ✅ `src/pae_backend_ot_service/db/` - Database layer
+- ✅ `src/pae_backend_ot_service/utils/` - Utility functions
+- ✅ `src/pae_backend_ot_service/telemetry/` - Observability
+- ✅ `src/pae_backend_ot_service/helpers/` - Helper utilities
 - ✅ `docker/` - Docker-related files
 - ✅ `k8s/` - Kubernetes manifests
 - ✅ `scripts/` - Utility scripts
@@ -26,13 +26,13 @@
 - ✅ `.env` - Environment variable template (NOTE: .env is gitignored)
 
 ### Core Application Files Created
-- ✅ `src/rtac_modbus_service/config.py` - Pydantic Settings
-- ✅ `src/rtac_modbus_service/logging.py` - Logging setup
-- ✅ `src/rtac_modbus_service/app.py` - FastAPI app factory
-- ✅ `src/rtac_modbus_service/main.py` - Application entrypoint
+- ✅ `src/pae_backend_ot_service/config.py` - Pydantic Settings
+- ✅ `src/pae_backend_ot_service/logging.py` - Logging setup
+- ✅ `src/pae_backend_ot_service/app.py` - FastAPI app factory
+- ✅ `src/pae_backend_ot_service/main.py` - Application entrypoint
 
 ### Modbus Module
-- ✅ `src/rtac_modbus_service/modbus/client.py` - Migrated from `modbus_client.py`
+- ✅ `src/pae_backend_ot_service/modbus/client.py` - Migrated from `modbus_client.py`
   - Contains ModbusClient class and error translation
   - Ready for refactoring to use centralized config
 
@@ -60,7 +60,7 @@ All placeholder files include TODO comments indicating what needs to be implemen
 
 The following files remain at the root level and should be migrated/deleted:
 - `modbus_service.py` - Old FastAPI app (to be migrated to new structure)
-- `modbus_client.py` - Old client (already migrated to `src/rtac_modbus_service/modbus/client.py`)
+- `modbus_client.py` - Old client (already migrated to `src/pae_backend_ot_service/modbus/client.py`)
 - `requirements.txt` - Can be deleted (replaced by `pyproject.toml`)
 
 ## 🔄 Next Steps

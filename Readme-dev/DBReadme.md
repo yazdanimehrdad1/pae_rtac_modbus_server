@@ -1,6 +1,6 @@
 # Database Access Guide
 
-This guide covers different ways to access and interact with the PostgreSQL/TimescaleDB database used by the RTAC Modbus Server.
+This guide covers different ways to access and interact with the PostgreSQL/TimescaleDB database used by the PAE Backend OT.
 
 ## Table of Contents
 
@@ -16,23 +16,23 @@ This guide covers different ways to access and interact with the PostgreSQL/Time
 **Database Connection Details:**
 - **Host:** `localhost` (from host machine) or `postgres` (from Docker network)
 - **Port:** `5432`
-- **Database:** `rtac_modbus` (configurable via `POSTGRES_DB` environment variable)
-- **Username:** `rtac_user` (configurable via `POSTGRES_USER` environment variable)
-- **Password:** `rtac_password` (configurable via `POSTGRES_PASSWORD` environment variable)
+- **Database:** `pae_backend_ot` (configurable via `POSTGRES_DB` environment variable)
+- **Username:** `pae_backend_ot_user` (configurable via `POSTGRES_USER` environment variable)
+- **Password:** `pae_backend_ot_password` (configurable via `POSTGRES_PASSWORD` environment variable)
 - **Database Type:** PostgreSQL 16 with TimescaleDB extension
 
 **Docker Container:**
-- Container Name: `pae-rtac-server-postgres`
+- Container Name: `pae-backend-ot-postgres`
 - Image: `timescale/timescaledb:latest-pg16`
 
 **Connection String (Python/asyncpg):**
 ```
-postgresql://rtac_user:rtac_password@localhost:5432/rtac_modbus
+postgresql://pae_backend_ot_user:pae_backend_ot_password@localhost:5432/pae_backend_ot
 ```
 
 **JDBC URL (for DBeaver and other JDBC tools):**
 ```
-jdbc:postgresql://localhost:5432/rtac_modbus
+jdbc:postgresql://localhost:5432/pae_backend_ot
 ```
 
 ## Testing the Connection
@@ -55,15 +55,15 @@ The application automatically tests the database connection on startup. Check th
 
 ```bash
 # View logs with database-related messages
-docker-compose logs pae-rtac-server | grep -i postgres
+docker-compose logs pae-backend-ot | grep -i postgres
 
 # Or on Windows PowerShell:
-docker-compose logs pae-rtac-server | Select-String -Pattern "PostgreSQL|database"
+docker-compose logs pae-backend-ot | Select-String -Pattern "PostgreSQL|database"
 ```
 
 **Expected log messages:**
 ```
-Connecting to PostgreSQL at postgres:5432/rtac_modbus
+Connecting to PostgreSQL at postgres:5432/pae_backend_ot
 Successfully connected to PostgreSQL
 PostgreSQL database initialized successfully
 ```
@@ -77,7 +77,7 @@ A test script is available to verify the connection:
 docker-compose up -d --build
 
 # Run the test script
-docker-compose exec pae-rtac-server python scripts/test_db_connection.py
+docker-compose exec pae-backend-ot python scripts/test_db_connection.py
 ```
 
 **Expected output:**
@@ -95,7 +95,7 @@ Testing database connection...
 Test the connection directly using Python:
 
 ```bash
-docker-compose exec pae-rtac-server python -c "import sys; sys.path.insert(0, '/app/src'); from db.connection import check_db_health; import asyncio; print('✓ Connected!' if asyncio.run(check_db_health()) else '✗ Failed')"
+docker-compose exec pae-backend-ot python -c "import sys; sys.path.insert(0, '/app/src'); from db.connection import check_db_health; import asyncio; print('✓ Connected!' if asyncio.run(check_db_health()) else '✗ Failed')"
 ```
 
 ### Method 5: Check Container Health
@@ -110,7 +110,7 @@ docker-compose ps postgres
 docker-compose logs postgres
 
 # Test connection from container
-docker-compose exec postgres pg_isready -U rtac_user -d rtac_modbus
+docker-compose exec postgres pg_isready -U pae_backend_ot_user -d pae_backend_ot
 ```
 
 ## DBeaver Connection
@@ -129,10 +129,10 @@ DBeaver is a popular database management tool with a GUI interface.
 3. **Enter Connection Details**
    - **Host:** `localhost`
    - **Port:** `5432`
-   - **Database:** `rtac_modbus`
-   - **Username:** `rtac_user`
-   - **Password:** `rtac_password`
-   - **JDBC URL:** `jdbc:postgresql://localhost:5432/rtac_modbus` (auto-generated)
+   - **Database:** `pae_backend_ot`
+   - **Username:** `pae_backend_ot_user`
+   - **Password:** `pae_backend_ot_password`
+   - **JDBC URL:** `jdbc:postgresql://localhost:5432/pae_backend_ot` (auto-generated)
 
 4. **Test Connection**
    - Click "Test Connection" button
@@ -149,10 +149,10 @@ DBeaver is a popular database management tool with a GUI interface.
 |-----------|-------|
 | Host | `localhost` |
 | Port | `5432` |
-| Database | `rtac_modbus` |
-| Username | `rtac_user` |
-| Password | `rtac_password` |
-| JDBC URL | `jdbc:postgresql://localhost:5432/rtac_modbus` |
+| Database | `pae_backend_ot` |
+| Username | `pae_backend_ot_user` |
+| Password | `pae_backend_ot_password` |
+| JDBC URL | `jdbc:postgresql://localhost:5432/pae_backend_ot` |
 
 **Note:** If you have custom values in your `.env` file, use those instead of the defaults.
 
@@ -164,12 +164,12 @@ DBeaver is a popular database management tool with a GUI interface.
 
 **Option 1: Execute psql in the container**
 ```bash
-docker-compose exec postgres psql -U rtac_user -d rtac_modbus
+docker-compose exec postgres psql -U pae_backend_ot_user -d pae_backend_ot
 ```
 
 **Option 2: Connect from host (if psql is installed)**
 ```bash
-psql -h localhost -p 5432 -U rtac_user -d rtac_modbus
+psql -h localhost -p 5432 -U pae_backend_ot_user -d pae_backend_ot
 ```
 
 ### Basic psql Commands
@@ -206,16 +206,16 @@ SELECT version();
 
 ```bash
 # Connect and run a query
-docker-compose exec postgres psql -U rtac_user -d rtac_modbus -c "SELECT version();"
+docker-compose exec postgres psql -U pae_backend_ot_user -d pae_backend_ot -c "SELECT version();"
 
 # Check if TimescaleDB is installed
-docker-compose exec postgres psql -U rtac_user -d rtac_modbus -c "SELECT extversion FROM pg_extension WHERE extname = 'timescaledb';"
+docker-compose exec postgres psql -U pae_backend_ot_user -d pae_backend_ot -c "SELECT extversion FROM pg_extension WHERE extname = 'timescaledb';"
 
 # List all tables
-docker-compose exec postgres psql -U rtac_user -d rtac_modbus -c "\dt"
+docker-compose exec postgres psql -U pae_backend_ot_user -d pae_backend_ot -c "\dt"
 
 # List all databases
-docker-compose exec postgres psql -U rtac_user -d rtac_modbus -c "\l"
+docker-compose exec postgres psql -U pae_backend_ot_user -d pae_backend_ot -c "\l"
 ```
 
 ## Database Migrations
@@ -226,7 +226,7 @@ The database migration system automatically tracks and runs pending migrations i
 
 **Run all pending migrations:**
 ```bash
-docker-compose exec pae-rtac-server python scripts/migrate_db.py
+docker-compose exec pae-backend-ot python scripts/migrate_db.py
 ```
 
 **What it does:**
@@ -248,7 +248,7 @@ Running migration: 001_create_devices_table.sql
 
 ## API Endpoints
 
-The RTAC Modbus Server provides REST API endpoints for database operations. All endpoints are available at `http://localhost:8000`.
+The PAE Backend OT provides REST API endpoints for database operations. All endpoints are available at `http://localhost:8000`.
 
 ### Database Health Check
 
@@ -276,7 +276,7 @@ curl http://localhost:8000/db_health
 
 **Via psql:**
 ```bash
-docker-compose exec postgres psql -U rtac_user -d rtac_modbus -c "SELECT version();"
+docker-compose exec postgres psql -U pae_backend_ot_user -d pae_backend_ot -c "SELECT version();"
 ```
 
 **Via API (when implemented):**
@@ -289,28 +289,28 @@ curl http://localhost:8000/db/info
 
 **Via psql:**
 ```bash
-docker-compose exec postgres psql -U rtac_user -d rtac_modbus -c "SELECT extversion FROM pg_extension WHERE extname = 'timescaledb';"
+docker-compose exec postgres psql -U pae_backend_ot_user -d pae_backend_ot -c "SELECT extversion FROM pg_extension WHERE extname = 'timescaledb';"
 ```
 
 ### List All Tables
 
 **Via psql:**
 ```bash
-docker-compose exec postgres psql -U rtac_user -d rtac_modbus -c "\dt"
+docker-compose exec postgres psql -U pae_backend_ot_user -d pae_backend_ot -c "\dt"
 ```
 
 ### View Database Size
 
 **Via psql:**
 ```bash
-docker-compose exec postgres psql -U rtac_user -d rtac_modbus -c "SELECT pg_size_pretty(pg_database_size('rtac_modbus'));"
+docker-compose exec postgres psql -U pae_backend_ot_user -d pae_backend_ot -c "SELECT pg_size_pretty(pg_database_size('pae_backend_ot'));"
 ```
 
 ### Monitor Database Connections
 
 **Via psql:**
 ```bash
-docker-compose exec postgres psql -U rtac_user -d rtac_modbus -c "SELECT count(*) FROM pg_stat_activity WHERE datname = 'rtac_modbus';"
+docker-compose exec postgres psql -U pae_backend_ot_user -d pae_backend_ot -c "SELECT count(*) FROM pg_stat_activity WHERE datname = 'pae_backend_ot';"
 ```
 
 ## Troubleshooting
@@ -329,12 +329,12 @@ docker-compose exec postgres psql -U rtac_user -d rtac_modbus -c "SELECT count(*
 
 3. **Test connection from container:**
    ```bash
-   docker-compose exec postgres pg_isready -U rtac_user -d rtac_modbus
+   docker-compose exec postgres pg_isready -U pae_backend_ot_user -d pae_backend_ot
    ```
 
 4. **Verify environment variables:**
    ```bash
-   docker-compose exec pae-rtac-server env | grep POSTGRES
+   docker-compose exec pae-backend-ot env | grep POSTGRES
    ```
 
 ### Connection Refused
@@ -355,7 +355,7 @@ TimescaleDB should be pre-installed in the `timescale/timescaledb` image. If you
 
 ```sql
 -- Connect to database
-docker-compose exec postgres psql -U rtac_user -d rtac_modbus
+docker-compose exec postgres psql -U pae_backend_ot_user -d pae_backend_ot
 
 -- Create extension
 CREATE EXTENSION IF NOT EXISTS timescaledb;
@@ -370,10 +370,10 @@ If the database doesn't exist, it should be created automatically by the contain
 
 ```bash
 # List all databases
-docker-compose exec postgres psql -U rtac_user -d postgres -c "\l"
+docker-compose exec postgres psql -U pae_backend_ot_user -d postgres -c "\l"
 ```
 
-If `rtac_modbus` is missing, check the `POSTGRES_DB` environment variable in `docker-compose.yaml`.
+If `pae_backend_ot` is missing, check the `POSTGRES_DB` environment variable in `docker-compose.yaml`.
 
 ## Migration Best Practices (TODO)
 

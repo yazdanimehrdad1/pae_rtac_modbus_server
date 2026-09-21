@@ -19,8 +19,8 @@ jobs:
       PYTHONPATH: src
       POSTGRES_HOST: localhost
       POSTGRES_PORT: "5432"
-      POSTGRES_DB: rtac_modbus
-      POSTGRES_USER: rtac_user
+      POSTGRES_DB: pae_backend_ot
+      POSTGRES_USER: pae_backend_ot_user
       POSTGRES_PASSWORD: ci-password
       REDIS_HOST: localhost
       REDIS_PORT: "6379"
@@ -28,13 +28,13 @@ jobs:
       postgres:
         image: postgres:16
         env:
-          POSTGRES_DB: rtac_modbus
-          POSTGRES_USER: rtac_user
+          POSTGRES_DB: pae_backend_ot
+          POSTGRES_USER: pae_backend_ot_user
           POSTGRES_PASSWORD: ci-password
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U rtac_user -d rtac_modbus"
+          --health-cmd "pg_isready -U pae_backend_ot_user -d pae_backend_ot"
           --health-interval 10s --health-timeout 5s --health-retries 5
       redis:
         image: redis:7-alpine
@@ -97,14 +97,14 @@ jobs:
           file: docker/Dockerfile
           push: false
           load: true
-          tags: pae-rtac-server:ci
+          tags: pae-backend-ot:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Smoke test the image imports
         run: |
           docker run --rm -e POSTGRES_PASSWORD=ci \
-            --entrypoint python pae-rtac-server:ci \
+            --entrypoint python pae-backend-ot:ci \
             -c "from config import settings; from app import app; print('image imports OK')"
 
   validate-manifests:

@@ -1,2 +1,2 @@
-"""API layer for PAE RTAC Server."""
+"""API layer for PAE Backend OT."""
 

@@ -1,14 +1,14 @@
 services:
   redis:
     image: redis:7-alpine
-    container_name: pae-rtac-server-redis
+    container_name: pae-backend-ot-redis
     ports:
       - "6380:6379"
     volumes:
       - redis-data:/data
     command: redis-server --appendonly yes
     networks:
-      - rtac-server-network
+      - pae-backend-ot-network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -18,29 +18,29 @@ services:
 
   postgres:
     image: timescale/timescaledb:latest-pg16
-    container_name: pae-rtac-server-postgres
+    container_name: pae-backend-ot-postgres
     ports:
       - "5435:5432"
     environment:
-      - POSTGRES_DB=${POSTGRES_DB:-rtac_modbus}
-      - POSTGRES_USER=${POSTGRES_USER:-rtac_user}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-rtac_password}
+      - POSTGRES_DB=${POSTGRES_DB:-pae_backend_ot}
+      - POSTGRES_USER=${POSTGRES_USER:-pae_backend_ot_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-pae_backend_ot_password}
     volumes:
       - postgres-data:/var/lib/postgresql/data
     networks:
-      - rtac-server-network
+      - pae-backend-ot-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-rtac_user} -d ${POSTGRES_DB:-rtac_modbus}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-pae_backend_ot_user} -d ${POSTGRES_DB:-pae_backend_ot}"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  pae-rtac-server:
+  pae-backend-ot:
     build:
       context: .
       dockerfile: docker/Dockerfile
-    container_name: pae-rtac-server
+    container_name: pae-backend-ot
     ports:
       - "8000:8000"
     environment:
@@ -58,9 +58,9 @@ services:
       # PostgreSQL configuration
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
-      - POSTGRES_DB=${POSTGRES_DB:-rtac_modbus}
-      - POSTGRES_USER=${POSTGRES_USER:-rtac_user}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-rtac_password}
+      - POSTGRES_DB=${POSTGRES_DB:-pae_backend_ot}
+      - POSTGRES_USER=${POSTGRES_USER:-pae_backend_ot_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-pae_backend_ot_password}
       # DAS API configuration
       - DAS_API_BASE_URL=${DAS_API_BASE_URL:-http://pae-das-api:8080}
     volumes:
@@ -72,7 +72,7 @@ services:
       postgres:
         condition: service_healthy
     networks:
-      - rtac-server-network
+      - pae-backend-ot-network
       - shared-network
     restart: unless-stopped
 
@@ -81,7 +81,7 @@ volumes:
   postgres-data:
 
 networks:
-  rtac-server-network:
+  pae-backend-ot-network:
     driver: bridge
   shared-network:
     name: pae-shared-network

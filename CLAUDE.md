@@ -1,4 +1,4 @@
-# rtac_modbus_server (pae-rtac-server)
+# pae-backend-ot
 
 Owns: polling Modbus TCP devices (SEL RTACs) on a schedule and storing their
 register/point readings as time-series in TimescaleDB, plus the sites → devices →

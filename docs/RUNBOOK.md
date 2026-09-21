@@ -1,4 +1,4 @@
-# pae-rtac-server — Deployment Runbook
+# pae-backend-ot — Deployment Runbook
 
 A beginner-friendly guide to how this service is built, shipped, and run. No SRE
 experience assumed. If a term is new, check the **[Glossary](#2-glossary)** first.
@@ -41,8 +41,8 @@ experience assumed. If a term is new, check the **[Glossary](#2-glossary)** firs
 Everything here is explained in depth later; this is the copy-paste layer. Cluster
 commands assume `kubectl` already points at the prod cluster (see **Context** below).
 
-**Constants:** project `prd-pae-rtac-server` · cluster `pae-autopilot` · region
-`us-central1` · namespace `rtac-modbus-prod` · app container `app` · sidecar
+**Constants:** project `prd-pae-backend-ot` · cluster `pae-autopilot` · region
+`us-central1` · namespace `pae-backend-ot-prod` · app container `app` · sidecar
 `cloud-sql-proxy`
 
 ### Context — what am I pointed at?
@@ -59,15 +59,15 @@ kubectl cluster-info                            # is the connection actually ali
 Set / fix them:
 
 ```bash
-gcloud config set project prd-pae-rtac-server
+gcloud config set project prd-pae-backend-ot
 gcloud container clusters get-credentials pae-autopilot \
-  --region us-central1 --project prd-pae-rtac-server
+  --region us-central1 --project prd-pae-backend-ot
 
-kubectl config use-context gke_prd-pae-rtac-server_us-central1_pae-autopilot
-kubectl config set-context --current --namespace=rtac-modbus-prod   # stop typing -n
+kubectl config use-context gke_prd-pae-backend-ot_us-central1_pae-autopilot
+kubectl config set-context --current --namespace=pae-backend-ot-prod   # stop typing -n
 ```
 
-With that last line set, every `-n rtac-modbus-prod` below becomes optional.
+With that last line set, every `-n pae-backend-ot-prod` below becomes optional.
 
 ### Port-forward — reaching anything in the cluster
 
@@ -77,9 +77,9 @@ keep running in its own terminal while you use another one.
 
 | Target | Command | Then open |
 |---|---|---|
-| App API | `kubectl -n rtac-modbus-prod port-forward svc/pae-rtac-server 8000:8000` | `http://localhost:8000` |
+| App API | `kubectl -n pae-backend-ot-prod port-forward svc/pae-backend-ot 8000:8000` | `http://localhost:8000` |
 | ArgoCD UI | `kubectl -n argocd port-forward svc/argocd-server 8080:443` | `https://localhost:8080` (user `admin`) |
-| Redis | `kubectl -n rtac-modbus-prod port-forward svc/redis 6379:6379` | `redis-cli -p 6379` |
+| Redis | `kubectl -n pae-backend-ot-prod port-forward svc/redis 6379:6379` | `redis-cli -p 6379` |
 
 ArgoCD admin password:
 
@@ -131,17 +131,17 @@ curl http://localhost:8000/api/cache/keys
 ### Is it alive? — pods, logs, events
 
 ```bash
-kubectl -n rtac-modbus-prod get pods                    # expect pae-rtac-server-... Running, all containers ready
-kubectl -n rtac-modbus-prod get all                     # pods, svc, deploy, hpa at a glance
-kubectl -n rtac-modbus-prod rollout status deploy/pae-rtac-server
+kubectl -n pae-backend-ot-prod get pods                    # expect pae-backend-ot-... Running, all containers ready
+kubectl -n pae-backend-ot-prod get all                     # pods, svc, deploy, hpa at a glance
+kubectl -n pae-backend-ot-prod rollout status deploy/pae-backend-ot
 
-kubectl -n rtac-modbus-prod logs deploy/pae-rtac-server -c app --tail=100
-kubectl -n rtac-modbus-prod logs deploy/pae-rtac-server -c app -f          # follow
-kubectl -n rtac-modbus-prod logs deploy/pae-rtac-server -c app --previous  # last crash
-kubectl -n rtac-modbus-prod logs -l app.kubernetes.io/name=pae-rtac-server -c app --tail=50
+kubectl -n pae-backend-ot-prod logs deploy/pae-backend-ot -c app --tail=100
+kubectl -n pae-backend-ot-prod logs deploy/pae-backend-ot -c app -f          # follow
+kubectl -n pae-backend-ot-prod logs deploy/pae-backend-ot -c app --previous  # last crash
+kubectl -n pae-backend-ot-prod logs -l app.kubernetes.io/name=pae-backend-ot -c app --tail=50
 
-kubectl -n rtac-modbus-prod describe pod <pod-name>     # why a pod won't start
-kubectl -n rtac-modbus-prod get events --sort-by=.lastTimestamp | tail -20
+kubectl -n pae-backend-ot-prod describe pod <pod-name>     # why a pod won't start
+kubectl -n pae-backend-ot-prod get events --sort-by=.lastTimestamp | tail -20
 ```
 
 `-c app` matters — the pod also runs the `cloud-sql-proxy` sidecar, and without the
@@ -150,17 +150,17 @@ flag you may get the proxy's logs instead of the app's.
 Migrations and a shell inside the pod:
 
 ```bash
-kubectl -n rtac-modbus-prod get jobs                              # migration Job status
-kubectl -n rtac-modbus-prod logs job/pae-rtac-server-migrate      # why a migration failed
-kubectl -n rtac-modbus-prod exec -it deploy/pae-rtac-server -c app -- /bin/sh
-kubectl -n rtac-modbus-prod rollout restart deploy/pae-rtac-server
+kubectl -n pae-backend-ot-prod get jobs                              # migration Job status
+kubectl -n pae-backend-ot-prod logs job/pae-backend-ot-migrate      # why a migration failed
+kubectl -n pae-backend-ot-prod exec -it deploy/pae-backend-ot -c app -- /bin/sh
+kubectl -n pae-backend-ot-prod rollout restart deploy/pae-backend-ot
 ```
 
 ### ArgoCD — what does git say should be running?
 
 ```bash
 kubectl -n argocd get applications                  # SYNC STATUS / HEALTH STATUS
-kubectl -n argocd describe application pae-rtac-server-prod
+kubectl -n argocd describe application pae-backend-ot-prod
 kubectl -n argocd logs deploy/argocd-application-controller --tail=50
 ```
 
@@ -214,8 +214,8 @@ gh pr create --base main          # CI runs on the PR; merging deploys to prod
 Verify the deploy landed, then confirm what's actually running:
 
 ```bash
-kubectl -n rtac-modbus-prod rollout status deploy/pae-rtac-server
-kubectl -n rtac-modbus-prod get deploy pae-rtac-server \
+kubectl -n pae-backend-ot-prod rollout status deploy/pae-backend-ot
+kubectl -n pae-backend-ot-prod get deploy pae-backend-ot \
   -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'   # image SHA now live
 ```
 
@@ -273,7 +273,7 @@ So **"deploying" = "making a commit that changes what git says should run."**
    (keyless — no stored password).
 5. CD **builds the container image** from your code.
 6. CD **pushes the image** to Artifact Registry, tagged with the git commit SHA
-   (e.g. `pae-rtac-server:a1b2c3d`).
+   (e.g. `pae-backend-ot:a1b2c3d`).
 7. CD **writes that tag into git** — edits `k8s/overlays/prod/kustomization.yaml`
    and commits it with `[skip ci]`. **This commit is the deploy order.**
 8. **ArgoCD (inside the cluster) notices** the new commit.
@@ -296,7 +296,7 @@ the cluster pulls the change to itself. **GitHub never reaches into the cluster.
 
 | Branch    | Workflow      | Overlay             | Namespace          | ArgoCD app             |
 |-----------|---------------|---------------------|--------------------|------------------------|
-| `main`    | `cd-prod.yml` | `k8s/overlays/prod` | `rtac-modbus-prod` | `pae-rtac-server-prod` |
+| `main`    | `cd-prod.yml` | `k8s/overlays/prod` | `pae-backend-ot-prod` | `pae-backend-ot-prod` |
 | `feat/*`  | `ci.yml` only | —                   | —                  | — (never deploys)      |
 
 `main` is the only long-lived branch and the only one that deploys. Feature
@@ -350,7 +350,7 @@ combining base + overlay into final YAML. One overlay per environment; today
 there is only `prod`.
 
 **Namespace** — a virtual partition inside one cluster. Ours is
-`rtac-modbus-prod`; a second environment would get its own namespace so its
+`pae-backend-ot-prod`; a second environment would get its own namespace so its
 objects stay isolated even on the same cluster.
 
 **Deployment** — the Kubernetes object that runs your app pods, keeps the desired
@@ -463,15 +463,15 @@ The last step of CD **edits a file in git and commits it**. The file is
 
 ```yaml
 images:
-  - name: pae-rtac-server
-    newName: us-central1-docker.pkg.dev/MY_PROJECT_ID/pae/pae-rtac-server
+  - name: pae-backend-ot
+    newName: us-central1-docker.pkg.dev/MY_PROJECT_ID/pae/pae-backend-ot
     newTag: a1b2c3d          # ← changes every deploy
 ```
 
 Afterwards `git log` on `main` shows:
 
 ```
-chore(prod): deploy pae-rtac-server a1b2c3d [skip ci]   ← the deploy record
+chore(prod): deploy pae-backend-ot a1b2c3d [skip ci]   ← the deploy record
 Merge pull request #42 from feature/new-endpoint        ← your code change
 ```
 
@@ -531,7 +531,7 @@ There are four different kinds of secret; they are handled very differently.
    instance?" Handled by the **Cloud SQL Auth Proxy** using the pod's Google
    identity. No password; it's IAM.
 2. **Database login** — "which Postgres user, what password?" The app logs in as
-   `rtac_user` with `POSTGRES_PASSWORD` over the proxy tunnel. *This* password lives
+   `pae_backend_ot_user` with `POSTGRES_PASSWORD` over the proxy tunnel. *This* password lives
    in Secret Manager → k8s Secret.
 
 The proxy secures the *pipe*; the password authenticates the *user* inside it. The
@@ -582,7 +582,7 @@ ArgoCD then keeps it running).
 ## 6. Procedures — grouped by how often you do them
 
 Replace `MY_PROJECT_ID` with your real GCP project ID everywhere, and
-`my-org/rtac_modbus_server` with your real GitHub repo. Region is `us-central1`
+`my-org/pae-backend-ot` with your real GitHub repo. Region is `us-central1`
 throughout — change if you use another.
 
 <a name="60-tools"></a>
@@ -655,7 +655,7 @@ in the web **Console** (https://console.cloud.google.com) or with `gcloud`; both
   - Console: top-bar project dropdown → **New Project** → note the **Project ID**.
   - CLI — create a new one:
     ```bash
-    gcloud projects create MY_PROJECT_ID --name="PAE RTAC"
+    gcloud projects create MY_PROJECT_ID --name="PAE Backend OT"
     ```
   - **See all your projects (IDs and names):**
     ```bash
@@ -664,7 +664,7 @@ in the web **Console** (https://console.cloud.google.com) or with `gcloud`; both
     ```
   - **Set the active project, and check it:**
     ```bash
-    gcloud config set project MY_PROJECT_ID      # e.g. prd-pae-rtac-server
+    gcloud config set project MY_PROJECT_ID      # e.g. prd-pae-backend-ot
     gcloud config get-value project              # confirm it shows the ID
     ```
   - **Gotcha:** you must set the project **ID** (a string), not the numeric
@@ -721,7 +721,7 @@ to 6.A.
 
 You can run the whole thing with the helper script (needs Bash — use Git Bash on Windows):
 ```bash
-PROJECT_ID=MY_PROJECT_ID GITHUB_REPO=my-org/rtac_modbus_server bash scripts/gcp_bootstrap.sh
+PROJECT_ID=MY_PROJECT_ID GITHUB_REPO=my-org/pae-backend-ot bash scripts/gcp_bootstrap.sh
 ```
 …or do it step by step to understand each piece:
 
@@ -748,18 +748,18 @@ PROJECT_ID=MY_PROJECT_ID GITHUB_REPO=my-org/rtac_modbus_server bash scripts/gcp_
   tiers like `db-custom-1-3840` (1 vCPU / 3.75 GB). For an even cheaper box, use
   `--tier=db-g1-small`.
   ```bash
-  gcloud sql instances create rtac-pg-prod --database-version=POSTGRES_16 \
+  gcloud sql instances create pae-backend-ot-pg-prod --database-version=POSTGRES_16 \
     --region=us-central1 --edition=ENTERPRISE --tier=db-custom-1-3840 --storage-auto-increase
-  gcloud sql databases create rtac_modbus --instance=rtac-pg-prod
-  gcloud sql users create rtac_user --instance=rtac-pg-prod --password='PICK_A_STRONG_PASSWORD'
-  gcloud sql instances describe rtac-pg-prod --format='value(connectionName)'
-  # SAVE the output, e.g. my-project:us-central1:rtac-pg-prod
+  gcloud sql databases create pae_backend_ot --instance=pae-backend-ot-pg-prod
+  gcloud sql users create pae_backend_ot_user --instance=pae-backend-ot-pg-prod --password='PICK_A_STRONG_PASSWORD'
+  gcloud sql instances describe pae-backend-ot-pg-prod --format='value(connectionName)'
+  # SAVE the output, e.g. my-project:us-central1:pae-backend-ot-pg-prod
   ```
 - [ ] **A6. Create Redis and note its private IP**
   ```bash
-  gcloud redis instances create rtac-redis-prod --size=1 --region=us-central1 \
+  gcloud redis instances create pae-backend-ot-redis-prod --size=1 --region=us-central1 \
     --redis-version=redis_7_0 --network=default
-  gcloud redis instances describe rtac-redis-prod --region=us-central1 --format='value(host)'
+  gcloud redis instances describe pae-backend-ot-redis-prod --region=us-central1 --format='value(host)'
   # SAVE the IP, e.g. 10.12.34.5
   ```
   `--network=default` puts Redis on the same VPC as the Autopilot cluster so pods can
@@ -768,33 +768,33 @@ PROJECT_ID=MY_PROJECT_ID GITHUB_REPO=my-org/rtac_modbus_server bash scripts/gcp_
   turn it on instead, add `--enable-auth` above, then read the password and store it in
   the k8s Secret:
   ```bash
-  gcloud redis instances get-auth-string rtac-redis-prod --region=us-central1
-  # put that value into REDIS_PASSWORD when you create pae-rtac-server-secrets (C3)
+  gcloud redis instances get-auth-string pae-backend-ot-redis-prod --region=us-central1
+  # put that value into REDIS_PASSWORD when you create pae-backend-ot-secrets (C3)
   ```
 - [ ] **A7. Store the DB password in Secret Manager.** Use the **exact same** password
-  you set on `rtac_user` in A5.
+  you set on `pae_backend_ot_user` in A5.
   - **Bash / Git Bash:**
     ```bash
-    printf 'PICK_A_STRONG_PASSWORD' | gcloud secrets create rtac-postgres-password --data-file=-
+    printf 'PICK_A_STRONG_PASSWORD' | gcloud secrets create pae-backend-ot-postgres-password --data-file=-
     ```
   - **Windows PowerShell** (`printf` doesn't exist there; write to a temp file with no
     trailing newline, which would otherwise corrupt the password):
     ```powershell
     $pw = 'PICK_A_STRONG_PASSWORD'
     [System.IO.File]::WriteAllText("$env:TEMP\pw.txt", $pw)
-    gcloud secrets create rtac-postgres-password --data-file="$env:TEMP\pw.txt"
+    gcloud secrets create pae-backend-ot-postgres-password --data-file="$env:TEMP\pw.txt"
     Remove-Item "$env:TEMP\pw.txt"
     ```
 - [ ] **A8. Let the app's pods reach Cloud SQL (Workload Identity for the proxy)**
   ```bash
-  gcloud iam service-accounts create rtac-modbus-prod --display-name="rtac prod SQL client"
+  gcloud iam service-accounts create pae-backend-ot-prod --display-name="pae-backend-ot prod SQL client"
   gcloud projects add-iam-policy-binding MY_PROJECT_ID \
-    --member="serviceAccount:rtac-modbus-prod@MY_PROJECT_ID.iam.gserviceaccount.com" \
+    --member="serviceAccount:pae-backend-ot-prod@MY_PROJECT_ID.iam.gserviceaccount.com" \
     --role="roles/cloudsql.client"
   gcloud iam service-accounts add-iam-policy-binding \
-    rtac-modbus-prod@MY_PROJECT_ID.iam.gserviceaccount.com \
+    pae-backend-ot-prod@MY_PROJECT_ID.iam.gserviceaccount.com \
     --role="roles/iam.workloadIdentityUser" \
-    --member="serviceAccount:MY_PROJECT_ID.svc.id.goog[rtac-modbus-prod/pae-rtac-server]"
+    --member="serviceAccount:MY_PROJECT_ID.svc.id.goog[pae-backend-ot-prod/pae-backend-ot]"
   ```
 - [ ] **A9. Let GitHub push images without a stored key (WIF)**
   ```bash
@@ -806,13 +806,13 @@ PROJECT_ID=MY_PROJECT_ID GITHUB_REPO=my-org/rtac_modbus_server bash scripts/gcp_
   gcloud iam workload-identity-pools providers create-oidc github --location=global \
     --workload-identity-pool=github \
     --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository" \
-    --attribute-condition="assertion.repository=='my-org/rtac_modbus_server'" \
+    --attribute-condition="assertion.repository=='my-org/pae-backend-ot'" \
     --issuer-uri="https://token.actions.githubusercontent.com"
   POOL=$(gcloud iam workload-identity-pools describe github --location=global --format='value(name)')
   gcloud iam service-accounts add-iam-policy-binding \
     gh-deployer@MY_PROJECT_ID.iam.gserviceaccount.com \
     --role="roles/iam.workloadIdentityUser" \
-    --member="principalSet://iam.googleapis.com/${POOL}/attribute.repository/my-org/rtac_modbus_server"
+    --member="principalSet://iam.googleapis.com/${POOL}/attribute.repository/my-org/pae-backend-ot"
   gcloud iam workload-identity-pools providers describe github --location=global \
     --workload-identity-pool=github --format='value(name)'
   # SAVE this long string → it is GCP_WORKLOAD_IDENTITY_PROVIDER for GitHub
@@ -869,7 +869,7 @@ IP (A6), and the WIF provider string (A9). The deployer email is
 ### 6.C One-time setup — bootstrap the cluster
 
 - [ ] **C1. Fill the `REPLACE_*` placeholders** in `k8s/overlays/prod/kustomization.yaml`:
-  - image `newName` → `us-central1-docker.pkg.dev/MY_PROJECT_ID/pae/pae-rtac-server`
+  - image `newName` → `us-central1-docker.pkg.dev/MY_PROJECT_ID/pae/pae-backend-ot`
   - `REDIS_HOST` → the Redis IP from A6
   - `INSTANCE_CONNECTION_NAME` (appears twice) → the SQL connection name from A5
   - the ServiceAccount annotation project → `MY_PROJECT_ID`
@@ -884,16 +884,16 @@ IP (A6), and the WIF provider string (A9). The deployer email is
 - [ ] **C3. Create the namespace and the app Secret** (the one thing not in git)
   - **Bash / Git Bash:**
     ```bash
-    kubectl create namespace rtac-modbus-prod
-    kubectl -n rtac-modbus-prod create secret generic pae-rtac-server-secrets \
-      --from-literal=POSTGRES_PASSWORD="$(gcloud secrets versions access latest --secret=rtac-postgres-password)" \
+    kubectl create namespace pae-backend-ot-prod
+    kubectl -n pae-backend-ot-prod create secret generic pae-backend-ot-secrets \
+      --from-literal=POSTGRES_PASSWORD="$(gcloud secrets versions access latest --secret=pae-backend-ot-postgres-password)" \
       --from-literal=REDIS_PASSWORD=""
     ```
   - **Windows PowerShell** (no `\` continuations; capture the password first):
     ```powershell
-    kubectl create namespace rtac-modbus-prod
-    $pgpw = gcloud secrets versions access latest --secret=rtac-postgres-password
-    kubectl -n rtac-modbus-prod create secret generic pae-rtac-server-secrets --from-literal=POSTGRES_PASSWORD="$pgpw" --from-literal=REDIS_PASSWORD=""
+    kubectl create namespace pae-backend-ot-prod
+    $pgpw = gcloud secrets versions access latest --secret=pae-backend-ot-postgres-password
+    kubectl -n pae-backend-ot-prod create secret generic pae-backend-ot-secrets --from-literal=POSTGRES_PASSWORD="$pgpw" --from-literal=REDIS_PASSWORD=""
     ```
 - [ ] **C4. Install ArgoCD** (once per cluster)
   ```bash
@@ -931,7 +931,7 @@ IP (A6), and the WIF provider string (A9). The deployer email is
 
   1. **Create a GitHub token (read-only on this repo).** GitHub → **Settings** →
      **Developer settings** → **Personal access tokens** → **Fine-grained tokens** →
-     **Generate new token**. Name it `argocd-rtac`, set an expiration, **Resource
+     **Generate new token**. Name it `argocd-pae-backend-ot`, set an expiration, **Resource
      owner** = your account, **Repository access** = *Only select repositories* →
      this repo, and **Repository permissions** → **Contents: Read-only**. Generate and
      copy the token (`github_pat_...`) — shown only once.
@@ -947,12 +947,12 @@ IP (A6), and the WIF provider string (A9). The deployer email is
   `k8s/...` path is relative, so it fails with "path does not exist" if your shell is
   elsewhere (your prompt shows the current folder; `~` means home, not the repo).
   ```bash
-  cd "C:\Users\yazda\OneDrive\Desktop\pae-microservices-dev\rtac_modbus_server"
+  cd "C:\Users\yazda\OneDrive\Desktop\pae-microservices-dev\pae-backend-ot"
   kubectl apply -f k8s/argocd/application-prod.yaml
   ```
   (Or from anywhere, use the full path:
-  `kubectl apply -f "C:\...\rtac_modbus_server\k8s\argocd\application-prod.yaml"`.)
-  Expected: `application.argoproj.io/pae-rtac-server-prod created`. Then check it:
+  `kubectl apply -f "C:\...\pae-backend-ot\k8s\argocd\application-prod.yaml"`.)
+  Expected: `application.argoproj.io/pae-backend-ot-prod created`. Then check it:
   ```bash
   kubectl -n argocd get applications
   ```
@@ -960,8 +960,8 @@ IP (A6), and the WIF provider string (A9). The deployer email is
   > `kubectl apply -k k8s/...`, and `make`/`.\make.ps1` command.
 - [ ] **C6. Verify**
   ```bash
-  kubectl -n rtac-modbus-prod get pods           # app + sidecar Running
-  kubectl -n rtac-modbus-prod port-forward svc/pae-rtac-server 8000:8000
+  kubectl -n pae-backend-ot-prod get pods           # app + sidecar Running
+  kubectl -n pae-backend-ot-prod port-forward svc/pae-backend-ot 8000:8000
   # in another terminal:
   curl http://localhost:8000/api/readyz          # {"ready":true,...}
   ```
@@ -983,7 +983,7 @@ Once 6.A–6.C are done, this is the whole routine:
 5. **ArgoCD syncs** within a couple of minutes (or click *Sync* in the UI).
 6. Verify:
    ```bash
-   kubectl -n rtac-modbus-prod rollout status deploy/pae-rtac-server
+   kubectl -n pae-backend-ot-prod rollout status deploy/pae-backend-ot
    ```
    then check `/api/readyz` as in C6.
 
@@ -1047,7 +1047,7 @@ involved. Stop with `.\make.ps1 down`.
 # find a previous good SHA:
 git log --oneline k8s/overlays/prod/kustomization.yaml
 #   or:
-gcloud artifacts docker images list us-central1-docker.pkg.dev/MY_PROJECT_ID/pae/pae-rtac-server
+gcloud artifacts docker images list us-central1-docker.pkg.dev/MY_PROJECT_ID/pae/pae-backend-ot
 # edit k8s/overlays/prod/kustomization.yaml -> newTag: <previous-good-sha>
 git commit -am "rollback(prod): pin <previous-good-sha> [skip ci]"
 git push
@@ -1066,10 +1066,10 @@ kubectl apply -k k8s/overlays/prod
 
 **Useful diagnostics:**
 ```bash
-kubectl -n rtac-modbus-prod get pods                       # are pods Running/Ready?
-kubectl -n rtac-modbus-prod logs deploy/pae-rtac-server    # app logs
-kubectl -n rtac-modbus-prod describe pod <pod-name>        # why a pod won't start
-kubectl -n rtac-modbus-prod get job                        # migration Job status
+kubectl -n pae-backend-ot-prod get pods                       # are pods Running/Ready?
+kubectl -n pae-backend-ot-prod logs deploy/pae-backend-ot    # app logs
+kubectl -n pae-backend-ot-prod describe pod <pod-name>        # why a pod won't start
+kubectl -n pae-backend-ot-prod get job                        # migration Job status
 ```
 
 > Always finish by making git reflect what should be running, or ArgoCD's self-heal
@@ -1082,22 +1082,22 @@ kubectl -n rtac-modbus-prod get job                        # migration Job statu
 
 1. Change the password on the Cloud SQL user:
    ```bash
-   gcloud sql users set-password rtac_user --instance=rtac-pg-prod --password='NEW_STRONG_PASSWORD'
+   gcloud sql users set-password pae_backend_ot_user --instance=pae-backend-ot-pg-prod --password='NEW_STRONG_PASSWORD'
    ```
 2. Add a new version in Secret Manager:
    ```bash
-   printf 'NEW_STRONG_PASSWORD' | gcloud secrets versions add rtac-postgres-password --data-file=-
+   printf 'NEW_STRONG_PASSWORD' | gcloud secrets versions add pae-backend-ot-postgres-password --data-file=-
    ```
 3. Recreate the k8s Secret from the new value:
    ```bash
-   kubectl -n rtac-modbus-prod delete secret pae-rtac-server-secrets
-   kubectl -n rtac-modbus-prod create secret generic pae-rtac-server-secrets \
-     --from-literal=POSTGRES_PASSWORD="$(gcloud secrets versions access latest --secret=rtac-postgres-password)" \
+   kubectl -n pae-backend-ot-prod delete secret pae-backend-ot-secrets
+   kubectl -n pae-backend-ot-prod create secret generic pae-backend-ot-secrets \
+     --from-literal=POSTGRES_PASSWORD="$(gcloud secrets versions access latest --secret=pae-backend-ot-postgres-password)" \
      --from-literal=REDIS_PASSWORD=""
    ```
 4. Restart the pods so they pick it up:
    ```bash
-   kubectl -n rtac-modbus-prod rollout restart deploy/pae-rtac-server
+   kubectl -n pae-backend-ot-prod rollout restart deploy/pae-backend-ot
    ```
 
 ---
@@ -1127,7 +1127,7 @@ Get/refresh the admin password (PowerShell):
 
 **The app API:**
 ```bash
-kubectl -n rtac-modbus-prod port-forward svc/pae-rtac-server 8000:8000
+kubectl -n pae-backend-ot-prod port-forward svc/pae-backend-ot 8000:8000
 # leave running, then in another terminal:
 curl http://localhost:8000/api/healthz     # {"ok":true,...}
 curl http://localhost:8000/api/readyz       # {"ready":true,...}
@@ -1177,13 +1177,13 @@ Notes:
 | GCP region                    | `us-central1`                                                |
 | GKE cluster                   | `pae-autopilot`                                              |
 | Artifact Registry repo        | `pae` (host `us-central1-docker.pkg.dev`)                    |
-| Image name                    | `<AR_HOST>/<PROJECT>/pae/pae-rtac-server`                    |
-| Cloud SQL instance / db / user| `rtac-pg-prod` / `rtac_modbus` / `rtac_user`                 |
-| Memorystore instance          | `rtac-redis-prod`                                            |
-| Prod namespace                | `rtac-modbus-prod`                                           |
-| k8s ServiceAccount            | `pae-rtac-server`                                            |
-| k8s Secret                    | `pae-rtac-server-secrets` (`POSTGRES_PASSWORD`, `REDIS_PASSWORD`) |
-| Secret Manager entry          | `rtac-postgres-password`                                     |
+| Image name                    | `<AR_HOST>/<PROJECT>/pae/pae-backend-ot`                    |
+| Cloud SQL instance / db / user| `pae-backend-ot-pg-prod` / `pae_backend_ot` / `pae_backend_ot_user`                 |
+| Memorystore instance          | `pae-backend-ot-redis-prod`                                            |
+| Prod namespace                | `pae-backend-ot-prod`                                           |
+| k8s ServiceAccount            | `pae-backend-ot`                                            |
+| k8s Secret                    | `pae-backend-ot-secrets` (`POSTGRES_PASSWORD`, `REDIS_PASSWORD`) |
+| Secret Manager entry          | `pae-backend-ot-postgres-password`                                     |
 | GitHub Variables              | `GCP_PROJECT_ID`, `GCP_REGION`, `AR_HOST`, `AR_REPO`         |
 | GitHub Secrets                | `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_DEPLOY_SERVICE_ACCOUNT` |
 

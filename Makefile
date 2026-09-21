@@ -5,10 +5,10 @@
 # it all back "ready". Scale-to-zero approach: keeps the cluster/ArgoCD config and
 # Cloud SQL DATA, just idles compute. Override the vars if your names differ.
 # ---------------------------------------------------------------------------
-GCP_PROJECT  ?= prd-pae-rtac-server
+GCP_PROJECT  ?= prd-pae-backend-ot
 GCP_REGION   ?= us-central1
-SQL_INSTANCE ?= rtac-pg-prod
-K8S_NS       ?= rtac-modbus-prod
+SQL_INSTANCE ?= pae-backend-ot-pg-prod
+K8S_NS       ?= pae-backend-ot-prod
 
 ifeq ($(OS),Windows_NT)
 # On Windows, kubectl needs gke-gcloud-auth-plugin, which is on the PowerShell PATH
@@ -27,9 +27,9 @@ cloud-down:
 	@kubectl -n argocd scale statefulset --all --replicas=0
 	@kubectl -n argocd scale deploy --all --replicas=0
 	@echo ">> Removing HPA (it would otherwise force min replicas)..."
-	@kubectl -n $(K8S_NS) delete hpa pae-rtac-server --ignore-not-found
+	@kubectl -n $(K8S_NS) delete hpa pae-backend-ot --ignore-not-found
 	@echo ">> Scaling app + redis to 0..."
-	@kubectl -n $(K8S_NS) scale deploy pae-rtac-server redis --replicas=0
+	@kubectl -n $(K8S_NS) scale deploy pae-backend-ot redis --replicas=0
 	@echo ">> Stopping Cloud SQL..."
 	@gcloud sql instances patch $(SQL_INSTANCE) --project=$(GCP_PROJECT) --activation-policy=NEVER --quiet
 	@echo ">> cloud-down complete. Billing minimized (data preserved)."
@@ -48,10 +48,10 @@ cloud-up:
 	@echo ">> Scaling redis + app back up..."
 	@kubectl -n $(K8S_NS) scale deploy redis --replicas=1
 	@kubectl -n $(K8S_NS) rollout status deploy/redis --timeout=120s
-	@kubectl -n $(K8S_NS) scale deploy pae-rtac-server --replicas=2
-	@kubectl -n $(K8S_NS) rollout status deploy/pae-rtac-server --timeout=240s
+	@kubectl -n $(K8S_NS) scale deploy pae-backend-ot --replicas=2
+	@kubectl -n $(K8S_NS) rollout status deploy/pae-backend-ot --timeout=240s
 	@echo ">> Nudging ArgoCD to reconcile (recreates HPA, marks Synced)..."
-	@kubectl -n argocd annotate application pae-rtac-server-prod argocd.argoproj.io/refresh=hard --overwrite >/dev/null
+	@kubectl -n argocd annotate application pae-backend-ot-prod argocd.argoproj.io/refresh=hard --overwrite >/dev/null
 	@echo ">> cloud-up complete. App is ready."
 endif
 
@@ -93,7 +93,7 @@ up: network
 	@docker-compose -f docker-compose.yaml up -d --wait postgres redis
 	@echo "PostgreSQL and Redis are ready!"
 	@echo "Starting application service (migrations will run automatically)..."
-	@docker-compose -f docker-compose.yaml up -d pae-rtac-server
+	@docker-compose -f docker-compose.yaml up -d pae-backend-ot
 
 # Stop and remove containers
 down:
@@ -107,7 +107,7 @@ build:
 rebuild:
 	docker-compose -f docker-compose.yaml build --no-cache
 	docker-compose -f docker-compose.yaml up -d --wait postgres redis
-	docker-compose -f docker-compose.yaml up -d pae-rtac-server
+	docker-compose -f docker-compose.yaml up -d pae-backend-ot
 
 # Build and start containers
 up-build: network
@@ -116,7 +116,7 @@ up-build: network
 	@docker-compose -f docker-compose.yaml up -d --wait postgres redis
 	@echo "PostgreSQL and Redis are ready!"
 	@echo "Starting application service (migrations will run automatically)..."
-	@docker-compose -f docker-compose.yaml up -d pae-rtac-server
+	@docker-compose -f docker-compose.yaml up -d pae-backend-ot
 
 # Rebuild and start containers (no cache)
 up-rebuild: network
@@ -125,7 +125,7 @@ up-rebuild: network
 	@docker-compose -f docker-compose.yaml up -d --wait postgres redis
 	@echo "PostgreSQL and Redis are ready!"
 	@echo "Starting application service (migrations will run automatically)..."
-	@docker-compose -f docker-compose.yaml up -d pae-rtac-server
+	@docker-compose -f docker-compose.yaml up -d pae-backend-ot
 
 # Restart containers
 restart:
@@ -133,16 +133,16 @@ restart:
 
 # View logs
 logs:
-	docker-compose -f docker-compose.yaml logs -f pae-rtac-server
+	docker-compose -f docker-compose.yaml logs -f pae-backend-ot
 
 # Open a shell in the container
 shell:
-	docker-compose -f docker-compose.yaml exec pae-rtac-server /bin/bash
+	docker-compose -f docker-compose.yaml exec pae-backend-ot /bin/bash
 
 # Clean up containers and images
 clean:
 	docker-compose -f docker-compose.yaml down
-	docker rmi pae-rtac-server 2>/dev/null || true
+	docker rmi pae-backend-ot 2>/dev/null || true
 
 # View container status
 ps:
@@ -180,9 +180,9 @@ lint-fix:
 # Format code
 format:
 	@echo "Formatting Python files with black..."
-	@docker-compose -f docker-compose.yaml exec pae-rtac-server black src/ 2>/dev/null || echo "Note: Running black in container..."
+	@docker-compose -f docker-compose.yaml exec pae-backend-ot black src/ 2>/dev/null || echo "Note: Running black in container..."
 	@echo "Running ruff to fix import sorting and other issues..."
-	@docker-compose -f docker-compose.yaml exec pae-rtac-server ruff check --fix src/ 2>/dev/null || echo "Note: Running ruff in container..."
+	@docker-compose -f docker-compose.yaml exec pae-backend-ot ruff check --fix src/ 2>/dev/null || echo "Note: Running ruff in container..."
 	@echo "Formatting complete!"
 
 
@@ -192,7 +192,7 @@ migrate:
 
 # Apply database migrations (in container)
 apply-migration:
-	@docker-compose -f docker-compose.yaml exec pae-rtac-server python scripts/migrate_db.py
+	@docker-compose -f docker-compose.yaml exec pae-backend-ot python scripts/migrate_db.py
 
 # Run the service locally (non-Docker)
 run:
@@ -201,9 +201,9 @@ run:
 # Seed database with development mock data (copies files into running container first)
 seed-db:
 	@echo "Copying seed files into container..."
-	@docker cp tests/seed_db/. pae-rtac-server:/app/tests/seed_db/
+	@docker cp tests/seed_db/. pae-backend-ot:/app/tests/seed_db/
 	@echo "Running seed script..."
-	@docker-compose -f docker-compose.yaml exec pae-rtac-server python tests/seed_db/seed_db.py
+	@docker-compose -f docker-compose.yaml exec pae-backend-ot python tests/seed_db/seed_db.py
 
 stop_rm_all:
 	docker stop $(docker ps -q) ; docker rm $(docker ps -aq) ; docker volume rm $(docker volume ls -q)

@@ -45,13 +45,13 @@ class Settings(BaseSettings):
 
     # Cache Configuration
     cache_default_ttl: int = Field(default=3600, alias="CACHE_DEFAULT_TTL")  # 1 hour default
-    cache_key_prefix: str = Field(default="rtac_modbus", alias="CACHE_KEY_PREFIX")
+    cache_key_prefix: str = Field(default="pae_backend_ot", alias="CACHE_KEY_PREFIX")
 
     # Database Configuration
     postgres_host: str = Field(default="localhost", alias="POSTGRES_HOST")
     postgres_port: int = Field(default=5432, alias="POSTGRES_PORT")
-    postgres_db: str = Field(default="rtac_modbus", alias="POSTGRES_DB")
-    postgres_user: str = Field(default="rtac_user", alias="POSTGRES_USER")
+    postgres_db: str = Field(default="pae_backend_ot", alias="POSTGRES_DB")
+    postgres_user: str = Field(default="pae_backend_ot_user", alias="POSTGRES_USER")
     # Secret: no default on purpose — a missing POSTGRES_PASSWORD must fail loudly at
     # startup rather than silently connect with a known-bad value. Supplied via .env
     # locally and a k8s Secret (from GCP Secret Manager) in the cluster.

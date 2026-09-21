@@ -1,4 +1,4 @@
-# RTAC Modbus Server — Service Notes
+# PAE Backend OT — Service Notes
 
 ## Modbus Address Mode (`modbus_address_mode`)
 

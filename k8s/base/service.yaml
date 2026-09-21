@@ -1,13 +1,13 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: pae-rtac-server
+  name: pae-backend-ot
 spec:
   type: ClusterIP
   selector:
-    app.kubernetes.io/name: pae-rtac-server
+    app.kubernetes.io/name: pae-backend-ot
     # Target only app pods, not the redis/migrate pods that share the name label.
-    app: pae-rtac-api
+    app: pae-backend-ot-api
   ports:
     - name: http
       port: 8000

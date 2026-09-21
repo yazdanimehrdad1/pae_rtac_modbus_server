@@ -4,7 +4,7 @@ The project has been organized following modern Python microservice best practic
 
 ### Key Decisions & Rationale
 
-1. **`src/` layout**: Using `src/rtac_modbus_service/` prevents import issues and enforces clean package boundaries
+1. **`src/` layout**: Using `src/pae_backend_ot_service/` prevents import issues and enforces clean package boundaries
 2. **`pyproject.toml`**: Modern dependency management replacing `requirements.txt`
 3. **Separation of concerns**: Clear boundaries between API, scheduler, modbus, db, utils, and telemetry
 4. **Configuration**: Centralized settings using Pydantic Settings for type safety and validation

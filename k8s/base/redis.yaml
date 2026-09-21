@@ -2,7 +2,7 @@
 # Replaces Memorystore for this dev/learning setup so the whole stack can scale to
 # zero (no always-on managed Redis to pay for). Ephemeral on purpose — the cache is
 # rebuildable and the scheduler simply re-elects a leader after a restart.
-# Distinct `app: pae-rtac-redis` label keeps the redis Service from matching app pods
+# Distinct `app: pae-backend-ot-redis` label keeps the redis Service from matching app pods
 # (the base labels transformer stamps app.kubernetes.io/name on everything).
 apiVersion: apps/v1
 kind: Deployment
@@ -12,13 +12,13 @@ spec:
   replicas: 1
   selector:
     matchLabels:
-      app: pae-rtac-redis
+      app: pae-backend-ot-redis
   strategy:
     type: Recreate
   template:
     metadata:
       labels:
-        app: pae-rtac-redis
+        app: pae-backend-ot-redis
     spec:
       securityContext:
         runAsNonRoot: true
@@ -69,7 +69,7 @@ metadata:
 spec:
   type: ClusterIP
   selector:
-    app: pae-rtac-redis
+    app: pae-backend-ot-redis
   ports:
     - name: redis
       port: 6379

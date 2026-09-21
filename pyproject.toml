@@ -1,7 +1,7 @@
 [project]
-name = "pae-rtac-server"
+name = "pae-backend-ot"
 version = "1.0.0"
-description = "RTAC Modbus TCP service for polling and storing time-series data"
+description = "PAE OT backend — Modbus TCP polling and time-series storage"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

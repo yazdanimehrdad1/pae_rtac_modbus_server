@@ -1,7 +1,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: pae-rtac-server
+  name: pae-backend-ot
   annotations:
     # Roll out only after the migration Job (wave 1) completes.
     argocd.argoproj.io/sync-wave: "2"
@@ -10,7 +10,7 @@ spec:
   replicas: 2
   selector:
     matchLabels:
-      app.kubernetes.io/name: pae-rtac-server
+      app.kubernetes.io/name: pae-backend-ot
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -19,13 +19,13 @@ spec:
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: pae-rtac-server
+        app.kubernetes.io/name: pae-backend-ot
         # Distinguishes app pods from redis/migrate pods (which share
         # app.kubernetes.io/name via the base labels transformer) so the app
         # Service targets only these pods.
-        app: pae-rtac-api
+        app: pae-backend-ot-api
     spec:
-      serviceAccountName: pae-rtac-server
+      serviceAccountName: pae-backend-ot
       securityContext:
         runAsNonRoot: true
         runAsUser: 999
@@ -77,15 +77,15 @@ spec:
             periodSeconds: 10
       containers:
         - name: app
-          image: pae-rtac-server
+          image: pae-backend-ot
           ports:
             - name: http
               containerPort: 8000
           envFrom:
             - configMapRef:
-                name: pae-rtac-server-config
+                name: pae-backend-ot-config
             - secretRef:
-                name: pae-rtac-server-secrets
+                name: pae-backend-ot-secrets
           env:
             - name: POD_NAME
               valueFrom:
