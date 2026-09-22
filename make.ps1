@@ -3,7 +3,11 @@
 
 param(
     [Parameter(Position=0)]
-    [string]$Command = "help"
+    [string]$Command = "help",
+
+    # Optional pytest target for test / test-unit, e.g. tests/unit/helpers/modbus
+    [Parameter(Position=1)]
+    [string]$TestPath = ""
 )
 
 function Show-Help {
@@ -23,7 +27,8 @@ function Show-Help {
     Write-Host ""
     Write-Host "Development commands:"
     Write-Host "  .\make.ps1 test-setup - Prepare test environment (ensure containers are running)"
-    Write-Host "  .\make.ps1 test       - Run tests (ensures containers are up first)"
+    Write-Host "  .\make.ps1 test       - Run all tests via Docker (ensures redis is up first)"
+    Write-Host "  .\make.ps1 test-unit [path] - Run unit tests via Docker (no containers needed)"
     Write-Host "  .\make.ps1 format     - Format all Python files (black, ruff)"
     Write-Host "  .\make.ps1 lint       - Run ruff linter (CI-enforced; via Docker)"
     Write-Host "  .\make.ps1 lint-fix   - Auto-fix lint issues with ruff (via Docker)"
@@ -33,6 +38,22 @@ function Show-Help {
     Write-Host "  .\make.ps1 cloud-up   - Start Cloud SQL and bring everything back ready"
     Write-Host ""
     Write-Host "Or use: make.ps1 <command>"
+}
+
+function Invoke-Pytest([string]$Target) {
+    # Runs pytest in a throwaway container matching the app's Python (no local Python
+    # needed on this machine). The named volume caches pip downloads between runs.
+    # --color=yes forces green/red output without a TTY; -rfE lists failures at the end.
+    Write-Host "Running pytest $Target (via Docker)..." -ForegroundColor Green
+    docker run --rm -v "${PWD}:/app" -v pae-backend-ot-pip-cache:/root/.cache/pip -w /app `
+        -e PYTHONPATH=src python:3.11-slim `
+        bash -c "pip install -q --root-user-action=ignore -e '.[dev]' && pytest $Target -v --color=yes -rfE" |
+        Out-Host  # keeps pytest output ahead of the pass/fail line below
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Tests failed (exit code $LASTEXITCODE)" -ForegroundColor Red
+        exit $LASTEXITCODE
+    }
+    Write-Host "Tests passed!" -ForegroundColor Green
 }
 
 function Invoke-TestSetup {
@@ -210,14 +231,11 @@ switch ($Command.ToLower()) {
     }
     "test" {
         Invoke-TestSetup
-        
-        Write-Host "Running tests..." -ForegroundColor Green
-        $env:PYTHONPATH = "src"
-        pytest tests/ -v
-        
-        if ($LASTEXITCODE -ne 0) {
-            Write-Host "Tests completed with exit code: $LASTEXITCODE" -ForegroundColor Yellow
-        }
+        Invoke-Pytest $(if ($TestPath) { $TestPath } else { "tests/" })
+    }
+    "test-unit" {
+        # Fast loop: unit tests do no I/O, so no redis/postgres setup.
+        Invoke-Pytest $(if ($TestPath) { $TestPath } else { "tests/unit" })
     }
     "format" {
         Write-Host "Formatting Python files with black..." -ForegroundColor Green

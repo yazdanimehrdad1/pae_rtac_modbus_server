@@ -1,4 +1,4 @@
-.PHONY: help network up down build rebuild up-build up-rebuild restart logs shell clean ps health dev test-setup test lint lint-fix format migrate apply-migration run seed-db cloud-down cloud-up
+.PHONY: help network up down build rebuild up-build up-rebuild restart logs shell clean ps health dev test-setup test test-unit lint lint-fix format migrate apply-migration run seed-db cloud-down cloud-up
 
 # ---------------------------------------------------------------------------
 # Cloud cost control (GKE) — stop everything billable when not in use, and bring
@@ -74,7 +74,8 @@ help:
 	@echo "Development commands:"
 	@echo "  make dev        - Start development environment"
 	@echo "  make test-setup - Prepare test environment (ensure containers are running)"
-	@echo "  make test       - Run tests (ensures containers are up first)"
+	@echo "  make test       - Run all tests via Docker (ensures redis is up first)"
+	@echo "  make test-unit  - Run unit tests via Docker (TEST_PATH=... to narrow)"
 	@echo "  make lint       - Run linters (ruff, mypy)"
 	@echo "  make format     - Format code (black, ruff)"
 	@echo "  make migrate    - Run database migrations"
@@ -163,10 +164,22 @@ test-setup:
 	@docker-compose -f docker-compose.yaml up -d --wait redis
 	@echo "Redis is ready!"
 
-# Run tests - ensures containers are up first
+# Runs pytest in a throwaway container matching the app's Python (no local Python
+# needed). The named volume caches pip downloads between runs.
+# Override the target with TEST_PATH, e.g. `make test-unit TEST_PATH=tests/unit/helpers`.
+PYTEST_DOCKER = docker run --rm -v "$(CURDIR):/app" -v pae-backend-ot-pip-cache:/root/.cache/pip \
+	-w /app -e PYTHONPATH=src python:3.11-slim \
+	bash -c "pip install -q --root-user-action=ignore -e '.[dev]' && pytest $(1) -v --color=yes -rfE"
+
+# Run all tests - ensures redis is up first
 test: test-setup
 	@echo "Running tests..."
-	@PYTHONPATH=src pytest tests/ -v
+	$(call PYTEST_DOCKER,$(or $(TEST_PATH),tests/))
+
+# Run unit tests only - no I/O, so no containers needed
+test-unit:
+	@echo "Running unit tests..."
+	$(call PYTEST_DOCKER,$(or $(TEST_PATH),tests/unit))
 
 # Run linting (ruff is the CI-blocking gate). Runs in Docker so no local Python
 # is required; $(CURDIR) resolves to a Docker-compatible path on Linux and Windows.

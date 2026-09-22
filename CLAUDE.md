@@ -19,12 +19,33 @@ the DAS data-acquisition API (`pae-das-api`), or any downstream dashboard/analyt
 - Setup / dev: `make up-build` (Windows: `.\make.ps1 up-build`) — builds & starts
   postgres, redis, app; migrations auto-run in the container entrypoint.
 - Run outside Docker: `make run` (= `cd src && python -m main`, needs pg+redis reachable).
-- Test: `make test` (brings up redis, then `PYTHONPATH=src pytest tests/ -v`).
-  Only `tests/unit/` has real tests today; `tests/integration/` holds planned coverage
-  in its README (those will need postgres up as well as redis).
-- Single test: `PYTHONPATH=src pytest tests/unit/test_date_time.py -v`.
+- Unit tests: `make test-unit` (Windows: `.\make.ps1 test-unit`) — runs pytest in a
+  `python:3.11-slim` container with `.[dev]` installed; no local Python or containers needed.
+  Narrow it with `make test-unit TEST_PATH=tests/unit/helpers/modbus` /
+  `.\make.ps1 test-unit tests/unit/helpers/modbus/test_modbus_data_mapping.py`.
+- All tests: `make test` / `.\make.ps1 test` (brings up redis, then the same Docker pytest
+  on `tests/`). `tests/integration/` holds planned coverage in its README (those will need
+  postgres up as well as redis).
 - Lint/format: `make lint` (ruff + mypy) / `make format` (black + ruff).
 - Migrate manually: `make migrate` (= `python scripts/migrate_db.py`).
+
+## Unit tests are required for every feature and bug fix
+Every new feature, behavior change, or bug fix ships with unit tests **in the same change**.
+A change is not done until `make test-unit` / `.\make.ps1 test-unit` passes and ruff is clean.
+- **Layout mirrors `src/`:** tests for `src/<path>/<module>.py` live in
+  `tests/unit/<path>/test_<module>.py` — e.g. `src/helpers/modbus/poll_device.py` →
+  `tests/unit/helpers/modbus/test_poll_device.py`. Create missing folders as needed.
+- **Every test folder needs an `__init__.py`.** Without it pytest puts `tests/unit/` on
+  `sys.path` and `tests/unit/helpers/` shadows `src/helpers/`.
+- **Shared test data** lives in plain modules under `tests/unit/` (e.g.
+  `tests/unit/data_type_fixtures.py`), imported as `from unit.data_type_fixtures import ...`.
+- **No I/O in unit tests** — no DB, redis, network, or real clock. Pass fakes in or patch at
+  the boundary. Anything that needs postgres/redis belongs in `tests/integration/`.
+- **Bug fixes include a regression test** that fails without the fix.
+- Cover the invariant, not just the happy path: rejected inputs, edge cases, and the
+  "these two lists must not drift apart" checks (see `tests/unit/helpers/modbus/`).
+- Group tests in `Test*` classes per behavior, with a module docstring saying what
+  invariant the file guards. Test code follows the same ruff rules as `src/`.
 
 ## Linting is CI-enforced — every change must leave `ruff check` clean
 `.github/workflows/ci.yml` runs `ruff check src/ tests/` and **fails the build on any
