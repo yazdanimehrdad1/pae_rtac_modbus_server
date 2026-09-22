@@ -50,14 +50,11 @@ Concretely, write code that already satisfies these:
 
 ## What this service owns
 - Postgres tables: `sites`, `devices`, `device_points`, `device_points_readings`,
-  `schema_migrations`. (`device_register_map` and the `*_configs` tables were dropped in
-  migrations 022/042 — don't reference them. Note migration `034_rename_register_readings_
-  raw_to_point_readings.sql` is misnamed: it creates `device_points_readings`, and there is
-  no `point_readings` table.) No `create_hypertable` call exists in any migration, so these
-  are plain Postgres tables despite the TimescaleDB image.
-- Two tables exist but nothing reads or writes them: `register_readings_raw` (renamed by
-  migration 023, never dropped) and `register_readings_translated` (created by 024; its
-  `RegisterReadingTranslated` ORM model has zero queries).
+  `schema_migrations`. Migrations were squashed on 2026-09-22 into a 4-file baseline
+  (`001`–`004`, one per table); the old `device_register_map`, `*_configs`,
+  `register_readings_raw` and `register_readings_translated` tables no longer exist — don't
+  reference them. No `create_hypertable` call exists in any migration, so these are plain
+  Postgres tables despite the TimescaleDB image.
 - Redis: APScheduler leader-election / job locks, plus a `/api/cache` admin CRUD surface
   (not a message bus). The poll and read paths do NOT use the cache — it is not read-through.
 - Publishes no events to any broker; there is no DAS API integration.

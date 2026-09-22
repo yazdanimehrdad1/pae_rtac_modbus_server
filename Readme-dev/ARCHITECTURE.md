@@ -68,6 +68,4 @@ retention are unimplemented.
 - No auth layer — every endpoint is unauthenticated.
 - Redis is used for scheduler locks and an admin CRUD surface only; the poll and read
   paths do not cache.
-- `register_readings_raw` and `register_readings_translated` exist in the database but
-  nothing reads or writes them.
 - `GET /api/csv-exports/raw-register-map-csv` returns headers only — it has no data path.

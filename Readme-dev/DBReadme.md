@@ -239,11 +239,14 @@ docker-compose exec pae-backend-ot python scripts/migrate_db.py
 **Expected output:**
 ```
 Starting database migrations...
-Found 1 migration file(s)
+Found 4 migration file(s)
 Found 0 already applied migration(s)
-Running migration: 001_create_devices_table.sql
-✓ Migration 001_create_devices_table completed
-✓ Applied 1 new migration(s)
+Running migration: 001_create_sites_table.sql
+✓ Migration 001_create_sites_table completed
+...
+Running migration: 004_create_device_points_readings_table.sql
+✓ Migration 004_create_device_points_readings_table completed
+✓ Applied 4 new migration(s)
 ```
 
 ## API Endpoints
