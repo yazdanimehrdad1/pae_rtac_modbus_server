@@ -39,13 +39,13 @@ async def seed() -> None:
         # 1. Sites                                                            #
         # ------------------------------------------------------------------ #
         site_by_name: dict[str, Site] = {}
-        for site_data in SITES:
+        for site_request in SITES:
             result = await session.execute(
-                select(Site).where(Site.name == site_data["name"])
+                select(Site).where(Site.name == site_request.name)
             )
             site = result.scalar_one_or_none()
             if site is None:
-                site = Site(**site_data)
+                site = Site(**site_request.model_dump())
                 session.add(site)
                 await session.flush()
                 logger.info("Created site '%s' (id=%s)", site.name, site.id)
@@ -57,16 +57,15 @@ async def seed() -> None:
         # 2. Devices                                                          #
         # ------------------------------------------------------------------ #
         device_by_name: dict[str, Device] = {}
-        for device_data in DEVICES:
-            site = site_by_name[device_data["site_name"]]
-            fields = {k: v for k, v in device_data.items() if k != "site_name"}
+        for seed_device in DEVICES:
+            site = site_by_name[seed_device.site_name]
 
             result = await session.execute(
-                select(Device).where(Device.name == fields["name"])
+                select(Device).where(Device.name == seed_device.device.name)
             )
             device = result.scalar_one_or_none()
             if device is None:
-                device = Device(**fields, site_id=site.id)
+                device = Device(**seed_device.device.model_dump(), site_id=site.id)
                 session.add(device)
                 await session.flush()
                 logger.info("Created device '%s' (id=%s)", device.name, device.device_id)
@@ -79,43 +78,42 @@ async def seed() -> None:
         # ------------------------------------------------------------------ #
         # 3. Device points                                                    #
         # ------------------------------------------------------------------ #
-        for device_name, point_defs in DEVICE_POINTS.items():
+        for device_name, point_requests in DEVICE_POINTS.items():
             device = device_by_name[device_name]
 
-            for point_data in point_defs:
+            for point in point_requests:
                 result = await session.execute(
                     select(DevicePoint).where(
                         DevicePoint.site_id == device.site_id,
                         DevicePoint.device_id == device.device_id,
-                        DevicePoint.name == point_data["name"],
+                        DevicePoint.name == point.name,
                     )
                 )
                 if result.scalar_one_or_none() is not None:
                     logger.info(
-                        "Device point already exists '%s.%s'",
-                        device_name, point_data["name"],
+                        "Device point already exists '%s.%s'", device_name, point.name
                     )
                     continue
 
                 session.add(DevicePoint(
                     site_id=device.site_id,
                     device_id=device.device_id,
-                    address=point_data["address"],
-                    name=point_data["name"],
-                    size=point_data.get("size", 1),
-                    data_type=point_data.get("data_type", "uint16"),
-                    scale_factor=point_data.get("scale_factor", 1.0),
-                    unit=point_data.get("unit"),
-                    poll_kind=point_data["poll_kind"],
-                    category="NATIVE",
-                    byte_order=point_data.get("byte_order", "big-endian"),
-                    word_order=point_data.get("word_order", "msw_first"),
-                    bitfield_detail=point_data.get("bitfield_detail"),
-                    enum_detail=point_data.get("enum_detail"),
+                    address=point.address,
+                    name=point.name,
+                    size=point.size,
+                    data_type=point.data_type,
+                    scale_factor=point.scale_factor if point.scale_factor is not None else 1.0,
+                    unit=point.unit,
+                    poll_kind=point.poll_kind,
+                    category=point.category,
+                    byte_order=point.byte_order,
+                    word_order=point.word_order,
+                    bitfield_detail=point.bitfield_detail,
+                    enum_detail=point.enum_detail,
                 ))
                 logger.info(
                     "Created device point '%s.%s' (addr=%s)",
-                    device_name, point_data["name"], point_data["address"],
+                    device_name, point.name, point.address,
                 )
 
             await session.flush()

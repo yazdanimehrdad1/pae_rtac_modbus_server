@@ -19,7 +19,5 @@ class TestRawRegisterMapCsv:
         )
 
     async def test_unsupported_type_is_400(self, client):
-        response = await client.get(
-            "/api/csv-exports/raw-register-map-csv", params={"type": "dnp"}
-        )
+        response = await client.get("/api/csv-exports/raw-register-map-csv", params={"type": "dnp"})
         assert response.status_code == 400

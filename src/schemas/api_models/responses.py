@@ -180,7 +180,9 @@ class PointLatest(BaseModel):
 class TimeseriesMeta(BaseModel):
     site_id: int
     device_id: int
-    point_ids: list[int] | None
+    # Defaulted: the route serializes with response_model_exclude_none, so an unfiltered
+    # request omits point_ids entirely.
+    point_ids: list[int] | None = None
     total_count: int
     start_time: datetime | None = None
     end_time: datetime | None = None
@@ -189,7 +191,7 @@ class TimeseriesMeta(BaseModel):
 class LatestMeta(BaseModel):
     site_id: int
     device_id: int
-    point_ids: list[int] | None
+    point_ids: list[int] | None = None  # omitted when unfiltered (exclude_none)
     total_count: int
 
 

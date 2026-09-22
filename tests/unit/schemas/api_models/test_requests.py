@@ -13,7 +13,7 @@ from schemas.api_models.types import SUPPORTED_DATA_TYPES, SUPPORTED_DEVICE_TYPE
 
 
 class TestDataTypeValidation:
-    def _payload(self, data_type: str, size: int) -> dict:
+    def _payload(self, data_type: str, size: int) -> dict[str, str | int]:
         return {
             "name": "test_point",
             "poll_kind": "holding",
@@ -31,33 +31,33 @@ class TestDataTypeValidation:
     def test_unsupported_type_rejected(self, data_type: str):
         """Bare enum/bitfield/status_word no longer exist; wrong casing is also rejected."""
         with pytest.raises(ValidationError):
-            DevicePointCreateRequest(**self._payload(data_type, 1))
+            DevicePointCreateRequest.model_validate(self._payload(data_type, 1))
 
     def test_size_must_match_type_width(self):
         """enum32 needs 2 registers; supplying size=1 is rejected."""
         with pytest.raises(ValidationError):
-            DevicePointCreateRequest(**self._payload("enum32", 1))
+            DevicePointCreateRequest.model_validate(self._payload("enum32", 1))
         with pytest.raises(ValidationError):
-            DevicePointCreateRequest(**self._payload("int32", 1))
+            DevicePointCreateRequest.model_validate(self._payload("int32", 1))
 
     def test_size_matching_type_width_accepted(self):
-        assert DevicePointCreateRequest(**self._payload("enum32", 2)).size == 2
-        assert DevicePointCreateRequest(**self._payload("bitfield16", 1)).size == 1
+        assert DevicePointCreateRequest.model_validate(self._payload("enum32", 2)).size == 2
+        assert DevicePointCreateRequest.model_validate(self._payload("bitfield16", 1)).size == 1
 
 
 class TestDeviceTypeValidation:
-    def _payload(self, device_type: str) -> dict:
+    def _payload(self, device_type: str) -> dict[str, str]:
         return {"name": "test_device", "type": device_type, "host": "127.0.0.1"}
 
     @pytest.mark.parametrize("given", ["relay", "RELAY", "Relay", "rElAy"])
     def test_casing_is_normalized(self, given: str):
-        assert DeviceCreateRequest(**self._payload(given)).type == "RELAY"
+        assert DeviceCreateRequest.model_validate(self._payload(given)).type == "RELAY"
 
     @pytest.mark.parametrize("device_type", sorted(SUPPORTED_DEVICE_TYPES))
     def test_every_supported_device_type_accepted(self, device_type: str):
-        assert DeviceCreateRequest(**self._payload(device_type)).type == device_type
+        assert DeviceCreateRequest.model_validate(self._payload(device_type)).type == device_type
 
     @pytest.mark.parametrize("device_type", ["bogus", "SOLAR", ""])
     def test_unsupported_device_type_rejected(self, device_type: str):
         with pytest.raises(ValidationError):
-            DeviceCreateRequest(**self._payload(device_type))
+            DeviceCreateRequest.model_validate(self._payload(device_type))

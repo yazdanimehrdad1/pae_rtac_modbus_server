@@ -56,9 +56,7 @@ async def reset_state() -> AsyncIterator[None]:
     """Empty every table and Redis before each test; drop pooled connections after."""
     connection = await _connect_db()
     try:
-        await connection.execute(
-            f"TRUNCATE {', '.join(SERVICE_TABLES)} RESTART IDENTITY CASCADE"
-        )
+        await connection.execute(f"TRUNCATE {', '.join(SERVICE_TABLES)} RESTART IDENTITY CASCADE")
     finally:
         await connection.close()
     redis_client = await get_redis_client()

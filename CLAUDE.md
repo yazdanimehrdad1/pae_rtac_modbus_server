@@ -43,6 +43,31 @@ and *then* write unit and integration tests that prove it works as intended.
 - A green suite over a sub-standard feature is not done. Passing tests are the proof, not
   the goal.
 
+## Typing: Pydantic models, not dicts — everywhere, including tests
+Structured data is always a Pydantic model. This applies to app code, unit tests,
+integration tests, and seed/mock data alike.
+- **Reuse before you define.** Request/response bodies, payloads, and results use the models
+  in `src/schemas/` (`api_models/`, `internal_models.py`, `modbus_models/`, …). Only define a
+  new model when none fits.
+- **All models live under `src/schemas/`.** A model used *only* by unit/integration tests or
+  the seeder goes in `src/schemas/tests_models/<topic>.py` (re-exported from its
+  `__init__.py`). App code (`api/`, `db/`, `helpers/`, `services/`, `scheduler/`) never
+  imports `schemas.tests_models`. When an endpoint gains a real `response_model`, move its
+  model to `schemas/api_models/` and delete the test-only copy.
+- **No `Any`, no bare `dict`/`list`** for structured data. Precise generics are fine only
+  for true lookup maps (e.g. `dict[str, Site]`, `dict[str, str]` enum labels).
+- **Every route declares a `response_model`.** (Legacy exceptions today: `/cache/*` except
+  get, `/readyz`, `/redis_health`, `/db_health` — their test-only mirrors are in
+  `schemas/tests_models/api_responses.py`.)
+- **In tests:** build requests with the model (`SiteCreateRequest(...)`, the
+  `integration.factories` builders) and send `model.model_dump(mode="json")`
+  (`exclude_unset=True` for partial updates); parse every response with
+  `Model.model_validate(response.json())` or a `TypeAdapter(list[Model])`, then assert on
+  attributes (`site.site_id`), never `response.json()["site_id"]`. The one exception is a
+  deliberately invalid payload for a 4xx test — dump a valid model and override the bad
+  field (`valid.model_dump(mode="json") | {"name": ""}`) so the corruption is explicit.
+- Validate raw input with `Model.model_validate(raw)`, not `Model(**raw)`.
+
 ## Unit tests are required for every feature and bug fix
 Every new feature, behavior change, or bug fix ships with unit tests **in the same change**.
 A change is not done until `make test-unit` / `.\make.ps1 test-unit` passes and ruff is clean.
@@ -74,7 +99,8 @@ the API isn't done until `make test-integration` passes too. See `tests/integrat
 - **Arrange through the API** (`factories.create_site/create_device/upsert_points`). Use raw
   SQL via `db` only for what the API can't create (e.g. `factories.insert_reading`).
 - **Assert status codes and response bodies**, and cover the error paths (404/409/400/422),
-  not just the happy path.
+  not just the happy path. Bodies are parsed into Pydantic models first (see "Typing:
+  Pydantic models, not dicts"); AppError bodies parse as `schemas.tests_models.ApiErrorResponse`.
 - **Found a bug while writing a test?** Fix the feature (see "The feature comes first").
   Only if the fix is out of scope: assert the *correct* behavior, mark it
   `@pytest.mark.xfail(strict=True, reason="BUG: ...")`, and tell the user. Never weaken the
