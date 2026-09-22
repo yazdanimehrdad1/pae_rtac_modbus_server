@@ -7,8 +7,8 @@ Does NOT own: the upstream Modbus aggregator/RTAC itself (external, `AGGREGATOR_
 the DAS data-acquisition API (`pae-das-api`), or any downstream dashboard/analytics.
 
 ## This repo diverges from the standard Python setup — read this
-- No uv. Deps install via `pip install -e .` (Docker) against pyproject; a stale
-  `requirements.txt` also exists. Types are checked with **mypy, not pyright**;
+- No uv. Deps install via `pip install -e .` (Docker) against pyproject; there is no
+  `requirements.txt` and no `setup.py`. Types are checked with **mypy, not pyright**;
   formatting is **black + ruff** (line-length 100). `uv run` / pyright do not apply here.
 - Imports are flat and require `PYTHONPATH=src` — modules import as `from config import ...`,
   `from db.connection import ...`, NOT a package. Bare `pytest` and bare `python main.py` fail.
@@ -20,8 +20,9 @@ the DAS data-acquisition API (`pae-das-api`), or any downstream dashboard/analyt
   postgres, redis, app; migrations auto-run in the container entrypoint.
 - Run outside Docker: `make run` (= `cd src && python -m main`, needs pg+redis reachable).
 - Test: `make test` (brings up redis, then `PYTHONPATH=src pytest tests/ -v`).
-  Integration tests (`tests/integration/`) also need postgres up.
-- Single test: `PYTHONPATH=src pytest tests/unit/test_sanitize.py::TestSanitize::test_x -v`.
+  Only `tests/unit/` has real tests today; `tests/integration/` holds planned coverage
+  in its README (those will need postgres up as well as redis).
+- Single test: `PYTHONPATH=src pytest tests/unit/test_date_time.py -v`.
 - Lint/format: `make lint` (ruff + mypy) / `make format` (black + ruff).
 - Migrate manually: `make migrate` (= `python scripts/migrate_db.py`).
 
@@ -48,11 +49,18 @@ Concretely, write code that already satisfies these:
   Docker running; bypass in emergencies with `git commit --no-verify`).
 
 ## What this service owns
-- Postgres/TimescaleDB tables: `sites`, `devices`, `device_points`, `point_readings`,
-  `register_readings_translated`, `schema_migrations`. (`device_register_map` and the
-  `*_configs` tables were dropped in migrations 022/042 — don't reference them.)
-- Redis: read-through cache + APScheduler leader-election / job locks (not a message bus).
-- Publishes no events to any broker; DAS_API_BASE_URL is configured but nothing calls it yet.
+- Postgres tables: `sites`, `devices`, `device_points`, `device_points_readings`,
+  `schema_migrations`. (`device_register_map` and the `*_configs` tables were dropped in
+  migrations 022/042 — don't reference them. Note migration `034_rename_register_readings_
+  raw_to_point_readings.sql` is misnamed: it creates `device_points_readings`, and there is
+  no `point_readings` table.) No `create_hypertable` call exists in any migration, so these
+  are plain Postgres tables despite the TimescaleDB image.
+- Two tables exist but nothing reads or writes them: `register_readings_raw` (renamed by
+  migration 023, never dropped) and `register_readings_translated` (created by 024; its
+  `RegisterReadingTranslated` ORM model has zero queries).
+- Redis: APScheduler leader-election / job locks, plus a `/api/cache` admin CRUD surface
+  (not a message bus). The poll and read paths do NOT use the cache — it is not read-through.
+- Publishes no events to any broker; there is no DAS API integration.
 
 ## Gotchas
 - Host ports are remapped: app 8000, **postgres 5435→5432, redis 6380→6379**. A local
@@ -64,8 +72,8 @@ Concretely, write code that already satisfies these:
   disables it. Polling targets are read from the DB (sites → devices → device-points).
 - A global `validate_time_range` middleware (`src/api/middleware/`) runs on every request
   and rejects bad start/end query params.
-- `main.py` hardcodes `reload=True`; the Dockerfile runs a single uvicorn process
-  (the gunicorn config exists but is commented out).
+- `main.py` hardcodes `reload=True`; the Dockerfile runs a single uvicorn process.
+  There is no gunicorn config in this repo.
 
 ## Output style (keep token usage down)
 - Keep responses short. Lead with the answer; no recap tables or restated diffs unless asked.

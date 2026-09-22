@@ -150,7 +150,7 @@ ps:
 
 # Check service health
 health:
-	@curl -s http://localhost:8000/healthz || echo "Service not responding"
+	@curl -s http://localhost:8000/api/healthz || echo "Service not responding"
 
 # Development commands
 dev:

@@ -50,9 +50,6 @@ configMapGenerator:
       - RUN_MIGRATIONS_ON_START=false
       # Polling
       - POLL_INTERVAL_SECONDS=10
-      - POLL_DEVICE_NAME=main-sel-751
-      # Cross-service
-      - DAS_API_BASE_URL=http://pae-das-api:8080
 
 # Image name is a logical placeholder; overlays pin newName (Artifact Registry)
 # and newTag (CI sets the git SHA via `kustomize edit set image`).

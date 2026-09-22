@@ -214,41 +214,6 @@ async def get_device_by_id(
         return _device_to_with_points(device, device_points)
 
 
-async def get_device_by_id_internal(device_id: int) -> DeviceWithPoints | None:
-    """Backward-compatible helper to get a device by ID."""
-    session_factory = get_async_session_factory()
-    async with session_factory() as session:
-        result = await session.execute(
-            select(Device).where(Device.device_id == device_id, Device.deleted_at.is_(None))
-        )
-        device = result.scalar_one_or_none()
-        if device is None:
-            return None
-        points_result = await session.execute(
-            select(DevicePoint).where(
-                DevicePoint.device_id == device.device_id,
-                DevicePoint.deleted_at.is_(None),
-            )
-        )
-        return _device_to_with_points(device, _group_points(points_result.scalars().all()))
-
-
-async def get_device_id_by_name(device_name: str) -> int | None:
-    session_factory = get_async_session_factory()
-    async with session_factory() as session:
-        result = await session.execute(
-            select(Device.device_id).where(
-                Device.name == device_name,
-                Device.deleted_at.is_(None),
-            )
-        )
-        return result.scalar_one_or_none()
-
-
-async def get_device_id_by_name_internal(device_name: str) -> int | None:
-    return await get_device_id_by_name(device_name)
-
-
 async def update_device(device_id: int, device_update: DeviceUpdate, site_id: int) -> DeviceWithPoints:
     session_factory = get_async_session_factory()
     async with session_factory() as session:

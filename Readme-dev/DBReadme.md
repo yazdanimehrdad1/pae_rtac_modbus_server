@@ -15,7 +15,7 @@ This guide covers different ways to access and interact with the PostgreSQL/Time
 
 **Database Connection Details:**
 - **Host:** `localhost` (from host machine) or `postgres` (from Docker network)
-- **Port:** `5432`
+- **Port:** `5435` (host); `5432` inside the Docker network
 - **Database:** `pae_backend_ot` (configurable via `POSTGRES_DB` environment variable)
 - **Username:** `pae_backend_ot_user` (configurable via `POSTGRES_USER` environment variable)
 - **Password:** `pae_backend_ot_password` (configurable via `POSTGRES_PASSWORD` environment variable)
@@ -27,12 +27,12 @@ This guide covers different ways to access and interact with the PostgreSQL/Time
 
 **Connection String (Python/asyncpg):**
 ```
-postgresql://pae_backend_ot_user:pae_backend_ot_password@localhost:5432/pae_backend_ot
+postgresql://pae_backend_ot_user:pae_backend_ot_password@localhost:5435/pae_backend_ot
 ```
 
 **JDBC URL (for DBeaver and other JDBC tools):**
 ```
-jdbc:postgresql://localhost:5432/pae_backend_ot
+jdbc:postgresql://localhost:5435/pae_backend_ot
 ```
 
 ## Testing the Connection
@@ -42,7 +42,7 @@ jdbc:postgresql://localhost:5432/pae_backend_ot
 After the application starts, test the database connection via HTTP:
 
 ```bash
-curl http://localhost:8000/db_health
+curl http://localhost:8000/api/db_health
 ```
 
 **Response:**
@@ -128,11 +128,11 @@ DBeaver is a popular database management tool with a GUI interface.
 
 3. **Enter Connection Details**
    - **Host:** `localhost`
-   - **Port:** `5432`
+   - **Port:** `5435`
    - **Database:** `pae_backend_ot`
    - **Username:** `pae_backend_ot_user`
    - **Password:** `pae_backend_ot_password`
-   - **JDBC URL:** `jdbc:postgresql://localhost:5432/pae_backend_ot` (auto-generated)
+   - **JDBC URL:** `jdbc:postgresql://localhost:5435/pae_backend_ot` (auto-generated)
 
 4. **Test Connection**
    - Click "Test Connection" button
@@ -148,11 +148,11 @@ DBeaver is a popular database management tool with a GUI interface.
 | Parameter | Value |
 |-----------|-------|
 | Host | `localhost` |
-| Port | `5432` |
+| Port | `5435` (host) |
 | Database | `pae_backend_ot` |
 | Username | `pae_backend_ot_user` |
 | Password | `pae_backend_ot_password` |
-| JDBC URL | `jdbc:postgresql://localhost:5432/pae_backend_ot` |
+| JDBC URL | `jdbc:postgresql://localhost:5435/pae_backend_ot` |
 
 **Note:** If you have custom values in your `.env` file, use those instead of the defaults.
 
@@ -169,7 +169,7 @@ docker-compose exec postgres psql -U pae_backend_ot_user -d pae_backend_ot
 
 **Option 2: Connect from host (if psql is installed)**
 ```bash
-psql -h localhost -p 5432 -U pae_backend_ot_user -d pae_backend_ot
+psql -h localhost -p 5435 -U pae_backend_ot_user -d pae_backend_ot
 ```
 
 ### Basic psql Commands
@@ -252,7 +252,7 @@ The PAE Backend OT provides REST API endpoints for database operations. All endp
 
 ### Database Health Check
 
-**GET** `/db_health`
+**GET** `/api/db_health`
 
 Check database connection status.
 
@@ -267,7 +267,7 @@ false
 
 **Example:**
 ```bash
-curl http://localhost:8000/db_health
+curl http://localhost:8000/api/db_health
 ```
 
 ## Common Operations
@@ -277,12 +277,6 @@ curl http://localhost:8000/db_health
 **Via psql:**
 ```bash
 docker-compose exec postgres psql -U pae_backend_ot_user -d pae_backend_ot -c "SELECT version();"
-```
-
-**Via API (when implemented):**
-```bash
-# Future endpoint for database info
-curl http://localhost:8000/db/info
 ```
 
 ### Check TimescaleDB Extension
@@ -339,8 +333,8 @@ docker-compose exec postgres psql -U pae_backend_ot_user -d pae_backend_ot -c "S
 
 ### Connection Refused
 
-- **Check port mapping:** Ensure port `5432` is not already in use
-- **Check firewall:** Ensure port `5432` is not blocked
+- **Check port mapping:** Ensure port `5435` is not already in use
+- **Check firewall:** Ensure port `5435` is not blocked
 - **Verify container network:** Containers should be on the same Docker network
 
 ### Authentication Failed

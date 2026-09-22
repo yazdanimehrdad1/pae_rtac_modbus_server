@@ -88,14 +88,6 @@ async def get_deleted_device_points(device_id: int) -> list[DevicePoint]:
         return list(result.scalars().all())
 
 
-async def get_device_point(point_id: int) -> DevicePoint | None:
-    """Get a single device point by primary key."""
-    session_factory = get_async_session_factory()
-    async with session_factory() as session:
-        result = await session.execute(select(DevicePoint).where(DevicePoint.id == point_id))
-        return result.scalar_one_or_none()
-
-
 async def update_device_point(
     point_id: int, data: DevicePointUpdateRequest
 ) -> DevicePoint:

@@ -68,10 +68,6 @@ async def get_complete_site_data_with_points(site_id: int) -> SiteComprehensiveR
         )
 
 
-# Backwards-compatible alias
-get_complete_site_data = get_complete_site_data_with_points
-
-
 # --- Private helpers ---
 
 def _build_coordinates_and_location(site):

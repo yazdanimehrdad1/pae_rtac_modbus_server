@@ -1,19 +1,5 @@
-"""Schema module - organized by domain."""
+"""Schema module - organized by domain.
 
-# Convenience imports for common schemas
-from schemas.api_models import (
-    HealthResponse,
-)
-from schemas.modbus_models import (
-    RegisterMap,
-    RegisterPoint,
-)
-
-__all__ = [
-    # API models
-    "HealthResponse",
-    # Modbus models
-    "RegisterPoint",
-    "RegisterMap",
-]
-
+Import directly from the submodules: ``schemas.api_models``,
+``schemas.db_models.orm_models``, ``schemas.internal_models``.
+"""

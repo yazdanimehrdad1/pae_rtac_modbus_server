@@ -189,7 +189,7 @@ switch ($Command.ToLower()) {
     "health" {
         Write-Host "Checking service health..." -ForegroundColor Cyan
         try {
-            $response = Invoke-WebRequest -Uri "http://localhost:8000/health" -UseBasicParsing -ErrorAction Stop
+            $response = Invoke-WebRequest -Uri "http://localhost:8000/api/healthz" -UseBasicParsing -ErrorAction Stop
             $response.Content | ConvertFrom-Json | ConvertTo-Json -Depth 10
         }
         catch {

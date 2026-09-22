@@ -70,17 +70,7 @@ jobs:
         run: python scripts/migrate_db.py
 
       - name: Tests (pytest)
-        run: |
-          set +e
-          python -m pytest tests/ -v
-          code=$?
-          set -e
-          # Exit code 5 = no tests collected (stubs only, for now). Don't fail CI.
-          if [ "$code" -eq 5 ]; then
-            echo "::warning::pytest collected no tests yet — add real tests under tests/."
-            exit 0
-          fi
-          exit "$code"
+        run: python -m pytest tests/ -v
 
   build-image:
     runs-on: ubuntu-latest

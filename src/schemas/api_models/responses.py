@@ -69,12 +69,6 @@ class DeviceWithPoints(DeviceListItem):
     points: DevicePointsCategoryGrouped = Field(default_factory=DevicePointsCategoryGrouped)
 
 
-# Backwards-compatible aliases. "Configs" is stale naming — the *_configs tables were
-# dropped in migration 042 — and DeviceResponse never added anything to DeviceListItem.
-DeviceWithConfigs = DeviceWithPoints
-DeviceResponse = DeviceListItem
-
-
 class SiteResponse(BaseModel):
     """Response model for site data."""
     site_id: int = Field(..., description="Site ID (4-digit number)")

@@ -73,14 +73,9 @@ class Settings(BaseSettings):
 
     # Polling Job Configuration
     poll_interval_seconds: int = Field(default=10, alias="POLL_INTERVAL_SECONDS")
-    poll_cache_ttl: int = Field(default=3600, alias="POLL_CACHE_TTL")  # 1 hour default
-    poll_device_name: str = Field(default="main-sel-751", alias="POLL_DEVICE_NAME")  # Device name for polling and database storage
 
     # Pod identification (for Kubernetes)
     pod_name: str = Field(default="", alias="POD_NAME")  # Falls back to HOSTNAME if not set
-
-    # DAS API Configuration
-    das_api_base_url: str = Field(default="http://pae-das-api:8080", alias="DAS_API_BASE_URL")
 
 
 # Global settings instance

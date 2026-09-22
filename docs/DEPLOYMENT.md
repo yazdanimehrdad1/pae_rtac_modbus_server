@@ -17,7 +17,8 @@ main push  ──► CD (build+push image to Artifact Registry, bump prod overla
   replicas + HPA (the scheduler uses Redis leader election, so exactly one pod
   polls regardless of replica count).
 - **Data**: Cloud SQL (Postgres 16) reached through a Cloud SQL Auth Proxy
-  **native sidecar** at `127.0.0.1:5432`; Memorystore (Redis) by private IP.
+  **native sidecar** at `127.0.0.1:5432`; Redis runs **in-cluster** (`k8s/base/redis.yaml`),
+  not on Memorystore.
   The app needs plain Postgres — no TimescaleDB extension is required.
 - **Migrations**: run once per sync by a `PreSync` Job (`scripts/migrate_db.py`),
   never by app replicas (`RUN_MIGRATIONS_ON_START=false` in-cluster).

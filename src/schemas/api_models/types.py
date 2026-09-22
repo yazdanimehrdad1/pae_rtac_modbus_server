@@ -1,6 +1,5 @@
 """Typed helpers for API models."""
 
-from datetime import datetime
 from typing import Literal, TypeAlias, get_args
 
 from pydantic import BaseModel
@@ -129,66 +128,5 @@ class PollResult(TypedDict, total=False):
 ModbusRegisterValues: TypeAlias = list[int | bool]
 
 
-class BitfieldEntry(TypedDict, total=False):
-    value: int
-    detail: str
-
-
 BitfieldDetailMap: TypeAlias = dict[str, str]
-BitfieldPayload: TypeAlias = dict[str, BitfieldEntry]
-
-
-class EnumEntry(TypedDict, total=False):
-    value: int
-    detail: str
-
-
 EnumDetailMap: TypeAlias = dict[str, str]
-EnumPayload: TypeAlias = dict[str, EnumEntry]
-
-
-CalculatedValue: TypeAlias = BitfieldPayload | EnumPayload | float
-
-
-class MergedPointMetadataToReading(TypedDict):
-    device_point_id: int
-    register_address: int
-    name: str
-    data_type: str
-    unit: str | None
-    scale_factor: float | None
-    timestamp: datetime
-    derived_value: float | None
-    calculated_value: CalculatedValue | None
-
-
-class LatestDevicePointReadingModel(BaseModel):
-    device_point_id: int
-    register_address: int
-    name: str
-    data_type: str
-    unit: str | None
-    scale_factor: float | None
-    timestamp: datetime
-    derived_value: float | None
-    bitfield_detail: BitfieldDetailMap | None = None
-    enum_detail: EnumDetailMap | None = None
-    bit_count: int | None = None
-
-
-class MergedPointMetadataToReadingModel(BaseModel):
-    device_point_id: int
-    register_address: int
-    name: str
-    data_type: str
-    unit: str | None
-    scale_factor: float | None
-    timestamp: datetime
-    derived_value: float | None
-    calculated_value: CalculatedValue | None
-
-
-class PointReadSeriesItemModel(BaseModel):
-    timestamp: datetime
-    raw_value: float | None = None
-    calculated_value: CalculatedValue | None

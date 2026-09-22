@@ -2,27 +2,7 @@
 
 from typing import Any
 
-from schemas.api_models.types import (
-    BitfieldDetailMap,
-    BitfieldEntry,
-    BitfieldPayload,
-    EnumDetailMap,
-    EnumEntry,
-    EnumPayload,
-)
-
-
-def get_bitfield_value(value: float | None, bit_count: int) -> list[int]:
-    """
-    Convert an integer-like value into a list of bits (LSB -> MSB).
-
-    Example:
-    value=5, bit_count=4 -> [1, 0, 1, 0]
-    """
-    if value is None:
-        return []
-    int_value = int(value)
-    return [(int_value >> bit) & 1 for bit in range(bit_count)]
+from schemas.api_models.types import BitfieldDetailMap, EnumDetailMap
 
 
 def normalize_detail_keys(detail: BitfieldDetailMap | EnumDetailMap | None, prefix: str) -> dict[str, Any]:
@@ -39,34 +19,6 @@ def normalize_detail_keys(detail: BitfieldDetailMap | EnumDetailMap | None, pref
     for key, value in detail.items():
         normalized[key if key.startswith(prefix) else f"{prefix}{key}"] = value
     return normalized
-
-
-def build_bitfield_payload(
-    derived_value: float,
-    bitfield_detail: BitfieldDetailMap,
-    bit_count: int
-) -> BitfieldPayload:
-    """
-    Build a bitfield payload with values and optional detail metadata.
-
-    Example:
-    {
-      "bit-00": {"value": 1, "detail": "Closed"},
-      "bit-01": {"value": 0, "detail": "Open"},
-      "bit-02": {"value": 1, "detail": "Trip"},
-      "bit-03": {"value": 0, "detail": "Trip-OFF"}
-    }
-    """
-    bits = get_bitfield_value(derived_value, bit_count)
-    details = normalize_detail_keys(bitfield_detail, "bit-")
-    payload: BitfieldPayload = {}
-    for bit_index, bit_value in enumerate(bits):
-        key = f"bit-{bit_index:02d}"
-        entry: BitfieldEntry = {"value": bit_value}
-        if key in details:
-            entry["detail"] = details[key]
-        payload[key] = entry
-    return payload
 
 
 def _parse_enum_detail(raw: str) -> tuple[int | None, str | None]:
@@ -147,51 +99,3 @@ def translate_reading(
     if enum_detail:
         return translate_enum_value(derived_value, enum_detail)
     return None
-
-
-def build_enum_payload(
-    derived_value: float,
-    enum_detail: EnumDetailMap
-) -> EnumPayload:
-    """
-    Build an enum payload, merging any enum detail mapping.
-
-    Example:
-    {
-      "enum-01": {"value": 99, "detail": "Off"},
-      "enum-02": {"value": 110, "detail": "Trip"}
-    }
-    """
-    details = normalize_detail_keys(enum_detail, "enum-")
-    payload: EnumPayload = {}
-    for key, raw in details.items():
-        try:
-            enum_index = int(key.split("-", 1)[1])
-        except (IndexError, ValueError):
-            enum_index = None
-
-        entry: EnumEntry = {}
-        if isinstance(raw, dict):
-            if "value" in raw and raw["value"] is not None:
-                entry["value"] = int(raw["value"])
-            if "detail" in raw and raw["detail"] is not None:
-                entry["detail"] = str(raw["detail"])
-        elif isinstance(raw, (int, float)):
-            entry["value"] = int(raw)
-        elif isinstance(raw, str):
-            parsed_value, parsed_detail = _parse_enum_detail(raw)
-            if parsed_value is not None:
-                entry["value"] = parsed_value
-            if parsed_detail:
-                entry["detail"] = parsed_detail
-
-        if "value" not in entry:
-            if enum_index is not None:
-                entry["value"] = enum_index
-            else:
-                entry["value"] = int(derived_value)
-
-        payload[key] = entry
-    return payload
-
-

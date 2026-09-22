@@ -1,6 +1,10 @@
 -- Migration: Create device_points_readings table
 -- Description: New normalized table that references device_points instead of storing denormalized data
 -- Created: 2026-02-03
+--
+-- NOTE: the filename is historical and misleading. This migration does NOT rename
+-- register_readings_raw, and the table it creates is device_points_readings, not
+-- point_readings. Renaming the file would change the applied order, so it stays as-is.
 
 BEGIN;
 

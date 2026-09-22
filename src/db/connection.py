@@ -5,8 +5,6 @@ Handles database connection creation, connection pooling, and lifecycle manageme
 Supports both asyncpg (legacy) and SQLAlchemy 2.0+ async (new) connections.
 """
 
-from collections.abc import AsyncGenerator
-
 import asyncpg
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
@@ -209,35 +207,6 @@ def get_async_session_factory() -> async_sessionmaker[AsyncSession]:
         logger.info("SQLAlchemy async session factory created")
 
     return _async_session_factory
-
-
-async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
-    """
-    FastAPI dependency: Get async database session.
-
-    Creates a new async session for the current request context.
-    Automatically closes the session when the request completes.
-
-    Usage in FastAPI routes:
-        @router.get("/example")
-        async def example_route(session: AsyncSession = Depends(get_async_session)):
-            # Use session here
-            result = await session.execute(select(Model))
-            ...
-
-    Yields:
-        AsyncSession: Database session
-    """
-    factory = get_async_session_factory()
-
-    async with factory() as session:
-        try:
-            yield session
-        except Exception:
-            await session.rollback()
-            raise
-        finally:
-            await session.close()
 
 
 async def close_async_engine() -> None:

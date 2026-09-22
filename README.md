@@ -4,7 +4,7 @@ A FastAPI-based REST API service for communicating with Modbus TCP servers using
 
 ## Features
 
-- **GET /health**: Health check endpoint with connection test and small read verification
+- **GET /api/healthz**: Health check endpoint with connection test and small read verification
 - Robust error handling with proper HTTP status codes
 - Environment variable configuration
 - Clean connection management (no socket leaks)
@@ -12,13 +12,13 @@ A FastAPI-based REST API service for communicating with Modbus TCP servers using
 
 ## Scheduler Implementation
 
-The service includes a distributed scheduler system for periodic Modbus polling and data storage jobs. **Step 1**: Added APScheduler dependency to requirements.txt for async job scheduling. **Step 2**: Configured scheduler settings in config.py including leader lock TTL, heartbeat interval, and pod identification. **Step 3**: Implemented Redis-based distributed locking system with leader election and per-job execution locks in scheduler/locks.py. **Step 4**: Created scheduler engine in scheduler/engine.py that wraps all jobs with lock verification before execution. **Step 5**: Integrated scheduler lifecycle into FastAPI app startup/shutdown hooks for automatic initialization and cleanup.
+The service includes a distributed scheduler system for periodic Modbus polling and data storage jobs. **Step 1**: Added the APScheduler dependency to pyproject.toml for async job scheduling. **Step 2**: Configured scheduler settings in config.py including leader lock TTL, heartbeat interval, and pod identification. **Step 3**: Implemented Redis-based distributed locking system with leader election and per-job execution locks in scheduler/locks.py. **Step 4**: Created scheduler engine in scheduler/engine.py that wraps all jobs with lock verification before execution. **Step 5**: Integrated scheduler lifecycle into FastAPI app startup/shutdown hooks for automatic initialization and cleanup.
 
 ## Installation
 
 1. Install dependencies:
 ```bash
-pip install -r requirements.txt
+pip install -e .
 ```
 
 ## Configuration
@@ -129,13 +129,13 @@ AGGREGATOR_MODBUS_HOST=192.168.1.100 docker-compose up --build
 Start the service with uvicorn:
 
 ```bash
-uvicorn modbus_service:app --host 0.0.0.0 --port 8000 --reload
+PYTHONPATH=src uvicorn app:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 Or run directly:
 
 ```bash
-python modbus_service.py
+cd src && python -m main
 ```
 
 The API will be available at `http://localhost:8000`
@@ -156,7 +156,7 @@ API documentation (Swagger UI) available at: `http://localhost:8000/docs`
 
 **Build the image:**
 ```bash
-docker build -t pae-backend-ot .
+docker build -t pae-backend-ot -f docker/Dockerfile .
 ```
 
 **Run the container:**
@@ -188,7 +188,7 @@ docker-compose logs -f pae-backend-ot
 ### Health Check
 
 ```bash
-curl -X GET "http://localhost:8000/health" | jq
+curl -X GET "http://localhost:8000/api/healthz" | jq
 ```
 
 Expected response:
@@ -229,7 +229,7 @@ removed and still need to be re-implemented:
       exported to an OTLP collector. Propagate trace context across the scheduler jobs.
 - [ ] **Metrics** — Prometheus metrics + a `/api/metrics` scrape endpoint. At minimum:
       poll duration/success/failure counters per device, register read latency,
-      point_readings write throughput, scheduler leader-election state.
+      device_points_readings write throughput, scheduler leader-election state.
 
 ### Other
 

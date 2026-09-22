@@ -197,7 +197,7 @@ Check Redis connection status.
 
 **Example:**
 ```bash
-curl http://localhost:8000/cache/health
+curl http://localhost:8000/api/cache/health
 ```
 
 ### List All Keys
@@ -224,13 +224,13 @@ List all cached keys, optionally filtered by pattern.
 **Examples:**
 ```bash
 # List all keys
-curl http://localhost:8000/cache/keys
+curl http://localhost:8000/api/cache/keys
 
 # List polling keys
-curl http://localhost:8000/cache/keys?pattern=poll:*
+curl http://localhost:8000/api/cache/keys?pattern=poll:*
 
 # List latest keys only
-curl http://localhost:8000/cache/keys?pattern=poll:*:latest
+curl http://localhost:8000/api/cache/keys?pattern=poll:*:latest
 ```
 
 ### Get Key Value
@@ -257,7 +257,7 @@ Get the value of a specific cache key.
 
 **Example:**
 ```bash
-curl http://localhost:8000/cache/get/poll:main-sel-751:latest
+curl http://localhost:8000/api/cache/get/poll:main-sel-751:latest
 ```
 
 ### Check Key Exists
@@ -279,7 +279,7 @@ Check if a key exists in the cache.
 
 **Example:**
 ```bash
-curl http://localhost:8000/cache/exists/poll:main-sel-751:latest
+curl http://localhost:8000/api/cache/exists/poll:main-sel-751:latest
 ```
 
 ### Set Key Value
@@ -308,7 +308,7 @@ Set a value in the cache.
 
 **Example:**
 ```bash
-curl -X POST http://localhost:8000/cache/set \
+curl -X POST http://localhost:8000/api/cache/set \
   -H "Content-Type: application/json" \
   -d '{"key": "test:key", "value": {"test": "data"}, "ttl": 3600}'
 ```
@@ -333,7 +333,7 @@ Delete a specific key from the cache.
 
 **Example:**
 ```bash
-curl -X DELETE http://localhost:8000/cache/delete/poll:main-sel-751:latest
+curl -X DELETE http://localhost:8000/api/cache/delete/poll:main-sel-751:latest
 ```
 
 ### Clear All Cache
@@ -353,7 +353,7 @@ curl -X DELETE http://localhost:8000/cache/delete/poll:main-sel-751:latest
 
 **Example:**
 ```bash
-curl -X DELETE http://localhost:8000/cache/clear
+curl -X DELETE http://localhost:8000/api/cache/clear
 ```
 
 ## Common Operations
@@ -362,7 +362,7 @@ curl -X DELETE http://localhost:8000/cache/clear
 
 **Via API:**
 ```bash
-curl http://localhost:8000/cache/get/poll:main-sel-751:latest | python -m json.tool
+curl http://localhost:8000/api/cache/get/poll:main-sel-751:latest | python -m json.tool
 ```
 
 **Via redis-cli:**
@@ -374,7 +374,7 @@ docker exec pae-backend-ot-redis redis-cli GET "pae_backend_ot:poll:main-sel-751
 
 **Via API:**
 ```bash
-curl "http://localhost:8000/cache/keys?pattern=poll:main-sel-751:*" | python -m json.tool
+curl "http://localhost:8000/api/cache/keys?pattern=poll:main-sel-751:*" | python -m json.tool
 ```
 
 **Via redis-cli:**
@@ -421,12 +421,12 @@ When using API endpoints, **do not include the prefix**. The API automatically a
 
 **Correct:**
 ```bash
-curl http://localhost:8000/cache/get/poll:main-sel-751:latest
+curl http://localhost:8000/api/cache/get/poll:main-sel-751:latest
 ```
 
 **Incorrect:**
 ```bash
-curl http://localhost:8000/cache/get/pae_backend_ot:poll:main-sel-751:latest
+curl http://localhost:8000/api/cache/get/pae_backend_ot:poll:main-sel-751:latest
 ```
 
 ## Troubleshooting

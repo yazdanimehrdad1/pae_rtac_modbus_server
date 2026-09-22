@@ -2,11 +2,14 @@
 Mock data for local development and DB seeding.
 
 Organized as:
-  SITES        — two site records
-  DEVICES      — two devices per site (keyed to site by site_name)
-  DEVICE_CONFIGS — one or two register-block configs per device
-                   each config carries a `points` list that becomes
-                   DevicePoint rows
+  SITES         — site records
+  DEVICES       — devices, keyed to their site by site_name
+  DEVICE_POINTS — NATIVE device points per device, keyed by device name
+
+Each point carries its own ``poll_kind``; the device's ``scan_ranges`` are
+computed from these points by the seed script (see
+``helpers.device_points.scan_range_computation.compute_device_scan_ranges``)
+rather than being stored by hand.
 """
 
 # ---------------------------------------------------------------------------
@@ -24,16 +27,6 @@ SITES = [
         "coordinates": {"lat": 32.7157, "lng": -117.1611},
         "device_count": 0,
     },
-    # {
-    #     "client_id": "beta-energy",
-    #     "name": "Beta Substation",
-    #     "location": {"street": "200 Power Blvd", "city": "Los Angeles", "state": "CA", "zip_code": 90001},
-    #     "operator": "PAE",
-    #     "capacity": "10MW",
-    #     "description": "Beta dev site — feeder relay + power meter",
-    #     "coordinates": {"lat": 34.0522, "lng": -118.2437},
-    #     "device_count": 0,
-    # },
 ]
 
 # ---------------------------------------------------------------------------
@@ -57,181 +50,64 @@ DEVICES = [
         "poll_enabled": True,
         "read_from_aggregator": True,
     },
-    # {
-    #     "site_name": "Alpha Solar Farm",
-    #     "name": "alpha-eos-bess-1",
-    #     "host": "192.168.10.5",
-    #     "port": 502,
-    #     "timeout": 5.0,
-    #     "server_address": 1,
-    #     "type": "bess",
-    #     "vendor": "EOS",
-    #     "model": "EOS-BESS-1000",
-    #     "protocol": "Modbus",
-    #     "description": "Battery Energy Storage System unit 1",
-    #     "poll_enabled": True,
-    #     "read_from_aggregator": True,
-    # },
-    # # --- Beta Substation ---
-    # {
-    #     "site_name": "Alpha Solar Farm",
-    #     "name": "beta-sel-751-feeder",
-    #     "host": "192.168.20.1",
-    #     "port": 502,
-    #     "timeout": 5.0,
-    #     "server_address": 1,
-    #     "type": "relay",
-    #     "vendor": "SEL",
-    #     "model": "SEL-751",
-    #     "protocol": "Modbus",
-    #     "description": "Feeder A protection relay",
-    #     "poll_enabled": True,
-    #     "read_from_aggregator": True,
-    # },
-    # {
-    #     "site_name": "Beta Substation",
-    #     "name": "beta-power-meter",
-    #     "host": "192.168.20.10",
-    #     "port": 502,
-    #     "timeout": 5.0,
-    #     "server_address": 1,
-    #     "type": "meter",
-    #     "vendor": "Schneider",
-    #     "model": "ION7650",
-    #     "protocol": "Modbus",
-    #     "description": "Main revenue-grade power meter",
-    #     "poll_enabled": True,
-    #     "read_from_aggregator": True,
-    # },
 ]
 
 # ---------------------------------------------------------------------------
-# Configs  (keyed by device name)
+# Device points  (keyed by device name)
 #
-# Each entry in the list is one config block:
-#   poll_kind   — "holding" | "input" | "coils" | "discretes"
-#   created_by  — creator label
-#   is_active   — bool
-#   points      — list of point defs (→ DevicePoint rows)
-#
-# poll_start_index / poll_count are derived from the points list by the
-# seed script so you don't have to keep them in sync manually.
+# Each point def supports:
+#   address          — starting register address (required)
+#   name             — point name, unique per device (required)
+#   poll_kind        — "holding" | "input" | "coils" (required for NATIVE points)
+#   data_type        — see schemas.api_models.types.SUPPORTED_DATA_TYPES
+#   size             — registers occupied (float32/int32 occupy 2)
+#   scale_factor     — multiplier applied to the raw value
+#   unit             — engineering unit, or None
+#   bitfield_detail  — {bit index: label} for bitfield points
+#   enum_detail      — {value: label} for enum points
 # ---------------------------------------------------------------------------
 
-DEVICE_CONFIGS: dict[str, list[dict]] = {
+DEVICE_POINTS: dict[str, list[dict]] = {
 
     # -----------------------------------------------------------------------
     # alpha-sel-751-main
-    #   Two blocks: standard metering registers + status word block
+    #   Standard SEL-751 metering registers plus a status/fault bitfield block
     # -----------------------------------------------------------------------
     "alpha-sel-751-main": [
+        {"address": 1400, "name": "M_FREQ",  "poll_kind": "holding", "data_type": "uint16", "size": 1, "scale_factor": 0.01,  "unit": "Hz"},
+        {"address": 1401, "name": "M_FREQS", "poll_kind": "holding", "data_type": "uint16", "size": 1, "scale_factor": 0.01,  "unit": "Hz"},
+        {"address": 1402, "name": "M_IA",    "poll_kind": "holding", "data_type": "uint16", "size": 1, "scale_factor": 0.1,   "unit": "A"},
+        {"address": 1403, "name": "M_IB",    "poll_kind": "holding", "data_type": "uint16", "size": 1, "scale_factor": 0.1,   "unit": "A"},
+        {"address": 1404, "name": "M_IC",    "poll_kind": "holding", "data_type": "uint16", "size": 1, "scale_factor": 0.1,   "unit": "A"},
+        {"address": 1405, "name": "M_IG",    "poll_kind": "holding", "data_type": "uint16", "size": 1, "scale_factor": 0.1,   "unit": "A"},
+        {"address": 1406, "name": "M_P",     "poll_kind": "holding", "data_type": "uint16", "size": 1, "scale_factor": 0.001, "unit": "MW"},
+        {"address": 1407, "name": "M_PF",    "poll_kind": "holding", "data_type": "uint16", "size": 1, "scale_factor": 0.001, "unit": None},
+        {"address": 1408, "name": "M_Q",     "poll_kind": "holding", "data_type": "uint16", "size": 1, "scale_factor": 0.001, "unit": "MVAR"},
+        {"address": 1409, "name": "M_S",     "poll_kind": "holding", "data_type": "uint16", "size": 1, "scale_factor": 0.001, "unit": "MVA"},
+        {"address": 1410, "name": "M_VAB",   "poll_kind": "holding", "data_type": "uint16", "size": 1, "scale_factor": 0.1,   "unit": "kV"},
+        {"address": 1411, "name": "M_VBC",   "poll_kind": "holding", "data_type": "uint16", "size": 1, "scale_factor": 0.1,   "unit": "kV"},
+        {"address": 1412, "name": "M_VCA",   "poll_kind": "holding", "data_type": "uint16", "size": 1, "scale_factor": 0.1,   "unit": "kV"},
+        {"address": 1413, "name": "M_VDC",   "poll_kind": "holding", "data_type": "uint16", "size": 1, "scale_factor": 0.1,   "unit": "kV"},
+        {"address": 1414, "name": "M_VS",    "poll_kind": "holding", "data_type": "uint16", "size": 1, "scale_factor": 0.1,   "unit": "kV"},
         {
+            "address": 1415,
+            "name": "M_STATUS",
             "poll_kind": "holding",
-            "created_by": "seed-script",
-            "is_active": True,
-            "points": [
-                {"address": 1400, "name": "M_FREQ",  "data_type": "uint16", "size": 1, "scale_factor": 0.01,  "unit": "Hz"},
-                {"address": 1401, "name": "M_FREQS", "data_type": "uint16", "size": 1, "scale_factor": 0.01,  "unit": "Hz"},
-                {"address": 1402, "name": "M_IA",    "data_type": "uint16", "size": 1, "scale_factor": 0.1,   "unit": "A"},
-                {"address": 1403, "name": "M_IB",    "data_type": "uint16", "size": 1, "scale_factor": 0.1,   "unit": "A"},
-                {"address": 1404, "name": "M_IC",    "data_type": "uint16", "size": 1, "scale_factor": 0.1,   "unit": "A"},
-                {"address": 1405, "name": "M_IG",    "data_type": "uint16", "size": 1, "scale_factor": 0.1,   "unit": "A"},
-                {"address": 1406, "name": "M_P",     "data_type": "uint16", "size": 1, "scale_factor": 0.001, "unit": "MW"},
-                {"address": 1407, "name": "M_PF",    "data_type": "uint16", "size": 1, "scale_factor": 0.001, "unit": None},
-                {"address": 1408, "name": "M_Q",     "data_type": "uint16", "size": 1, "scale_factor": 0.001, "unit": "MVAR"},
-                {"address": 1409, "name": "M_S",     "data_type": "uint16", "size": 1, "scale_factor": 0.001, "unit": "MVA"},
-                {"address": 1410, "name": "M_VAB",   "data_type": "uint16", "size": 1, "scale_factor": 0.1,   "unit": "kV"},
-                {"address": 1411, "name": "M_VBC",   "data_type": "uint16", "size": 1, "scale_factor": 0.1,   "unit": "kV"},
-                {"address": 1412, "name": "M_VCA",   "data_type": "uint16", "size": 1, "scale_factor": 0.1,   "unit": "kV"},
-                {"address": 1413, "name": "M_VDC",   "data_type": "uint16", "size": 1, "scale_factor": 0.1,   "unit": "kV"},
-                {"address": 1414, "name": "M_VS",    "data_type": "uint16", "size": 1, "scale_factor": 0.1,   "unit": "kV"},
-            ],
+            "data_type": "bitfield",
+            "size": 1,
+            "scale_factor": 1.0,
+            "unit": None,
+            "bitfield_detail": {"0": "Closed", "1": "Open", "2": "Fault", "3": "Alarm"},
         },
         {
+            "address": 1416,
+            "name": "M_FAULT",
             "poll_kind": "holding",
-            "created_by": "seed-script",
-            "is_active": True,
-            "points": [
-                {"address": 1415, "name": "M_STATUS", "data_type": "bitfield", "size": 1, "scale_factor": 1.0, "unit": None, "bitfield_detail": {"0": "Closed", "1": "Open", "2": "Fault", "3": "Alarm"}},
-                {"address": 1416, "name": "M_FAULT", "data_type": "bitfield", "size": 1, "scale_factor": 1.0, "unit": None, "bitfield_detail": {"0": "No Fault", "1": "Fault"}}
-            ],
+            "data_type": "bitfield",
+            "size": 1,
+            "scale_factor": 1.0,
+            "unit": None,
+            "bitfield_detail": {"0": "No Fault", "1": "Fault"},
         },
     ],
-
-    # -----------------------------------------------------------------------
-    # alpha-eos-bess-1
-    #   Single block: SOC/SOH/power/charge-status + one float32 register
-    # -----------------------------------------------------------------------
-    # "alpha-eos-bess-1": [
-    #     {
-    #         "poll_kind": "holding",
-    #         "created_by": "seed-script",
-    #         "is_active": True,
-    #         "points": [
-    #             {"address": 1500, "name": "BESS_SOC",           "data_type": "uint16", "size": 1, "scale_factor": 0.1,  "unit": "%"},
-    #             {"address": 1501, "name": "BESS_SOH",           "data_type": "uint16", "size": 1, "scale_factor": 0.1,  "unit": "%"},
-    #             {"address": 1502, "name": "BESS_KW",            "data_type": "int16",  "size": 1, "scale_factor": 0.1,  "unit": "kW"},
-    #             {"address": 1503, "name": "BESS_KVAR",          "data_type": "int16",  "size": 1, "scale_factor": 0.1,  "unit": "kVAR"},
-    #             {"address": 1504, "name": "BESS_TEMP",          "data_type": "int16",  "size": 1, "scale_factor": 0.1,  "unit": "°C"},
-    #             {
-    #                 "address": 1505,
-    #                 "name": "BESS_CHARGE_STATUS",
-    #                 "data_type": "uint16",
-    #                 "size": 1,
-    #                 "scale_factor": 1.0,
-    #                 "unit": None,
-    #                 "enum_detail": {"0": "Idle", "1": "Charging", "2": "Discharging", "3": "Fault"},
-    #             },
-    #             # float32 occupies two consecutive registers (1506, 1507)
-    #             {"address": 1506, "name": "BESS_VOLTAGE", "data_type": "float32", "size": 2, "scale_factor": 1.0, "unit": "V"},
-    #         ],
-    #     },
-    # ],
-
-    # -----------------------------------------------------------------------
-    # beta-sel-751-feeder
-    #   Single metering block (subset of SEL-751 registers)
-    # -----------------------------------------------------------------------
-    # "beta-sel-751-feeder": [
-    #     {
-    #         "poll_kind": "holding",
-    #         "created_by": "seed-script",
-    #         "is_active": True,
-    #         "points": [
-    #             {"address": 1400, "name": "M_FREQ", "data_type": "uint16", "size": 1, "scale_factor": 0.01,  "unit": "Hz"},
-    #             {"address": 1401, "name": "M_IA",   "data_type": "uint16", "size": 1, "scale_factor": 0.1,   "unit": "A"},
-    #             {"address": 1402, "name": "M_IB",   "data_type": "uint16", "size": 1, "scale_factor": 0.1,   "unit": "A"},
-    #             {"address": 1403, "name": "M_IC",   "data_type": "uint16", "size": 1, "scale_factor": 0.1,   "unit": "A"},
-    #             {"address": 1404, "name": "M_P",    "data_type": "uint16", "size": 1, "scale_factor": 0.001, "unit": "MW"},
-    #             {"address": 1405, "name": "M_Q",    "data_type": "uint16", "size": 1, "scale_factor": 0.001, "unit": "MVAR"},
-    #             {"address": 1406, "name": "M_PF",   "data_type": "uint16", "size": 1, "scale_factor": 0.001, "unit": None},
-    #             {"address": 1407, "name": "M_VAB",  "data_type": "uint16", "size": 1, "scale_factor": 0.1,   "unit": "kV"},
-    #             {"address": 1408, "name": "M_VBC",  "data_type": "uint16", "size": 1, "scale_factor": 0.1,   "unit": "kV"},
-    #             {"address": 1409, "name": "M_VCA",  "data_type": "uint16", "size": 1, "scale_factor": 0.1,   "unit": "kV"},
-    #         ],
-    #     },
-    # ],
-
-    # -----------------------------------------------------------------------
-    # beta-power-meter
-    #   Input registers, all float32 (each occupies two registers)
-    # -----------------------------------------------------------------------
-#     "beta-power-meter": [
-#         {
-#             "poll_kind": "input",
-#             "created_by": "seed-script",
-#             "is_active": True,
-#             "points": [
-#                 {"address": 100, "name": "FREQ",  "data_type": "float32", "size": 2, "scale_factor": 1.0, "unit": "Hz"},
-#                 {"address": 102, "name": "IA",    "data_type": "float32", "size": 2, "scale_factor": 1.0, "unit": "A"},
-#                 {"address": 104, "name": "IB",    "data_type": "float32", "size": 2, "scale_factor": 1.0, "unit": "A"},
-#                 {"address": 106, "name": "IC",    "data_type": "float32", "size": 2, "scale_factor": 1.0, "unit": "A"},
-#                 {"address": 108, "name": "P_KW",  "data_type": "float32", "size": 2, "scale_factor": 1.0, "unit": "kW"},
-#                 {"address": 110, "name": "Q_KVAR","data_type": "float32", "size": 2, "scale_factor": 1.0, "unit": "kVAR"},
-#                 {"address": 112, "name": "PF",    "data_type": "float32", "size": 2, "scale_factor": 1.0, "unit": None},
-#                 {"address": 114, "name": "VAB",   "data_type": "float32", "size": 2, "scale_factor": 1.0, "unit": "V"},
-#             ],
-#         },
-#     ],
-#
 }
