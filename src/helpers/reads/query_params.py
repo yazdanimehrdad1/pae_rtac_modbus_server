@@ -32,7 +32,7 @@ def parse_point_ids(raw: str | None) -> list[int]:
         return [int(p.strip()) for p in raw.split(",") if p.strip()]
     except ValueError:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="point_ids must be a comma-separated list of integers (e.g. '1,2,3')",
         ) from None
 
@@ -45,7 +45,7 @@ def resolve_display_tz(tz: str | None) -> ZoneInfo | None:
         return resolve_timezone(tz)
     except ValueError as err:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(err)
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(err)
         ) from err
 
 
@@ -57,7 +57,7 @@ def normalize_bound(value: datetime | None, field_name: str, tz: ZoneInfo | None
         return normalize_to_utc(value, field_name, tz)
     except ValueError as err:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(err)
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(err)
         ) from err
 
 

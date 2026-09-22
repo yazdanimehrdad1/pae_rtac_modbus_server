@@ -24,6 +24,10 @@ jobs:
       POSTGRES_PASSWORD: ci-password
       REDIS_HOST: localhost
       REDIS_PORT: "6379"
+      # The CI postgres/redis are disposable service containers, so integration tests may
+      # truncate/flush them (tests/integration/conftest.py skips them without this).
+      INTEGRATION_DB_RESET_ALLOWED: "1"
+      SCHEDULER_ENABLED: "false"
     services:
       postgres:
         image: postgres:16

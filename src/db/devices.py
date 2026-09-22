@@ -23,7 +23,13 @@ from schemas.api_models import (
 )
 from schemas.api_models.requests import DeviceScanRanges
 from schemas.db_models.orm_models import Device, DevicePoint, Site
-from utils.exceptions import ConflictError, InternalError, NotFoundError, ValidationError
+from utils.exceptions import (
+    AppError,
+    ConflictError,
+    InternalError,
+    NotFoundError,
+    ValidationError,
+)
 
 logger = get_logger(__name__)
 
@@ -277,6 +283,10 @@ async def update_device(device_id: int, device_update: DeviceUpdate, site_id: in
             else:
                 logger.error(f"Database integrity error updating device: {e}")
                 raise ValidationError(f"Database integrity error: {e}") from e
+        except AppError:
+            # Our own NotFound/Conflict errors carry the right status; don't wrap them as 500.
+            await session.rollback()
+            raise
         except Exception as e:
             await session.rollback()
             logger.error(f"Database error updating device: {e}")
@@ -385,6 +395,10 @@ async def restore_device(device_id: int, site_id: int) -> DeviceWithPoints | Non
             await session.commit()
             logger.info(f"Restored device {device_id} and its points")
 
+        except AppError:
+            # Our own NotFound/Conflict errors carry the right status; don't wrap them as 500.
+            await session.rollback()
+            raise
         except Exception as e:
             await session.rollback()
             logger.error(f"Database error restoring device: {e}")

@@ -94,7 +94,7 @@ class CacheService:
 
             ttl = ttl if ttl is not None else self.default_ttl
 
-            await client.setex(full_key, ttl, serialized_value)
+            await client.set(full_key, serialized_value, ex=ttl)
             return True
 
         except Exception as e:

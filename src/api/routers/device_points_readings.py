@@ -106,7 +106,7 @@ async def get_timeseries_readings(
 
     if time_range and (start_time or end_time):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Use either time_range or start_time/end_time, not both",
         )
 
@@ -118,7 +118,7 @@ async def get_timeseries_readings(
         logger.info("time_range=%s resolved to start=%s end=%s", time_range, start_time.isoformat(), end_time.isoformat())
     if start_time and end_time and start_time >= end_time:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="start_time must be before end_time",
         )
 

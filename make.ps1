@@ -27,8 +27,9 @@ function Show-Help {
     Write-Host ""
     Write-Host "Development commands:"
     Write-Host "  .\make.ps1 test-setup - Prepare test environment (ensure containers are running)"
-    Write-Host "  .\make.ps1 test       - Run all tests via Docker (ensures redis is up first)"
+    Write-Host "  .\make.ps1 test       - Run unit + integration tests (all via Docker)"
     Write-Host "  .\make.ps1 test-unit [path] - Run unit tests via Docker (no containers needed)"
+    Write-Host "  .\make.ps1 test-integration [path] - Run integration tests on a throwaway postgres+redis stack"
     Write-Host "  .\make.ps1 format     - Format all Python files (black, ruff)"
     Write-Host "  .\make.ps1 lint       - Run ruff linter (CI-enforced; via Docker)"
     Write-Host "  .\make.ps1 lint-fix   - Auto-fix lint issues with ruff (via Docker)"
@@ -54,6 +55,28 @@ function Invoke-Pytest([string]$Target) {
         exit $LASTEXITCODE
     }
     Write-Host "Tests passed!" -ForegroundColor Green
+}
+
+function Invoke-IntegrationTests([string]$Target) {
+    # Runs pytest against a throwaway postgres + redis (docker-compose.test.yaml, tmpfs,
+    # no host ports) under its own project name, then tears it all down. Never touches
+    # the dev stack or its data.
+    $composeArgs = @("compose", "-p", "pae-backend-ot-test", "-f", "docker-compose.test.yaml")
+    Write-Host "Running integration tests $Target (throwaway stack)..." -ForegroundColor Green
+    $env:PYTEST_TARGET = $Target
+    docker volume create pae-backend-ot-pip-cache | Out-Null
+    try {
+        docker @composeArgs run --rm tests | Out-Host
+        $testExitCode = $LASTEXITCODE
+    } finally {
+        Remove-Item Env:PYTEST_TARGET -ErrorAction SilentlyContinue
+        docker @composeArgs down --remove-orphans 2>&1 | Out-Null
+    }
+    if ($testExitCode -ne 0) {
+        Write-Host "Integration tests failed (exit code $testExitCode)" -ForegroundColor Red
+        exit $testExitCode
+    }
+    Write-Host "Integration tests passed!" -ForegroundColor Green
 }
 
 function Invoke-TestSetup {
@@ -230,12 +253,16 @@ switch ($Command.ToLower()) {
         Invoke-TestSetup
     }
     "test" {
-        Invoke-TestSetup
-        Invoke-Pytest $(if ($TestPath) { $TestPath } else { "tests/" })
+        # Unit first (fast, fails early), then integration on the throwaway stack.
+        Invoke-Pytest "tests/unit"
+        Invoke-IntegrationTests "tests/integration"
     }
     "test-unit" {
         # Fast loop: unit tests do no I/O, so no redis/postgres setup.
         Invoke-Pytest $(if ($TestPath) { $TestPath } else { "tests/unit" })
+    }
+    "test-integration" {
+        Invoke-IntegrationTests $(if ($TestPath) { $TestPath } else { "tests/integration" })
     }
     "format" {
         Write-Host "Formatting Python files with black..." -ForegroundColor Green

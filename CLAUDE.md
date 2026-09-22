@@ -23,11 +23,25 @@ the DAS data-acquisition API (`pae-das-api`), or any downstream dashboard/analyt
   `python:3.11-slim` container with `.[dev]` installed; no local Python or containers needed.
   Narrow it with `make test-unit TEST_PATH=tests/unit/helpers/modbus` /
   `.\make.ps1 test-unit tests/unit/helpers/modbus/test_modbus_data_mapping.py`.
-- All tests: `make test` / `.\make.ps1 test` (brings up redis, then the same Docker pytest
-  on `tests/`). `tests/integration/` holds planned coverage in its README (those will need
-  postgres up as well as redis).
+- Integration tests: `make test-integration` / `.\make.ps1 test-integration [path]` — spins
+  up a throwaway postgres + redis (`docker-compose.test.yaml`, project `pae-backend-ot-test`,
+  tmpfs, no host ports), migrates, runs `tests/integration`, tears it down. Never touches the
+  dev stack; `make up` is not needed.
+- All tests: `make test` / `.\make.ps1 test` = `test-unit` then `test-integration`.
 - Lint/format: `make lint` (ruff + mypy) / `make format` (black + ruff).
 - Migrate manually: `make migrate` (= `python scripts/migrate_db.py`).
+
+## The feature comes first; tests prove it
+The feature is the priority. Build it to the highest standard first — correct behavior,
+correct HTTP status codes and error types, clean layering, the conventions in this file —
+and *then* write unit and integration tests that prove it works as intended.
+- Tests describe the behavior the feature **should** have. Never shape a test (or an
+  assertion) around what the code happens to do today.
+- If a test exposes a defect, fix the feature — don't weaken the test to pass. A strict
+  `xfail` is only for a defect that is genuinely out of scope for the current change, and
+  must be called out to the user.
+- A green suite over a sub-standard feature is not done. Passing tests are the proof, not
+  the goal.
 
 ## Unit tests are required for every feature and bug fix
 Every new feature, behavior change, or bug fix ships with unit tests **in the same change**.
@@ -46,6 +60,30 @@ A change is not done until `make test-unit` / `.\make.ps1 test-unit` passes and 
   "these two lists must not drift apart" checks (see `tests/unit/helpers/modbus/`).
 - Group tests in `Test*` classes per behavior, with a module docstring saying what
   invariant the file guards. Test code follows the same ruff rules as `src/`.
+
+## Integration tests are required for API changes
+Any new or changed endpoint (`src/api/routers/`) ships with integration tests in
+`tests/integration/api/routers/test_<router>.py` **in the same change**, and a change touching
+the API isn't done until `make test-integration` passes too. See `tests/integration/README.md`.
+- **Same layout rules as unit tests:** mirror `src/`, `__init__.py` in every folder, shared
+  helpers in plain modules imported as `from integration.factories import ...`.
+- **Use the fixtures in `tests/integration/conftest.py`:** `client` (httpx AsyncClient on
+  a fresh app; lifespan/scheduler not run) and `db` (raw asyncpg connection). The autouse
+  `reset_state` truncates all tables + flushes redis before each test, so tests are
+  independent. Never add a test that depends on another test's data.
+- **Arrange through the API** (`factories.create_site/create_device/upsert_points`). Use raw
+  SQL via `db` only for what the API can't create (e.g. `factories.insert_reading`).
+- **Assert status codes and response bodies**, and cover the error paths (404/409/400/422),
+  not just the happy path.
+- **Found a bug while writing a test?** Fix the feature (see "The feature comes first").
+  Only if the fix is out of scope: assert the *correct* behavior, mark it
+  `@pytest.mark.xfail(strict=True, reason="BUG: ...")`, and tell the user. Never weaken the
+  assertion to match the bug. Remove the marker in the change that fixes it (strict XPASS
+  fails the run).
+- **Safety guard:** tests only run when `INTEGRATION_DB_RESET_ALLOWED=1` (set by
+  `docker-compose.test.yaml` and CI); otherwise they skip. Never set it against a real DB.
+- **Anything needing Modbus** (polling, live stream, `/health_modbus_client`) waits for the
+  mock Modbus server, which will be added as a service in `docker-compose.test.yaml`.
 
 ## Linting is CI-enforced — every change must leave `ruff check` clean
 `.github/workflows/ci.yml` runs `ruff check src/ tests/` and **fails the build on any

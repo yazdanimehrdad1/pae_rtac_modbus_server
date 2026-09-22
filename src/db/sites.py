@@ -15,7 +15,13 @@ from db.connection import get_async_session_factory
 from logger import get_logger
 from schemas.api_models import SiteCreateRequest, SiteResponse, SiteUpdateRequest
 from schemas.db_models.orm_models import Device, DevicePoint, Site
-from utils.exceptions import ConflictError, InternalError, NotFoundError, ValidationError
+from utils.exceptions import (
+    AppError,
+    ConflictError,
+    InternalError,
+    NotFoundError,
+    ValidationError,
+)
 
 logger = get_logger(__name__)
 
@@ -285,6 +291,10 @@ async def restore_site(site_id: int) -> SiteResponse | None:
             await session.commit()
             logger.info(f"Restored site {site_id} and all its devices/points")
 
+        except AppError:
+            # Our own NotFound/Conflict errors carry the right status; don't wrap them as 500.
+            await session.rollback()
+            raise
         except Exception as e:
             await session.rollback()
             logger.error(f"Database error restoring site: {e}")

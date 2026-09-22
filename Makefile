@@ -1,4 +1,4 @@
-.PHONY: help network up down build rebuild up-build up-rebuild restart logs shell clean ps health dev test-setup test test-unit lint lint-fix format migrate apply-migration run seed-db cloud-down cloud-up
+.PHONY: help network up down build rebuild up-build up-rebuild restart logs shell clean ps health dev test-setup test test-unit test-integration lint lint-fix format migrate apply-migration run seed-db cloud-down cloud-up
 
 # ---------------------------------------------------------------------------
 # Cloud cost control (GKE) — stop everything billable when not in use, and bring
@@ -74,8 +74,9 @@ help:
 	@echo "Development commands:"
 	@echo "  make dev        - Start development environment"
 	@echo "  make test-setup - Prepare test environment (ensure containers are running)"
-	@echo "  make test       - Run all tests via Docker (ensures redis is up first)"
+	@echo "  make test       - Run unit + integration tests (all via Docker)"
 	@echo "  make test-unit  - Run unit tests via Docker (TEST_PATH=... to narrow)"
+	@echo "  make test-integration - Run integration tests on a throwaway postgres+redis stack"
 	@echo "  make lint       - Run linters (ruff, mypy)"
 	@echo "  make format     - Format code (black, ruff)"
 	@echo "  make migrate    - Run database migrations"
@@ -171,15 +172,31 @@ PYTEST_DOCKER = docker run --rm -v "$(CURDIR):/app" -v pae-backend-ot-pip-cache:
 	-w /app -e PYTHONPATH=src python:3.11-slim \
 	bash -c "pip install -q --root-user-action=ignore -e '.[dev]' && pytest $(1) -v --color=yes -rfE"
 
-# Run all tests - ensures redis is up first
-test: test-setup
-	@echo "Running tests..."
-	$(call PYTEST_DOCKER,$(or $(TEST_PATH),tests/))
+# Integration tests run on a throwaway postgres + redis (docker-compose.test.yaml: tmpfs,
+# no host ports, own project name), torn down after every run — never the dev stack.
+TEST_COMPOSE = docker compose -p pae-backend-ot-test -f docker-compose.test.yaml
+
+# Run all tests: unit first (fast, fails early), then integration
+test: test-unit test-integration
 
 # Run unit tests only - no I/O, so no containers needed
 test-unit:
 	@echo "Running unit tests..."
 	$(call PYTEST_DOCKER,$(or $(TEST_PATH),tests/unit))
+
+# Run integration tests on the throwaway stack; always tears it down, keeps pytest's exit code
+ifeq ($(OS),Windows_NT)
+# GNU make on Windows runs recipes in cmd.exe, which can't do the POSIX env/redirect/exit
+# handling below. Delegate to make.ps1 (same logic), like cloud-down/cloud-up do.
+test-integration:
+	@powershell -NoProfile -ExecutionPolicy Bypass -File make.ps1 test-integration $(TEST_PATH)
+else
+test-integration:
+	@echo "Running integration tests (throwaway stack)..."
+	@docker volume create pae-backend-ot-pip-cache >/dev/null
+	@PYTEST_TARGET=$(or $(TEST_PATH),tests/integration) $(TEST_COMPOSE) run --rm tests; \
+		status=$$?; $(TEST_COMPOSE) down --remove-orphans >/dev/null 2>&1; exit $$status
+endif
 
 # Run linting (ruff is the CI-blocking gate). Runs in Docker so no local Python
 # is required; $(CURDIR) resolves to a Docker-compatible path on Linux and Windows.
