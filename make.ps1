@@ -3,7 +3,11 @@
 
 param(
     [Parameter(Position=0)]
-    [string]$Command = "help"
+    [string]$Command = "help",
+
+    # Optional pytest target for test / test-unit, e.g. tests/unit/helpers/modbus
+    [Parameter(Position=1)]
+    [string]$TestPath = ""
 )
 
 function Show-Help {
@@ -23,7 +27,9 @@ function Show-Help {
     Write-Host ""
     Write-Host "Development commands:"
     Write-Host "  .\make.ps1 test-setup - Prepare test environment (ensure containers are running)"
-    Write-Host "  .\make.ps1 test       - Run tests (ensures containers are up first)"
+    Write-Host "  .\make.ps1 test       - Run unit + integration tests (all via Docker)"
+    Write-Host "  .\make.ps1 test-unit [path] - Run unit tests via Docker (no containers needed)"
+    Write-Host "  .\make.ps1 test-integration [path] - Run integration tests on a throwaway postgres+redis stack"
     Write-Host "  .\make.ps1 format     - Format all Python files (black, ruff)"
     Write-Host "  .\make.ps1 lint       - Run ruff linter (CI-enforced; via Docker)"
     Write-Host "  .\make.ps1 lint-fix   - Auto-fix lint issues with ruff (via Docker)"
@@ -33,6 +39,44 @@ function Show-Help {
     Write-Host "  .\make.ps1 cloud-up   - Start Cloud SQL and bring everything back ready"
     Write-Host ""
     Write-Host "Or use: make.ps1 <command>"
+}
+
+function Invoke-Pytest([string]$Target) {
+    # Runs pytest in a throwaway container matching the app's Python (no local Python
+    # needed on this machine). The named volume caches pip downloads between runs.
+    # --color=yes forces green/red output without a TTY; -rfE lists failures at the end.
+    Write-Host "Running pytest $Target (via Docker)..." -ForegroundColor Green
+    docker run --rm -v "${PWD}:/app" -v pae-backend-ot-pip-cache:/root/.cache/pip -w /app `
+        -e PYTHONPATH=src python:3.11-slim `
+        bash -c "pip install -q --root-user-action=ignore -e '.[dev]' && pytest $Target -v --color=yes -rfE" |
+        Out-Host  # keeps pytest output ahead of the pass/fail line below
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Tests failed (exit code $LASTEXITCODE)" -ForegroundColor Red
+        exit $LASTEXITCODE
+    }
+    Write-Host "Tests passed!" -ForegroundColor Green
+}
+
+function Invoke-IntegrationTests([string]$Target) {
+    # Runs pytest against a throwaway postgres + redis (docker-compose.test.yaml, tmpfs,
+    # no host ports) under its own project name, then tears it all down. Never touches
+    # the dev stack or its data.
+    $composeArgs = @("compose", "-p", "pae-backend-ot-test", "-f", "docker-compose.test.yaml")
+    Write-Host "Running integration tests $Target (throwaway stack)..." -ForegroundColor Green
+    $env:PYTEST_TARGET = $Target
+    docker volume create pae-backend-ot-pip-cache | Out-Null
+    try {
+        docker @composeArgs run --rm tests | Out-Host
+        $testExitCode = $LASTEXITCODE
+    } finally {
+        Remove-Item Env:PYTEST_TARGET -ErrorAction SilentlyContinue
+        docker @composeArgs down --remove-orphans 2>&1 | Out-Null
+    }
+    if ($testExitCode -ne 0) {
+        Write-Host "Integration tests failed (exit code $testExitCode)" -ForegroundColor Red
+        exit $testExitCode
+    }
+    Write-Host "Integration tests passed!" -ForegroundColor Green
 }
 
 function Invoke-TestSetup {
@@ -81,7 +125,7 @@ switch ($Command.ToLower()) {
         $ready = $false
         while ($timeout -gt 0) {
             try {
-                $env:POSTGRES_USER = if ($env:POSTGRES_USER) { $env:POSTGRES_USER } else { "rtac_user" }
+                $env:POSTGRES_USER = if ($env:POSTGRES_USER) { $env:POSTGRES_USER } else { "pae_backend_ot_user" }
                 $result = docker-compose exec -T postgres pg_isready -U $env:POSTGRES_USER 2>$null
                 if ($LASTEXITCODE -eq 0) {
                     Write-Host "PostgreSQL is ready!" -ForegroundColor Green
@@ -99,7 +143,7 @@ switch ($Command.ToLower()) {
             exit 1
         }
         Write-Host "Starting application service (migrations will run automatically)..." -ForegroundColor Green
-        docker-compose up -d pae-rtac-server
+        docker-compose up -d pae-backend-ot
     }
     "up" {
         Write-Host "Starting services..." -ForegroundColor Green
@@ -109,7 +153,7 @@ switch ($Command.ToLower()) {
         $ready = $false
         while ($timeout -gt 0) {
             try {
-                $env:POSTGRES_USER = if ($env:POSTGRES_USER) { $env:POSTGRES_USER } else { "rtac_user" }
+                $env:POSTGRES_USER = if ($env:POSTGRES_USER) { $env:POSTGRES_USER } else { "pae_backend_ot_user" }
                 $result = docker-compose exec -T postgres pg_isready -U $env:POSTGRES_USER 2>$null
                 if ($LASTEXITCODE -eq 0) {
                     Write-Host "PostgreSQL is ready!" -ForegroundColor Green
@@ -127,7 +171,7 @@ switch ($Command.ToLower()) {
             exit 1
         }
         Write-Host "Starting application service (migrations will run automatically)..." -ForegroundColor Green
-        docker-compose up -d pae-rtac-server
+        docker-compose up -d pae-backend-ot
     }
     "down" {
         Write-Host "Stopping containers..." -ForegroundColor Yellow
@@ -150,7 +194,7 @@ switch ($Command.ToLower()) {
         $ready = $false
         while ($timeout -gt 0) {
             try {
-                $env:POSTGRES_USER = if ($env:POSTGRES_USER) { $env:POSTGRES_USER } else { "rtac_user" }
+                $env:POSTGRES_USER = if ($env:POSTGRES_USER) { $env:POSTGRES_USER } else { "pae_backend_ot_user" }
                 $result = docker-compose exec -T postgres pg_isready -U $env:POSTGRES_USER 2>$null
                 if ($LASTEXITCODE -eq 0) {
                     Write-Host "PostgreSQL is ready!" -ForegroundColor Green
@@ -168,7 +212,7 @@ switch ($Command.ToLower()) {
             exit 1
         }
         Write-Host "Starting application service (migrations will run automatically)..." -ForegroundColor Green
-        docker-compose up -d pae-rtac-server
+        docker-compose up -d pae-backend-ot
     }
     "restart" {
         Write-Host "Restarting containers..." -ForegroundColor Yellow
@@ -176,11 +220,11 @@ switch ($Command.ToLower()) {
     }
     "logs" {
         Write-Host "Viewing container logs (Ctrl+C to exit)..." -ForegroundColor Cyan
-        docker-compose logs -f pae-rtac-server
+        docker-compose logs -f pae-backend-ot
     }
     "shell" {
         Write-Host "Opening shell in container..." -ForegroundColor Cyan
-        docker-compose exec pae-rtac-server /bin/bash
+        docker-compose exec pae-backend-ot /bin/bash
     }
     "ps" {
         Write-Host "Container status:" -ForegroundColor Cyan
@@ -189,7 +233,7 @@ switch ($Command.ToLower()) {
     "health" {
         Write-Host "Checking service health..." -ForegroundColor Cyan
         try {
-            $response = Invoke-WebRequest -Uri "http://localhost:8000/health" -UseBasicParsing -ErrorAction Stop
+            $response = Invoke-WebRequest -Uri "http://localhost:8000/api/healthz" -UseBasicParsing -ErrorAction Stop
             $response.Content | ConvertFrom-Json | ConvertTo-Json -Depth 10
         }
         catch {
@@ -200,7 +244,7 @@ switch ($Command.ToLower()) {
     "clean" {
         Write-Host "Cleaning up containers and images..." -ForegroundColor Yellow
         docker-compose down
-        docker rmi pae-rtac-server 2>$null
+        docker rmi pae-backend-ot 2>$null
         if ($LASTEXITCODE -ne 0) {
             Write-Host "Image not found or already removed" -ForegroundColor Yellow
         }
@@ -209,26 +253,27 @@ switch ($Command.ToLower()) {
         Invoke-TestSetup
     }
     "test" {
-        Invoke-TestSetup
-        
-        Write-Host "Running tests..." -ForegroundColor Green
-        $env:PYTHONPATH = "src"
-        pytest tests/ -v
-        
-        if ($LASTEXITCODE -ne 0) {
-            Write-Host "Tests completed with exit code: $LASTEXITCODE" -ForegroundColor Yellow
-        }
+        # Unit first (fast, fails early), then integration on the throwaway stack.
+        Invoke-Pytest "tests/unit"
+        Invoke-IntegrationTests "tests/integration"
+    }
+    "test-unit" {
+        # Fast loop: unit tests do no I/O, so no redis/postgres setup.
+        Invoke-Pytest $(if ($TestPath) { $TestPath } else { "tests/unit" })
+    }
+    "test-integration" {
+        Invoke-IntegrationTests $(if ($TestPath) { $TestPath } else { "tests/integration" })
     }
     "format" {
         Write-Host "Formatting Python files with black..." -ForegroundColor Green
-        docker-compose -f docker-compose.yaml exec pae-rtac-server black src/
+        docker-compose -f docker-compose.yaml exec pae-backend-ot black src/
         if ($LASTEXITCODE -ne 0) {
             Write-Host "Error running black in container" -ForegroundColor Red
             exit $LASTEXITCODE
         }
         
         Write-Host "Running ruff to fix import sorting and other issues..." -ForegroundColor Green
-        docker-compose -f docker-compose.yaml exec pae-rtac-server ruff check --fix src/
+        docker-compose -f docker-compose.yaml exec pae-backend-ot ruff check --fix src/
         if ($LASTEXITCODE -ne 0) {
             Write-Host "Ruff found issues (some may be non-fixable)" -ForegroundColor Yellow
         }
@@ -256,23 +301,23 @@ switch ($Command.ToLower()) {
     "cloud-down" {
         # Stop all billable GCP compute (app + redis + ArgoCD -> 0, Cloud SQL stopped).
         # Data is preserved; idle cost ~= Cloud SQL storage only.
-        $proj = "prd-pae-rtac-server"; $sql = "rtac-pg-prod"; $ns = "rtac-modbus-prod"
+        $proj = "prd-pae-backend-ot"; $sql = "pae-backend-ot-pg-prod"; $ns = "pae-backend-ot-prod"
         # Ensure kubectl + gke-gcloud-auth-plugin are on PATH (robust when invoked via `make`).
         $env:Path += ";$env:LOCALAPPDATA\Google\Cloud SDK\google-cloud-sdk\bin"
         Write-Host ">> Stopping ArgoCD (so it won't scale things back up)..." -ForegroundColor Yellow
         kubectl -n argocd scale statefulset --all --replicas=0
         kubectl -n argocd scale deploy --all --replicas=0
         Write-Host ">> Removing HPA (it would otherwise force min replicas)..." -ForegroundColor Yellow
-        kubectl -n $ns delete hpa pae-rtac-server --ignore-not-found
+        kubectl -n $ns delete hpa pae-backend-ot --ignore-not-found
         Write-Host ">> Scaling app + redis to 0..." -ForegroundColor Yellow
-        kubectl -n $ns scale deploy pae-rtac-server redis --replicas=0
+        kubectl -n $ns scale deploy pae-backend-ot redis --replicas=0
         Write-Host ">> Stopping Cloud SQL..." -ForegroundColor Yellow
         gcloud sql instances patch $sql --project=$proj --activation-policy=NEVER --quiet
         Write-Host ">> cloud-down complete. Billing minimized (data preserved)." -ForegroundColor Green
     }
     "cloud-up" {
         # Start Cloud SQL, bring ArgoCD back, scale workloads up, let ArgoCD reconcile.
-        $proj = "prd-pae-rtac-server"; $sql = "rtac-pg-prod"; $ns = "rtac-modbus-prod"
+        $proj = "prd-pae-backend-ot"; $sql = "pae-backend-ot-pg-prod"; $ns = "pae-backend-ot-prod"
         # Ensure kubectl + gke-gcloud-auth-plugin are on PATH (robust when invoked via `make`).
         $env:Path += ";$env:LOCALAPPDATA\Google\Cloud SDK\google-cloud-sdk\bin"
         Write-Host ">> Starting Cloud SQL..." -ForegroundColor Green
@@ -291,10 +336,10 @@ switch ($Command.ToLower()) {
         Write-Host ">> Scaling redis + app back up..." -ForegroundColor Green
         kubectl -n $ns scale deploy redis --replicas=1
         kubectl -n $ns rollout status deploy/redis --timeout=120s
-        kubectl -n $ns scale deploy pae-rtac-server --replicas=2
-        kubectl -n $ns rollout status deploy/pae-rtac-server --timeout=240s
+        kubectl -n $ns scale deploy pae-backend-ot --replicas=2
+        kubectl -n $ns rollout status deploy/pae-backend-ot --timeout=240s
         Write-Host ">> Nudging ArgoCD to reconcile (recreates HPA, marks Synced)..." -ForegroundColor Green
-        kubectl -n argocd annotate application pae-rtac-server-prod argocd.argoproj.io/refresh=hard --overwrite | Out-Null
+        kubectl -n argocd annotate application pae-backend-ot-prod argocd.argoproj.io/refresh=hard --overwrite | Out-Null
         Write-Host ">> cloud-up complete. App is ready." -ForegroundColor Green
     }
     default {

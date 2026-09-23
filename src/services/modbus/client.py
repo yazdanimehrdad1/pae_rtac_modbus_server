@@ -89,12 +89,6 @@ class ModbusClient:
                     raise ModbusException(str(result))
                 return result.bits
 
-            elif kind == "discretes":
-                result = client.read_discrete_inputs(address=address, count=count, device_id=server_id)
-                if result.isError():
-                    raise ModbusException(str(result))
-                return result.bits
-
             else:
                 raise ValueError(f"Invalid kind: {kind}")
 

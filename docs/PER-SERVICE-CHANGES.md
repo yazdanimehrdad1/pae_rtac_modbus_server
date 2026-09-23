@@ -15,21 +15,21 @@ as-is.
 
 | Token | This service | Where it comes from | Notes |
 |---|---|---|---|
-| `{{SERVICE}}` | `pae-rtac-server` | you choose | k8s object names, labels, image name, ArgoCD app |
+| `{{SERVICE}}` | `pae-backend-ot` | you choose | k8s object names, labels, image name, ArgoCD app |
 | `{{APP_MODULE}}` | `app:app` | code layout | uvicorn target; `{{IMPORT}}` = `from app import app` |
 | `{{PORT}}` | `8000` | app | container + Service port |
-| `{{GH_REPO}}` | `yazdanimehrdad1/pae_rtac_modbus_server` | GitHub | WIF condition, ArgoCD `repoURL`, CD |
-| `{{GCP_PROJECT}}` | `prd-pae-rtac-server` | GCP | project ID |
+| `{{GH_REPO}}` | `yazdanimehrdad1/pae-backend-ot` | GitHub | WIF condition, ArgoCD `repoURL`, CD |
+| `{{GCP_PROJECT}}` | `prd-pae-backend-ot` | GCP | project ID |
 | `{{REGION}}` | `us-central1` | GCP | |
 | `{{AR_IMAGE}}` | `{{REGION}}-docker.pkg.dev/{{GCP_PROJECT}}/pae/{{SERVICE}}` | Artifact Registry | image path |
-| `{{NAMESPACE}}` | `rtac-modbus-prod` | you choose | k8s namespace |
-| `{{SQL_INSTANCE}}` | `rtac-pg-prod` | Cloud SQL | |
+| `{{NAMESPACE}}` | `pae-backend-ot-prod` | you choose | k8s namespace |
+| `{{SQL_INSTANCE}}` | `pae-backend-ot-pg-prod` | Cloud SQL | |
 | `{{SQL_CONN}}` | `{{GCP_PROJECT}}:{{REGION}}:{{SQL_INSTANCE}}` | Cloud SQL | proxy `INSTANCE_CONNECTION_NAME` |
-| `{{DB_NAME}}` / `{{DB_USER}}` | `rtac_modbus` / `rtac_user` | Cloud SQL | |
-| `{{KSA}}` | `pae-rtac-server` | you choose | k8s ServiceAccount |
-| `{{GSA}}` | `rtac-modbus-prod@{{GCP_PROJECT}}...` | GCP IAM | Workload Identity for the SQL proxy |
-| `{{SECRET}}` | `pae-rtac-server-secrets` | k8s | app Secret name |
-| `{{SM_DB_PASSWORD}}` | `rtac-postgres-password` | Secret Manager | |
+| `{{DB_NAME}}` / `{{DB_USER}}` | `pae_backend_ot` / `pae_backend_ot_user` | Cloud SQL | |
+| `{{KSA}}` | `pae-backend-ot` | you choose | k8s ServiceAccount |
+| `{{GSA}}` | `pae-backend-ot-prod@{{GCP_PROJECT}}...` | GCP IAM | Workload Identity for the SQL proxy |
+| `{{SECRET}}` | `pae-backend-ot-secrets` | k8s | app Secret name |
+| `{{SM_DB_PASSWORD}}` | `pae-backend-ot-postgres-password` | Secret Manager | |
 | `{{APP_ENV}}` | `AGGREGATOR_MODBUS_HOST`, `POLL_*`, … | app | app-specific config keys/values |
 | `{{HEALTH_PATH}}` / `{{READY_PATH}}` | `/api/healthz` / `/api/readyz` | app | probe paths |
 

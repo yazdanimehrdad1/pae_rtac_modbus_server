@@ -1,4 +1,4 @@
-# RTAC Modbus Server — Service Notes
+# PAE Backend OT — Service Notes
 
 ## Modbus Address Mode (`modbus_address_mode`)
 
@@ -18,9 +18,15 @@ The `modbus_address_mode` field on a device bridges this gap.
 
 ### Mock server (`mock-modbus-server`)
 
+> The mock server lives in a **separate sibling repository**, not in this one. Nothing here
+> builds or starts it. The only wiring is by container name on the external
+> `pae-shared-network` Docker network: `docker-compose.yaml` defaults
+> `AGGREGATOR_MODBUS_HOST=mock-modbus`, and the sibling repo's compose file gives its
+> container that name. Bring that repo up separately if you want live reads locally.
+
 The mock server uses `ModbusSlaveContext(zero_mode=False)` — the pymodbus default.
 
-From [`mock-modbus-server/app/settings.py`](../mock-modbus-server/app/settings.py):
+From its `app/settings.py`:
 
 ```python
 # False (default): 1-based addressing — standard Modbus (Modbus Poll, most PLCs)

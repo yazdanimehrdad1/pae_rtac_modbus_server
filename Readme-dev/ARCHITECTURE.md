@@ -1,119 +1,71 @@
-## Structure Overview
+# Architecture
 
-The project has been organized following modern Python microservice best practices:
+How this service is actually laid out. For the working agreement (commands, lint rules,
+gotchas) see `CLAUDE.md` at the repo root.
 
-### Key Decisions & Rationale
+## Layout
 
-1. **`src/` layout**: Using `src/rtac_modbus_service/` prevents import issues and enforces clean package boundaries
-2. **`pyproject.toml`**: Modern dependency management replacing `requirements.txt`
-3. **Separation of concerns**: Clear boundaries between API, scheduler, modbus, db, utils, and telemetry
-4. **Configuration**: Centralized settings using Pydantic Settings for type safety and validation
+`src/` is a **flat** set of top-level modules, not a package. Everything imports as
+`from config import ...`, `from db.connection import ...` — which is why `PYTHONPATH=src`
+is required and bare `pytest` / bare `python main.py` fail.
 
-### Architecture Recommendations
+```
+src/
+  app.py          FastAPI factory: lifespan (redis → db → scheduler), middleware, routers
+  main.py         uvicorn entrypoint (reload=True is hardcoded)
+  config.py       pydantic-settings Settings; the only place env is read
+  constants.py    fixed protocol constants (not env-driven)
+  logger.py       stdlib console logging to stdout
+  api/
+    routers/      HTTP surface, all mounted under /api by app.py
+    controllers/  request → helper orchestration for devices and sites
+    middleware/   validate_time_range, runs on every request
+  db/             connection/session management + per-table query modules
+  schemas/
+    api_models/   request/response pydantic models + shared type aliases
+    db_models/    SQLAlchemy ORM models (orm_models.py)
+    internal_models.py
+  helpers/        the business logic: device_points, modbus, reads, sites, workers
+  services/
+    modbus/       pymodbus client wrapper
+    server_sent_events/  live-stream session plumbing
+  scheduler/      APScheduler engine + Redis leader election / job locks
+  cache/          Redis client and the /api/cache admin surface
+  utils/          AppError hierarchy
+```
 
-#### 1. Database Layer (`db/`)
-- **TimescaleDB** is an excellent choice for time-series data
-- Consider using **asyncpg** + **SQLAlchemy 2.0 async** for async/await support
-- Implement **hypertables** for automatic partitioning
-- Use **Alembic** for migrations with TimescaleDB extension support
+## Request and poll paths
 
-#### 2. Scheduler (`scheduler/`)
-- **APScheduler (AsyncIOScheduler)** is recommended for async jobs
-- Implement **jitter** to prevent thundering herd
-- Consider **partitioning** jobs by device/device_id for parallelism
-- Add **backoff** strategies for transient failures
+**HTTP:** router → controller or helper → `db/` module → SQLAlchemy session. Routers stay
+thin; `utils/exceptions.AppError` subclasses carry the HTTP status they map to.
 
-#### 3. Modbus Client (`modbus/`)
-- Current implementation uses context managers (good)
-- Consider **connection pooling** for high-throughput scenarios
-- Implement **point map** configuration (YAML/JSON) for register definitions
-- Add **data type conversions** (32-bit float, endianness handling)
+**Polling:** `scheduler/engine.py` registers the `modbus_poll` job at
+`POLL_INTERVAL_SECONDS`. Redis leader election means exactly one replica polls. The job
+reads its targets from the DB (sites → devices → device points), and
+`helpers/modbus/poll_device.py` turns each device's `scan_ranges` into Modbus reads,
+chunked at `MODBUS_MAX_REGISTERS_PER_READ` (125). Results land in `device_points_readings`.
 
-#### 4. API Layer (`api/`)
-- Follow RESTful conventions (`/api/v1/points`)
-- Implement **pagination** for time-range queries
-- Add **filtering** by tags/metadata
-- Consider **GraphQL** if query flexibility is needed
+`scan_ranges` is derived, not authored: `helpers/device_points/scan_range_computation.py`
+clusters a device's NATIVE points into contiguous ranges per `poll_kind`
+(`holding` / `input` / `coils`), and point CRUD recomputes it unless
+`devices.scan_ranges_locked` is set.
 
-#### 5. Observability (`telemetry/`)
-- **Prometheus metrics** for:
-  - Poll latency (histograms)
-  - Read success/failure rates
-  - Connection pool metrics
-  - Database write metrics
-- **OpenTelemetry** for distributed tracing (optional)
+## Data
 
-#### 6. Testing (`tests/`)
-- **pytest-asyncio** for async tests
-- **httpx** for FastAPI testing
-- **pytest-docker** for integration tests with compose
-- Mock Modbus devices for unit tests
+Postgres via asyncpg + SQLAlchemy 2.0 async. Tables: `sites`, `devices`, `device_points`,
+`device_points_readings`, `schema_migrations`.
 
-### Dependency Management
+Migrations are raw numbered SQL under `src/db/migrations/NNN_*.sql`, applied in glob order
+by `scripts/migrate_db.py` and tracked in `schema_migrations`. **There is no Alembic** —
+to change the schema, add the next `NNN_*.sql`.
 
-**Recommendation**: Consider migrating to `uv` or `pdm` instead of pure `pip`:
-- `uv`: Fastest, modern Python package manager
-- `pdm`: Good balance, supports PEP 621
-- `poetry`: Most mature, but heavier
+Note the image is `timescale/timescaledb`, but no migration calls `create_hypertable`, so
+the time-series tables are currently plain Postgres. Partitioning, compression and
+retention are unimplemented.
 
-### Production Considerations
+## Known gaps
 
-1. **Dockerfile**: 
-   - Multi-stage builds for smaller images
-   - Use `gunicorn` with `uvicorn` workers for production
-   - Add health checks for `/healthz` and `/readyz`
-
-2. **Kubernetes**:
-   - Use **ConfigMaps** for non-sensitive config
-   - Use **Secrets** or external secret management (Vault, AWS Secrets Manager)
-   - Consider **HorizontalPodAutoscaler** for scaling
-   - Add **ResourceQuotas** and **Limits**
-
-3. **Monitoring**:
-   - Prometheus + Grafana for metrics
-   - ELK/Loki for logs
-   - Alertmanager for critical alerts
-
-4. **Security**:
-   - Add authentication/authorization if exposing externally
-   - Use **HTTPS** in production
-   - Scan dependencies for vulnerabilities
-   - Consider **rate limiting**
-
-### Next Steps
-
-1. **Implement core functionality**:
-   - Migrate existing `modbus_client.py` logic to new structure
-   - Implement health endpoints (`/healthz`, `/readyz`)
-   - Set up TimescaleDB schema and migrations
-
-2. **Add scheduler**:
-   - Configure APScheduler
-   - Implement polling job
-   - Add point map configuration
-
-3. **Database integration**:
-   - Set up async SQLAlchemy
-   - Create TimescaleDB hypertables
-   - Implement write/read repositories
-
-4. **Testing**:
-   - Write unit tests for modbus client
-   - Add integration tests
-   - Set up CI/CD pipeline
-
-5. **Documentation**:
-   - API documentation (OpenAPI/Swagger)
-   - Architecture decision records (ADRs)
-   - Deployment guide
-
-### Additional Recommendations
-
-- **Type hints**: Use Python 3.11+ type hints throughout
-- **Async/await**: Prefer async for I/O-bound operations
-- **Error handling**: Use custom exceptions for domain errors
-- **Validation**: Leverage Pydantic for data validation
-- **Logging**: Use structured logging (JSON) for production
-- **Configuration**: Support multiple environments (dev/staging/prod)
-- **Documentation**: Use docstrings following Google/NumPy style
-
+- No auth layer — every endpoint is unauthenticated.
+- Redis is used for scheduler locks and an admin CRUD surface only; the poll and read
+  paths do not cache.
+- `GET /api/csv-exports/raw-register-map-csv` returns headers only — it has no data path.

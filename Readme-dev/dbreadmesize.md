@@ -1,5 +1,11 @@
 # Database Storage Analysis: Time-Series Data for Modbus Register Readings
 
+> **Stale — read as a sizing estimate, not as a description of the schema.** The row shape
+> below (`device_id` / `register_address` / `value` / `quality` / `register_name`) does not
+> match any current table; readings live in `device_points_readings`, keyed by
+> `device_point_id`. The TimescaleDB hypertables, compression and retention policies this
+> document assumes are also not implemented — no migration calls `create_hypertable`.
+
 ## Overview
 
 This document analyzes storage requirements and database design recommendations for storing time-series data from Modbus devices.

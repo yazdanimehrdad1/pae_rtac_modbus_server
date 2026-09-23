@@ -1,7 +1,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: pae-rtac-server-prod
+  name: pae-backend-ot-prod
   namespace: argocd
   # Keep the app from being pruned if the Application manifest is removed by mistake.
   finalizers:
@@ -9,12 +9,12 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/yazdanimehrdad1/pae_rtac_modbus_server.git
+    repoURL: https://github.com/yazdanimehrdad1/pae-backend-ot.git
     targetRevision: main
     path: k8s/overlays/prod
   destination:
     server: https://kubernetes.default.svc
-    namespace: rtac-modbus-prod
+    namespace: pae-backend-ot-prod
   syncPolicy:
     automated:
       prune: true

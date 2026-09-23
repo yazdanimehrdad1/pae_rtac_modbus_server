@@ -16,6 +16,3 @@ class ModbusUtils:
 
     def read_coils(self, address: int, count: int, server_id: int, host: str, port: int) -> list[int | bool]:
         return self.modbus_client.read_registers(kind="coils", address=address, count=count, server_id=server_id, host=host, port=port)
-
-    def read_discrete_inputs(self, address: int, count: int, server_id: int, host: str, port: int) -> list[int | bool]:
-        return self.modbus_client.read_registers(kind="discretes", address=address, count=count, server_id=server_id, host=host, port=port)

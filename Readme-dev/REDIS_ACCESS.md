@@ -1,6 +1,6 @@
 # Redis Access Guide
 
-This guide covers different ways to access and interact with the Redis cache used by the RTAC Modbus Server.
+This guide covers different ways to access and interact with the Redis cache used by the PAE Backend OT.
 
 ## Table of Contents
 
@@ -18,10 +18,10 @@ This guide covers different ways to access and interact with the Redis cache use
 - **Port:** `6379`
 - **Database:** `0` (default)
 - **Password:** None (default)
-- **Key Prefix:** `rtac_modbus` (all keys are prefixed with this)
+- **Key Prefix:** `pae_backend_ot` (all keys are prefixed with this)
 
 **Docker Container:**
-- Container Name: `pae-rtac-server-redis`
+- Container Name: `pae-backend-ot-redis`
 - Image: `redis:7-alpine`
 
 ## redis-cli (Command Line Interface)
@@ -30,7 +30,7 @@ This guide covers different ways to access and interact with the Redis cache use
 
 **Option 1: Via Docker container (recommended)**
 ```bash
-docker exec -it pae-rtac-server-redis redis-cli
+docker exec -it pae-backend-ot-redis redis-cli
 ```
 
 **Option 2: From host machine (if Redis client is installed)**
@@ -49,13 +49,13 @@ Once connected to `redis-cli`, you can use the following commands:
 KEYS *
 
 # List keys matching a pattern (includes prefix)
-KEYS rtac_modbus:*
+KEYS pae_backend_ot:*
 
 # List polling keys
-KEYS rtac_modbus:poll:*
+KEYS pae_backend_ot:poll:*
 
 # List latest polling data
-KEYS rtac_modbus:poll:*:latest
+KEYS pae_backend_ot:poll:*:latest
 
 # Count total keys
 DBSIZE
@@ -65,47 +65,47 @@ DBSIZE
 
 ```bash
 # Get a specific key (returns JSON string)
-GET rtac_modbus:poll:main-sel-751:latest
+GET pae_backend_ot:poll:main-sel-751:latest
 
 # Get and pretty-print JSON (from host machine)
-docker exec pae-rtac-server-redis redis-cli GET "rtac_modbus:poll:main-sel-751:latest" | python -m json.tool
+docker exec pae-backend-ot-redis redis-cli GET "pae_backend_ot:poll:main-sel-751:latest" | python -m json.tool
 ```
 
 #### Key Information
 
 ```bash
 # Check if a key exists
-EXISTS rtac_modbus:poll:main-sel-751:latest
+EXISTS pae_backend_ot:poll:main-sel-751:latest
 
 # Get remaining TTL (time to live) in seconds
-TTL rtac_modbus:poll:main-sel-751:latest
+TTL pae_backend_ot:poll:main-sel-751:latest
 # Returns: -1 if no TTL, -2 if key doesn't exist, or seconds remaining
 
 # Get the data type of a key
-TYPE rtac_modbus:poll:main-sel-751:latest
+TYPE pae_backend_ot:poll:main-sel-751:latest
 
 # Get memory usage of a key (in bytes)
-MEMORY USAGE rtac_modbus:poll:main-sel-751:latest
+MEMORY USAGE pae_backend_ot:poll:main-sel-751:latest
 ```
 
 #### Safe Key Scanning (Production Recommended)
 
 ```bash
 # Scan keys (safer than KEYS, doesn't block Redis)
-SCAN 0 MATCH rtac_modbus:* COUNT 100
+SCAN 0 MATCH pae_backend_ot:* COUNT 100
 
 # Continue scanning (use the cursor returned from previous command)
-SCAN <cursor> MATCH rtac_modbus:* COUNT 100
+SCAN <cursor> MATCH pae_backend_ot:* COUNT 100
 ```
 
 #### Delete Keys
 
 ```bash
 # Delete a specific key
-DEL rtac_modbus:poll:main-sel-751:latest
+DEL pae_backend_ot:poll:main-sel-751:latest
 
 # Delete multiple keys
-DEL rtac_modbus:poll:main-sel-751:latest rtac_modbus:poll:main-sel-751:2024-11-10T07:32:48.190790+00:00
+DEL pae_backend_ot:poll:main-sel-751:latest pae_backend_ot:poll:main-sel-751:2024-11-10T07:32:48.190790+00:00
 
 # Delete all keys matching a pattern (use with caution!)
 # Note: This requires a script or multiple DEL commands
@@ -132,16 +132,16 @@ PING
 
 ```bash
 # View all cache keys
-docker exec pae-rtac-server-redis redis-cli KEYS "rtac_modbus:*"
+docker exec pae-backend-ot-redis redis-cli KEYS "pae_backend_ot:*"
 
 # View a specific cached value (formatted JSON)
-docker exec pae-rtac-server-redis redis-cli GET "rtac_modbus:poll:main-sel-751:latest" | python -m json.tool
+docker exec pae-backend-ot-redis redis-cli GET "pae_backend_ot:poll:main-sel-751:latest" | python -m json.tool
 
 # Count polling keys
-docker exec pae-rtac-server-redis redis-cli --raw KEYS "rtac_modbus:poll:*" | wc -l
+docker exec pae-backend-ot-redis redis-cli --raw KEYS "pae_backend_ot:poll:*" | wc -l
 
 # Check Redis health
-docker exec pae-rtac-server-redis redis-cli PING
+docker exec pae-backend-ot-redis redis-cli PING
 ```
 
 ## RedisInsight (GUI Tool)
@@ -166,7 +166,7 @@ RedisInsight is the official GUI tool from Redis Labs. It provides a visual inte
    - Enter connection details:
      - **Host:** `localhost`
      - **Port:** `6379`
-     - **Database Alias:** `RTAC Modbus Server` (optional, for your reference)
+     - **Database Alias:** `PAE Backend OT` (optional, for your reference)
      - **Database Name/Index:** `0`
      - **Username:** (leave empty)
      - **Password:** (leave empty)
@@ -179,7 +179,7 @@ RedisInsight is the official GUI tool from Redis Labs. It provides a visual inte
 
 ## API Endpoints
 
-The RTAC Modbus Server provides REST API endpoints for cache operations. All endpoints are available at `http://localhost:8000`.
+The PAE Backend OT provides REST API endpoints for cache operations. All endpoints are available at `http://localhost:8000`.
 
 ### Health Check
 
@@ -197,7 +197,7 @@ Check Redis connection status.
 
 **Example:**
 ```bash
-curl http://localhost:8000/cache/health
+curl http://localhost:8000/api/cache/health
 ```
 
 ### List All Keys
@@ -224,13 +224,13 @@ List all cached keys, optionally filtered by pattern.
 **Examples:**
 ```bash
 # List all keys
-curl http://localhost:8000/cache/keys
+curl http://localhost:8000/api/cache/keys
 
 # List polling keys
-curl http://localhost:8000/cache/keys?pattern=poll:*
+curl http://localhost:8000/api/cache/keys?pattern=poll:*
 
 # List latest keys only
-curl http://localhost:8000/cache/keys?pattern=poll:*:latest
+curl http://localhost:8000/api/cache/keys?pattern=poll:*:latest
 ```
 
 ### Get Key Value
@@ -257,7 +257,7 @@ Get the value of a specific cache key.
 
 **Example:**
 ```bash
-curl http://localhost:8000/cache/get/poll:main-sel-751:latest
+curl http://localhost:8000/api/cache/get/poll:main-sel-751:latest
 ```
 
 ### Check Key Exists
@@ -279,7 +279,7 @@ Check if a key exists in the cache.
 
 **Example:**
 ```bash
-curl http://localhost:8000/cache/exists/poll:main-sel-751:latest
+curl http://localhost:8000/api/cache/exists/poll:main-sel-751:latest
 ```
 
 ### Set Key Value
@@ -308,7 +308,7 @@ Set a value in the cache.
 
 **Example:**
 ```bash
-curl -X POST http://localhost:8000/cache/set \
+curl -X POST http://localhost:8000/api/cache/set \
   -H "Content-Type: application/json" \
   -d '{"key": "test:key", "value": {"test": "data"}, "ttl": 3600}'
 ```
@@ -333,7 +333,7 @@ Delete a specific key from the cache.
 
 **Example:**
 ```bash
-curl -X DELETE http://localhost:8000/cache/delete/poll:main-sel-751:latest
+curl -X DELETE http://localhost:8000/api/cache/delete/poll:main-sel-751:latest
 ```
 
 ### Clear All Cache
@@ -353,7 +353,7 @@ curl -X DELETE http://localhost:8000/cache/delete/poll:main-sel-751:latest
 
 **Example:**
 ```bash
-curl -X DELETE http://localhost:8000/cache/clear
+curl -X DELETE http://localhost:8000/api/cache/clear
 ```
 
 ## Common Operations
@@ -362,71 +362,71 @@ curl -X DELETE http://localhost:8000/cache/clear
 
 **Via API:**
 ```bash
-curl http://localhost:8000/cache/get/poll:main-sel-751:latest | python -m json.tool
+curl http://localhost:8000/api/cache/get/poll:main-sel-751:latest | python -m json.tool
 ```
 
 **Via redis-cli:**
 ```bash
-docker exec pae-rtac-server-redis redis-cli GET "rtac_modbus:poll:main-sel-751:latest" | python -m json.tool
+docker exec pae-backend-ot-redis redis-cli GET "pae_backend_ot:poll:main-sel-751:latest" | python -m json.tool
 ```
 
 ### List All Timestamped Polling Data
 
 **Via API:**
 ```bash
-curl "http://localhost:8000/cache/keys?pattern=poll:main-sel-751:*" | python -m json.tool
+curl "http://localhost:8000/api/cache/keys?pattern=poll:main-sel-751:*" | python -m json.tool
 ```
 
 **Via redis-cli:**
 ```bash
-docker exec pae-rtac-server-redis redis-cli KEYS "rtac_modbus:poll:main-sel-751:*"
+docker exec pae-backend-ot-redis redis-cli KEYS "pae_backend_ot:poll:main-sel-751:*"
 ```
 
 ### Check Cache Size
 
 **Via redis-cli:**
 ```bash
-docker exec pae-rtac-server-redis redis-cli DBSIZE
+docker exec pae-backend-ot-redis redis-cli DBSIZE
 ```
 
 ### Monitor Cache Operations in Real-Time
 
 **Via redis-cli:**
 ```bash
-docker exec -it pae-rtac-server-redis redis-cli MONITOR
+docker exec -it pae-backend-ot-redis redis-cli MONITOR
 ```
 
 This will show all Redis commands as they execute. Press `Ctrl+C` to stop.
 
 ## Key Naming Convention
 
-All cache keys are prefixed with `rtac_modbus:` (configurable via `CACHE_KEY_PREFIX` environment variable).
+All cache keys are prefixed with `pae_backend_ot:` (configurable via `CACHE_KEY_PREFIX` environment variable).
 
 ### Polling Keys
 
 **Latest Value:**
-- Format: `rtac_modbus:poll:main-sel-751:latest`
+- Format: `pae_backend_ot:poll:main-sel-751:latest`
 - Contains: Most recent polling data
 - TTL: Configurable (default: 1 hour)
 
 **Timestamped Values:**
-- Format: `rtac_modbus:poll:main-sel-751:{ISO_TIMESTAMP}`
-- Example: `rtac_modbus:poll:main-sel-751:2024-11-10T07:32:48.190790+00:00`
+- Format: `pae_backend_ot:poll:main-sel-751:{ISO_TIMESTAMP}`
+- Example: `pae_backend_ot:poll:main-sel-751:2024-11-10T07:32:48.190790+00:00`
 - Contains: Historical polling data at specific timestamp
 - TTL: Configurable (default: 1 hour)
 
 ### Key Structure in API
 
-When using API endpoints, **do not include the prefix**. The API automatically adds `rtac_modbus:` prefix.
+When using API endpoints, **do not include the prefix**. The API automatically adds `pae_backend_ot:` prefix.
 
 **Correct:**
 ```bash
-curl http://localhost:8000/cache/get/poll:main-sel-751:latest
+curl http://localhost:8000/api/cache/get/poll:main-sel-751:latest
 ```
 
 **Incorrect:**
 ```bash
-curl http://localhost:8000/cache/get/rtac_modbus:poll:main-sel-751:latest
+curl http://localhost:8000/api/cache/get/pae_backend_ot:poll:main-sel-751:latest
 ```
 
 ## Troubleshooting
@@ -440,17 +440,17 @@ curl http://localhost:8000/cache/get/rtac_modbus:poll:main-sel-751:latest
 
 2. **Check Redis logs:**
    ```bash
-   docker logs pae-rtac-server-redis
+   docker logs pae-backend-ot-redis
    ```
 
 3. **Test connection:**
    ```bash
-   docker exec pae-rtac-server-redis redis-cli PING
+   docker exec pae-backend-ot-redis redis-cli PING
    ```
 
 ### Keys Not Showing Up
 
-1. **Check key prefix:** All keys are prefixed with `rtac_modbus:`
+1. **Check key prefix:** All keys are prefixed with `pae_backend_ot:`
 2. **Use SCAN instead of KEYS:** For large datasets, use `SCAN` command
 3. **Check TTL:** Keys may have expired
 
@@ -458,18 +458,18 @@ curl http://localhost:8000/cache/get/rtac_modbus:poll:main-sel-751:latest
 
 1. **Check memory usage:**
    ```bash
-   docker exec pae-rtac-server-redis redis-cli INFO memory
+   docker exec pae-backend-ot-redis redis-cli INFO memory
    ```
 
 2. **Find large keys:**
    ```bash
-   docker exec pae-rtac-server-redis redis-cli --bigkeys
+   docker exec pae-backend-ot-redis redis-cli --bigkeys
    ```
 
 3. **Clear old timestamped keys:**
    ```bash
    # List timestamped keys
-   docker exec pae-rtac-server-redis redis-cli KEYS "rtac_modbus:poll:*:*" | grep -v ":latest"
+   docker exec pae-backend-ot-redis redis-cli KEYS "pae_backend_ot:poll:*:*" | grep -v ":latest"
    ```
 
 ## Additional Resources

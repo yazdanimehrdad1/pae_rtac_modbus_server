@@ -6,7 +6,7 @@
 
 You are setting up **production deployment and CI/CD** for the Python service in this
 repo. The target architecture is GitOps on GKE, identical in shape to the reference
-service `pae-rtac-server`. Do not invent a different architecture — reproduce this one,
+service `pae-backend-ot`. Do not invent a different architecture — reproduce this one,
 adapted to what this service actually needs.
 
 **The one idea:** *git is the source of truth for what runs in the cluster.* GitHub
@@ -78,32 +78,32 @@ These are the only things that genuinely differ between services. Ask the user f
 you cannot infer; propose a sensible default for each and let them correct you. Record
 the final table in `docs/DEPLOYMENT.md` when you are done.
 
-| Token | Meaning | Reference value (`pae-rtac-server`) | Default to propose |
+| Token | Meaning | Reference value (`pae-backend-ot`) | Default to propose |
 |---|---|---|---|
-| `{{SERVICE}}` | Service name: k8s object names, labels, image name, ArgoCD app | `pae-rtac-server` | repo/package name, kebab-case |
+| `{{SERVICE}}` | Service name: k8s object names, labels, image name, ArgoCD app | `pae-backend-ot` | repo/package name, kebab-case |
 | `{{APP_MODULE}}` | uvicorn target | `app:app` | from §1 |
 | `{{IMPORT}}` | Smoke-test import line | `from config import settings; from app import app` | from §1 |
 | `{{PORT}}` | Container + Service port | `8000` | `8000` |
 | `{{PYTHONPATH}}` | In-image PYTHONPATH | `/app/src` | `/app/src` if flat layout, else unset |
-| `{{GH_REPO}}` | `owner/repo` — WIF condition, ArgoCD repoURL | `yazdanimehrdad1/pae_rtac_modbus_server` | from `git remote -v` |
-| `{{GCP_PROJECT}}` | GCP project **ID** (not number) | `prd-pae-rtac-server` | ask |
+| `{{GH_REPO}}` | `owner/repo` — WIF condition, ArgoCD repoURL | `yazdanimehrdad1/pae-backend-ot` | from `git remote -v` |
+| `{{GCP_PROJECT}}` | GCP project **ID** (not number) | `prd-pae-backend-ot` | ask |
 | `{{REGION}}` | GCP region | `us-central1` | `us-central1` |
 | `{{AR_HOST}}` | Artifact Registry host | `us-central1-docker.pkg.dev` | `{{REGION}}-docker.pkg.dev` |
 | `{{AR_REPO}}` | Artifact Registry repo (shared across services) | `pae` | `pae` |
 | `{{AR_IMAGE}}` | Full image path | `{{AR_HOST}}/{{GCP_PROJECT}}/{{AR_REPO}}/{{SERVICE}}` | derived |
 | `{{CLUSTER}}` | GKE cluster | `pae-autopilot` | `pae-autopilot` |
-| `{{NAMESPACE}}` | k8s namespace | `rtac-modbus-prod` | `{{SERVICE}}-prod` |
-| `{{SQL_INSTANCE}}` | Cloud SQL instance | `rtac-pg-prod` | `{{SERVICE}}-pg-prod` |
-| `{{SQL_CONN}}` | `PROJECT:REGION:INSTANCE` for the proxy | `prd-pae-rtac-server:us-central1:rtac-pg-prod` | derived |
-| `{{DB_NAME}}` / `{{DB_USER}}` | Postgres db + user | `rtac_modbus` / `rtac_user` | from app config |
-| `{{KSA}}` | k8s ServiceAccount | `pae-rtac-server` | `{{SERVICE}}` |
-| `{{GSA}}` | GCP SA the KSA impersonates (Cloud SQL client) | `rtac-modbus-prod@{{GCP_PROJECT}}.iam.gserviceaccount.com` | `{{NAMESPACE}}@…` |
+| `{{NAMESPACE}}` | k8s namespace | `pae-backend-ot-prod` | `{{SERVICE}}-prod` |
+| `{{SQL_INSTANCE}}` | Cloud SQL instance | `pae-backend-ot-pg-prod` | `{{SERVICE}}-pg-prod` |
+| `{{SQL_CONN}}` | `PROJECT:REGION:INSTANCE` for the proxy | `prd-pae-backend-ot:us-central1:pae-backend-ot-pg-prod` | derived |
+| `{{DB_NAME}}` / `{{DB_USER}}` | Postgres db + user | `pae_backend_ot` / `pae_backend_ot_user` | from app config |
+| `{{KSA}}` | k8s ServiceAccount | `pae-backend-ot` | `{{SERVICE}}` |
+| `{{GSA}}` | GCP SA the KSA impersonates (Cloud SQL client) | `pae-backend-ot-prod@{{GCP_PROJECT}}.iam.gserviceaccount.com` | `{{NAMESPACE}}@…` |
 | `{{DEPLOYER_GSA}}` | GCP SA GitHub Actions impersonates | `gh-deployer@{{GCP_PROJECT}}.iam.gserviceaccount.com` | `gh-deployer@…` |
-| `{{SECRET}}` | k8s Secret name | `pae-rtac-server-secrets` | `{{SERVICE}}-secrets` |
-| `{{CONFIGMAP}}` | k8s ConfigMap name | `pae-rtac-server-config` | `{{SERVICE}}-config` |
-| `{{SM_DB_PASSWORD}}` | Secret Manager entry for the DB password | `rtac-postgres-password` | `{{SERVICE}}-postgres-password` |
+| `{{SECRET}}` | k8s Secret name | `pae-backend-ot-secrets` | `{{SERVICE}}-secrets` |
+| `{{CONFIGMAP}}` | k8s ConfigMap name | `pae-backend-ot-config` | `{{SERVICE}}-config` |
+| `{{SM_DB_PASSWORD}}` | Secret Manager entry for the DB password | `pae-backend-ot-postgres-password` | `{{SERVICE}}-postgres-password` |
 | `{{HEALTH_PATH}}` / `{{READY_PATH}}` | Liveness / readiness paths | `/api/healthz` / `/api/readyz` | match this service's router prefix |
-| `{{APP_LABEL}}` | Extra pod label so the Service targets only app pods | `pae-rtac-api` | `{{SERVICE}}-api` |
+| `{{APP_LABEL}}` | Extra pod label so the Service targets only app pods | `pae-backend-ot-api` | `{{SERVICE}}-api` |
 | `{{MIGRATE_CMD}}` | Migration command | `["python", "scripts/migrate_db.py"]` | from §1 |
 | `{{APP_ENV}}` | Service-specific non-secret env keys | `AGGREGATOR_MODBUS_HOST`, `POLL_*` | from `.env.example` / config |
 | `{{RUFF_VERSION}}` | Pinned ruff tag, shared by CI + hook + make | `0.16.0` | latest stable, pinned |

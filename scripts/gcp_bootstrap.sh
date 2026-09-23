@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 #
-# One-time GCP infrastructure bootstrap for pae-rtac-server.
+# One-time GCP infrastructure bootstrap for pae-backend-ot.
 #
 # This provisions the infra the k8s manifests + CI/CD assume already exists:
-# Artifact Registry, a GKE Autopilot cluster, Cloud SQL (Postgres), Memorystore
-# (Redis), Secret Manager entries, and Workload Identity Federation for both the
-# in-cluster Cloud SQL proxy and the GitHub Actions deployer.
+# Artifact Registry, a GKE Autopilot cluster, Cloud SQL (Postgres), Secret
+# Manager entries, and Workload Identity Federation for both the in-cluster
+# Cloud SQL proxy and the GitHub Actions deployer. Redis is NOT provisioned —
+# it runs in-cluster (k8s/base/redis.yaml). See step 5.
 #
 # It is idempotent-ish (uses `|| true` on create calls) but review each step —
 # this is a documented, reviewable alternative to Terraform, NOT a hands-off
@@ -19,18 +20,17 @@ set -euo pipefail
 # --------------------------------------------------------------------------
 PROJECT_ID="${PROJECT_ID:?set PROJECT_ID}"
 REGION="${REGION:-us-central1}"
-GITHUB_REPO="${GITHUB_REPO:?set GITHUB_REPO, e.g. your-org/rtac_modbus_server}"
+GITHUB_REPO="${GITHUB_REPO:?set GITHUB_REPO, e.g. your-org/pae-backend-ot}"
 
 AR_REPO="pae"
 CLUSTER="pae-autopilot"
-SQL_INSTANCE="rtac-pg-prod"       # matches k8s/overlays/prod INSTANCE_CONNECTION_NAME
-SQL_DB="rtac_modbus"
-SQL_USER="rtac_user"
-REDIS_INSTANCE="rtac-redis-prod"
-K8S_NAMESPACE="rtac-modbus-prod"
-KSA="pae-rtac-server"             # matches ServiceAccount in k8s/base
+SQL_INSTANCE="pae-backend-ot-pg-prod"       # matches k8s/overlays/prod INSTANCE_CONNECTION_NAME
+SQL_DB="pae_backend_ot"
+SQL_USER="pae_backend_ot_user"
+K8S_NAMESPACE="pae-backend-ot-prod"
+KSA="pae-backend-ot"             # matches ServiceAccount in k8s/base
 DEPLOYER_GSA="gh-deployer"        # GitHub Actions deploy identity
-SQLPROXY_GSA="rtac-modbus-prod"   # matches overlay SA annotation
+SQLPROXY_GSA="pae-backend-ot-prod"   # matches overlay SA annotation
 
 gcloud config set project "$PROJECT_ID"
 
@@ -42,7 +42,6 @@ gcloud services enable \
   artifactregistry.googleapis.com \
   sqladmin.googleapis.com \
   secretmanager.googleapis.com \
-  redis.googleapis.com \
   iamcredentials.googleapis.com \
   sts.googleapis.com
 
@@ -74,24 +73,21 @@ SQL_CONN_NAME="$(gcloud sql instances describe "$SQL_INSTANCE" --format='value(c
 echo "INSTANCE_CONNECTION_NAME = ${SQL_CONN_NAME}   (put this in k8s/overlays/prod)"
 
 # --------------------------------------------------------------------------
-# 5. Memorystore (Redis)
-# --------------------------------------------------------------------------
-gcloud redis instances create "$REDIS_INSTANCE" \
-  --size=1 --region="$REGION" --redis-version=redis_7_0 || true
-REDIS_IP="$(gcloud redis instances describe "$REDIS_INSTANCE" --region="$REGION" --format='value(host)')"
-echo "REDIS_HOST = ${REDIS_IP}   (put this in k8s/overlays/prod configMapGenerator)"
-
+# 5. Redis — intentionally NOT provisioned.
+# Redis runs in-cluster (k8s/base/redis.yaml, Service `redis`), so the overlay
+# sets REDIS_HOST=redis and no managed Memorystore instance is needed. Creating
+# one here would bill ~$35-45/mo for something nothing connects to.
 # --------------------------------------------------------------------------
 # 6. Secret Manager — store the DB password
 # --------------------------------------------------------------------------
-printf '%s' "$PG_PASSWORD" | gcloud secrets create rtac-postgres-password --data-file=- || \
-printf '%s' "$PG_PASSWORD" | gcloud secrets versions add rtac-postgres-password --data-file=-
+printf '%s' "$PG_PASSWORD" | gcloud secrets create pae-backend-ot-postgres-password --data-file=- || \
+printf '%s' "$PG_PASSWORD" | gcloud secrets versions add pae-backend-ot-postgres-password --data-file=-
 
 # --------------------------------------------------------------------------
 # 7. Cloud SQL proxy identity (Workload Identity: KSA -> GSA)
 # --------------------------------------------------------------------------
 gcloud iam service-accounts create "$SQLPROXY_GSA" \
-  --display-name="rtac-modbus prod Cloud SQL client" || true
+  --display-name="pae-backend-ot prod Cloud SQL client" || true
 gcloud projects add-iam-policy-binding "$PROJECT_ID" \
   --member="serviceAccount:${SQLPROXY_GSA}@${PROJECT_ID}.iam.gserviceaccount.com" \
   --role="roles/cloudsql.client"
@@ -145,8 +141,8 @@ Done. Set these on the GitHub repo (Settings -> Secrets and variables -> Actions
 
 Then edit k8s/overlays/prod/kustomization.yaml placeholders:
     INSTANCE_CONNECTION_NAME -> ${SQL_CONN_NAME}
-    REDIS_HOST               -> ${REDIS_IP}
-    image newName            -> ${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO}/pae-rtac-server
+    REDIS_HOST               -> redis (in-cluster Service; no change needed)
+    image newName            -> ${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO}/pae-backend-ot
     SA annotation project    -> ${PROJECT_ID}
 ============================================================================
 EOF

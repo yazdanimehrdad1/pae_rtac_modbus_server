@@ -1,2 +1,0 @@
-ALTER TABLE device_points
-    ADD COLUMN deleted_at TIMESTAMPTZ NULL DEFAULT NULL;

@@ -1,10 +1,10 @@
 """Compute optimal Modbus scan ranges from a device's NATIVE points."""
 
+from constants import MODBUS_MAX_REGISTERS_PER_READ
 from schemas.api_models.requests import DeviceScanRanges, RegisterRange
 from schemas.api_models.responses import DevicePointResponse
 
 MAX_INTER_POINT_GAP = 10   # registers — gaps wider than this start a new range
-MAX_RANGE_SIZE = 125       # Modbus protocol limit per single read
 
 
 def compute_device_scan_ranges(native_points: list[DevicePointResponse]) -> DeviceScanRanges:
@@ -14,7 +14,7 @@ def compute_device_scan_ranges(native_points: list[DevicePointResponse]) -> Devi
     Groups by poll_kind, sorts by address, clusters into contiguous ranges splitting when:
     - The gap between the end of the previous point and the start of the next exceeds
       MAX_INTER_POINT_GAP, OR
-    - Adding the next point would push the range beyond MAX_RANGE_SIZE registers.
+    - Adding the next point would push the range beyond MODBUS_MAX_REGISTERS_PER_READ registers.
     """
     by_kind: dict[str, list[DevicePointResponse]] = {"holding": [], "input": [], "coils": []}
 
@@ -39,7 +39,7 @@ def compute_device_scan_ranges(native_points: list[DevicePointResponse]) -> Devi
             gap = point.address - range_end - 1
             proposed_size = point_end - range_start + 1
 
-            if gap > MAX_INTER_POINT_GAP or proposed_size > MAX_RANGE_SIZE:
+            if gap > MAX_INTER_POINT_GAP or proposed_size > MODBUS_MAX_REGISTERS_PER_READ:
                 ranges.append(RegisterRange(
                     start_index=range_start,
                     count=range_end - range_start + 1,

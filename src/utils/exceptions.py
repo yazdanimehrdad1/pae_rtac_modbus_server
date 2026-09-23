@@ -34,11 +34,6 @@ class ValidationError(AppError):
     http_status_code = status.HTTP_400_BAD_REQUEST
 
 
-class IntegrityError(AppError):
-    """Raised when a database integrity constraint is violated."""
-    http_status_code = status.HTTP_409_CONFLICT
-
-
 class InternalError(AppError):
     """Raised for unexpected internal errors."""
     http_status_code = status.HTTP_500_INTERNAL_SERVER_ERROR

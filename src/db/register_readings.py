@@ -17,12 +17,6 @@ from schemas.db_models.orm_models import DevicePointsReading
 logger = get_logger(__name__)
 
 
-class DevicePointReadingDict(TypedDict):
-    timestamp: datetime
-    device_point_id: int
-    derived_value: float | None
-
-
 class LatestDevicePointReadingDict(TypedDict):
     device_point_id: int
     register_address: int
@@ -35,11 +29,6 @@ class LatestDevicePointReadingDict(TypedDict):
     derived_value: float | None
     bitfield_detail: dict[str, str] | None
     enum_detail: dict[str, str] | None
-
-
-class LatestDevicePointReadingWithDeviceDict(LatestDevicePointReadingDict):
-    device_id: int
-    site_id: str
 
 
 class TimeSeriesDevicePointReadingDict(TypedDict):

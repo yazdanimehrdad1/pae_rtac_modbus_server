@@ -44,7 +44,6 @@ COPY --from=builder /opt/venv /opt/venv
 
 # Application code only — tests/ are intentionally NOT shipped to the image
 COPY src/ ./src/
-COPY config/ ./config/
 COPY scripts/ ./scripts/
 COPY docker/entrypoint.sh /app/docker/entrypoint.sh
 

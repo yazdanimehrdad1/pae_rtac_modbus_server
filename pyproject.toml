@@ -1,17 +1,19 @@
 [project]
-name = "pae-rtac-server"
+name = "pae-backend-ot"
 version = "1.0.0"
-description = "RTAC Modbus TCP service for polling and storing time-series data"
+description = "PAE OT backend — Modbus TCP polling and time-series storage"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.104.0",
+    # Explicit floor: we use status.HTTP_422_UNPROCESSABLE_CONTENT (added in Starlette 0.48),
+    # and no FastAPI release requires Starlette that new.
+    "starlette>=0.48.0",
     "uvicorn[standard]>=0.24.0",
     "pymodbus>=3.6.0",
     "pydantic>=2.0.0",
     "pydantic-settings>=2.0.0",
     "python-dotenv>=1.0.0",
-    "pandas>=2.0.0",  # For register map DataFrame operations
     "redis>=5.0.0",  # Redis client for caching
     "hiredis>=2.2.0",  # C extension for faster Redis parsing (optional but recommended)
     "apscheduler>=3.10.0",  # Scheduler for cron jobs
@@ -38,8 +40,8 @@ dev = [
 requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
-[tool.setuptools]
-packages = ["api", "cache", "services", "services.modbus", "schemas", "utils", "db", "scheduler"]
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [tool.setuptools.package-dir]
 "" = "src"

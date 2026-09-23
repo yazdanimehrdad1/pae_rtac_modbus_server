@@ -1,14 +1,14 @@
-.PHONY: help network up down build rebuild up-build up-rebuild restart logs shell clean ps health dev test-setup test lint lint-fix format migrate apply-migration run seed-db cloud-down cloud-up
+.PHONY: help network up down build rebuild up-build up-rebuild restart logs shell clean ps health dev test-setup test test-unit test-integration lint lint-fix format migrate apply-migration run seed-db cloud-down cloud-up
 
 # ---------------------------------------------------------------------------
 # Cloud cost control (GKE) — stop everything billable when not in use, and bring
 # it all back "ready". Scale-to-zero approach: keeps the cluster/ArgoCD config and
 # Cloud SQL DATA, just idles compute. Override the vars if your names differ.
 # ---------------------------------------------------------------------------
-GCP_PROJECT  ?= prd-pae-rtac-server
+GCP_PROJECT  ?= prd-pae-backend-ot
 GCP_REGION   ?= us-central1
-SQL_INSTANCE ?= rtac-pg-prod
-K8S_NS       ?= rtac-modbus-prod
+SQL_INSTANCE ?= pae-backend-ot-pg-prod
+K8S_NS       ?= pae-backend-ot-prod
 
 ifeq ($(OS),Windows_NT)
 # On Windows, kubectl needs gke-gcloud-auth-plugin, which is on the PowerShell PATH
@@ -27,9 +27,9 @@ cloud-down:
 	@kubectl -n argocd scale statefulset --all --replicas=0
 	@kubectl -n argocd scale deploy --all --replicas=0
 	@echo ">> Removing HPA (it would otherwise force min replicas)..."
-	@kubectl -n $(K8S_NS) delete hpa pae-rtac-server --ignore-not-found
+	@kubectl -n $(K8S_NS) delete hpa pae-backend-ot --ignore-not-found
 	@echo ">> Scaling app + redis to 0..."
-	@kubectl -n $(K8S_NS) scale deploy pae-rtac-server redis --replicas=0
+	@kubectl -n $(K8S_NS) scale deploy pae-backend-ot redis --replicas=0
 	@echo ">> Stopping Cloud SQL..."
 	@gcloud sql instances patch $(SQL_INSTANCE) --project=$(GCP_PROJECT) --activation-policy=NEVER --quiet
 	@echo ">> cloud-down complete. Billing minimized (data preserved)."
@@ -48,10 +48,10 @@ cloud-up:
 	@echo ">> Scaling redis + app back up..."
 	@kubectl -n $(K8S_NS) scale deploy redis --replicas=1
 	@kubectl -n $(K8S_NS) rollout status deploy/redis --timeout=120s
-	@kubectl -n $(K8S_NS) scale deploy pae-rtac-server --replicas=2
-	@kubectl -n $(K8S_NS) rollout status deploy/pae-rtac-server --timeout=240s
+	@kubectl -n $(K8S_NS) scale deploy pae-backend-ot --replicas=2
+	@kubectl -n $(K8S_NS) rollout status deploy/pae-backend-ot --timeout=240s
 	@echo ">> Nudging ArgoCD to reconcile (recreates HPA, marks Synced)..."
-	@kubectl -n argocd annotate application pae-rtac-server-prod argocd.argoproj.io/refresh=hard --overwrite >/dev/null
+	@kubectl -n argocd annotate application pae-backend-ot-prod argocd.argoproj.io/refresh=hard --overwrite >/dev/null
 	@echo ">> cloud-up complete. App is ready."
 endif
 
@@ -74,7 +74,9 @@ help:
 	@echo "Development commands:"
 	@echo "  make dev        - Start development environment"
 	@echo "  make test-setup - Prepare test environment (ensure containers are running)"
-	@echo "  make test       - Run tests (ensures containers are up first)"
+	@echo "  make test       - Run unit + integration tests (all via Docker)"
+	@echo "  make test-unit  - Run unit tests via Docker (TEST_PATH=... to narrow)"
+	@echo "  make test-integration - Run integration tests on a throwaway postgres+redis stack"
 	@echo "  make lint       - Run linters (ruff, mypy)"
 	@echo "  make format     - Format code (black, ruff)"
 	@echo "  make migrate    - Run database migrations"
@@ -93,7 +95,7 @@ up: network
 	@docker-compose -f docker-compose.yaml up -d --wait postgres redis
 	@echo "PostgreSQL and Redis are ready!"
 	@echo "Starting application service (migrations will run automatically)..."
-	@docker-compose -f docker-compose.yaml up -d pae-rtac-server
+	@docker-compose -f docker-compose.yaml up -d pae-backend-ot
 
 # Stop and remove containers
 down:
@@ -107,7 +109,7 @@ build:
 rebuild:
 	docker-compose -f docker-compose.yaml build --no-cache
 	docker-compose -f docker-compose.yaml up -d --wait postgres redis
-	docker-compose -f docker-compose.yaml up -d pae-rtac-server
+	docker-compose -f docker-compose.yaml up -d pae-backend-ot
 
 # Build and start containers
 up-build: network
@@ -116,7 +118,7 @@ up-build: network
 	@docker-compose -f docker-compose.yaml up -d --wait postgres redis
 	@echo "PostgreSQL and Redis are ready!"
 	@echo "Starting application service (migrations will run automatically)..."
-	@docker-compose -f docker-compose.yaml up -d pae-rtac-server
+	@docker-compose -f docker-compose.yaml up -d pae-backend-ot
 
 # Rebuild and start containers (no cache)
 up-rebuild: network
@@ -125,7 +127,7 @@ up-rebuild: network
 	@docker-compose -f docker-compose.yaml up -d --wait postgres redis
 	@echo "PostgreSQL and Redis are ready!"
 	@echo "Starting application service (migrations will run automatically)..."
-	@docker-compose -f docker-compose.yaml up -d pae-rtac-server
+	@docker-compose -f docker-compose.yaml up -d pae-backend-ot
 
 # Restart containers
 restart:
@@ -133,16 +135,16 @@ restart:
 
 # View logs
 logs:
-	docker-compose -f docker-compose.yaml logs -f pae-rtac-server
+	docker-compose -f docker-compose.yaml logs -f pae-backend-ot
 
 # Open a shell in the container
 shell:
-	docker-compose -f docker-compose.yaml exec pae-rtac-server /bin/bash
+	docker-compose -f docker-compose.yaml exec pae-backend-ot /bin/bash
 
 # Clean up containers and images
 clean:
 	docker-compose -f docker-compose.yaml down
-	docker rmi pae-rtac-server 2>/dev/null || true
+	docker rmi pae-backend-ot 2>/dev/null || true
 
 # View container status
 ps:
@@ -150,7 +152,7 @@ ps:
 
 # Check service health
 health:
-	@curl -s http://localhost:8000/healthz || echo "Service not responding"
+	@curl -s http://localhost:8000/api/healthz || echo "Service not responding"
 
 # Development commands
 dev:
@@ -163,10 +165,38 @@ test-setup:
 	@docker-compose -f docker-compose.yaml up -d --wait redis
 	@echo "Redis is ready!"
 
-# Run tests - ensures containers are up first
-test: test-setup
-	@echo "Running tests..."
-	@PYTHONPATH=src pytest tests/ -v
+# Runs pytest in a throwaway container matching the app's Python (no local Python
+# needed). The named volume caches pip downloads between runs.
+# Override the target with TEST_PATH, e.g. `make test-unit TEST_PATH=tests/unit/helpers`.
+PYTEST_DOCKER = docker run --rm -v "$(CURDIR):/app" -v pae-backend-ot-pip-cache:/root/.cache/pip \
+	-w /app -e PYTHONPATH=src python:3.11-slim \
+	bash -c "pip install -q --root-user-action=ignore -e '.[dev]' && pytest $(1) -v --color=yes -rfE"
+
+# Integration tests run on a throwaway postgres + redis (docker-compose.test.yaml: tmpfs,
+# no host ports, own project name), torn down after every run — never the dev stack.
+TEST_COMPOSE = docker compose -p pae-backend-ot-test -f docker-compose.test.yaml
+
+# Run all tests: unit first (fast, fails early), then integration
+test: test-unit test-integration
+
+# Run unit tests only - no I/O, so no containers needed
+test-unit:
+	@echo "Running unit tests..."
+	$(call PYTEST_DOCKER,$(or $(TEST_PATH),tests/unit))
+
+# Run integration tests on the throwaway stack; always tears it down, keeps pytest's exit code
+ifeq ($(OS),Windows_NT)
+# GNU make on Windows runs recipes in cmd.exe, which can't do the POSIX env/redirect/exit
+# handling below. Delegate to make.ps1 (same logic), like cloud-down/cloud-up do.
+test-integration:
+	@powershell -NoProfile -ExecutionPolicy Bypass -File make.ps1 test-integration $(TEST_PATH)
+else
+test-integration:
+	@echo "Running integration tests (throwaway stack)..."
+	@docker volume create pae-backend-ot-pip-cache >/dev/null
+	@PYTEST_TARGET=$(or $(TEST_PATH),tests/integration) $(TEST_COMPOSE) run --rm tests; \
+		status=$$?; $(TEST_COMPOSE) down --remove-orphans >/dev/null 2>&1; exit $$status
+endif
 
 # Run linting (ruff is the CI-blocking gate). Runs in Docker so no local Python
 # is required; $(CURDIR) resolves to a Docker-compatible path on Linux and Windows.
@@ -180,9 +210,9 @@ lint-fix:
 # Format code
 format:
 	@echo "Formatting Python files with black..."
-	@docker-compose -f docker-compose.yaml exec pae-rtac-server black src/ 2>/dev/null || echo "Note: Running black in container..."
+	@docker-compose -f docker-compose.yaml exec pae-backend-ot black src/ 2>/dev/null || echo "Note: Running black in container..."
 	@echo "Running ruff to fix import sorting and other issues..."
-	@docker-compose -f docker-compose.yaml exec pae-rtac-server ruff check --fix src/ 2>/dev/null || echo "Note: Running ruff in container..."
+	@docker-compose -f docker-compose.yaml exec pae-backend-ot ruff check --fix src/ 2>/dev/null || echo "Note: Running ruff in container..."
 	@echo "Formatting complete!"
 
 
@@ -192,7 +222,7 @@ migrate:
 
 # Apply database migrations (in container)
 apply-migration:
-	@docker-compose -f docker-compose.yaml exec pae-rtac-server python scripts/migrate_db.py
+	@docker-compose -f docker-compose.yaml exec pae-backend-ot python scripts/migrate_db.py
 
 # Run the service locally (non-Docker)
 run:
@@ -201,9 +231,9 @@ run:
 # Seed database with development mock data (copies files into running container first)
 seed-db:
 	@echo "Copying seed files into container..."
-	@docker cp tests/seed_db/. pae-rtac-server:/app/tests/seed_db/
+	@docker cp tests/seed_db/. pae-backend-ot:/app/tests/seed_db/
 	@echo "Running seed script..."
-	@docker-compose -f docker-compose.yaml exec pae-rtac-server python tests/seed_db/seed_db.py
+	@docker-compose -f docker-compose.yaml exec pae-backend-ot python tests/seed_db/seed_db.py
 
 stop_rm_all:
 	docker stop $(docker ps -q) ; docker rm $(docker ps -aq) ; docker volume rm $(docker volume ls -q)

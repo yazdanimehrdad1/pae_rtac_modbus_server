@@ -1,25 +1,11 @@
 """API response models."""
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import AliasChoices, BaseModel, Field
 
-from schemas.api_models.mappers import RegisterValue
 from schemas.api_models.requests import Coordinates, DeviceScanRanges, Location
-
-
-class SimpleReadResponse(BaseModel):
-    """Simplified response model for POST /read endpoint with array of register:value pairs."""
-    ok: bool
-    timestamp: str = Field(..., description="ISO format timestamp of when the read operation completed")
-    kind: str
-    address: int
-    count: int
-    device_id: int = Field(..., description="Modbus unit/slave ID")
-    data: list[RegisterValue] = Field(
-        default_factory=list, description="Array of register number and value pairs"
-    )
 
 
 class HealthResponse(BaseModel):
@@ -81,12 +67,6 @@ DevicePoints = DevicePointsCategoryGrouped
 class DeviceWithPoints(DeviceListItem):
     """Device response with its device points grouped by category."""
     points: DevicePointsCategoryGrouped = Field(default_factory=DevicePointsCategoryGrouped)
-
-
-# Backwards-compatible aliases. "Configs" is stale naming — the *_configs tables were
-# dropped in migration 042 — and DeviceResponse never added anything to DeviceListItem.
-DeviceWithConfigs = DeviceWithPoints
-DeviceResponse = DeviceListItem
 
 
 class SiteResponse(BaseModel):
@@ -200,7 +180,9 @@ class PointLatest(BaseModel):
 class TimeseriesMeta(BaseModel):
     site_id: int
     device_id: int
-    point_ids: list[int] | None
+    # Defaulted: the route serializes with response_model_exclude_none, so an unfiltered
+    # request omits point_ids entirely.
+    point_ids: list[int] | None = None
     total_count: int
     start_time: datetime | None = None
     end_time: datetime | None = None
@@ -209,7 +191,7 @@ class TimeseriesMeta(BaseModel):
 class LatestMeta(BaseModel):
     site_id: int
     device_id: int
-    point_ids: list[int] | None
+    point_ids: list[int] | None = None  # omitted when unfiltered (exclude_none)
     total_count: int
 
 
@@ -241,3 +223,10 @@ class SiteDevicesHealthResponse(BaseModel):
     reachable: int
     unreachable: int
     devices: list[DeviceHealthStatus]
+
+
+class CacheGetResponse(BaseModel):
+    """Response model for retrieving a value from the cache."""
+    key: str = Field(..., description="Cache key")
+    value: Any = Field(..., description="Cached value, or None if the key is absent")
+    exists: bool = Field(..., description="Whether the key exists in the cache")

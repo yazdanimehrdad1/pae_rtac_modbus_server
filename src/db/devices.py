@@ -23,7 +23,13 @@ from schemas.api_models import (
 )
 from schemas.api_models.requests import DeviceScanRanges
 from schemas.db_models.orm_models import Device, DevicePoint, Site
-from utils.exceptions import ConflictError, InternalError, NotFoundError, ValidationError
+from utils.exceptions import (
+    AppError,
+    ConflictError,
+    InternalError,
+    NotFoundError,
+    ValidationError,
+)
 
 logger = get_logger(__name__)
 
@@ -214,41 +220,6 @@ async def get_device_by_id(
         return _device_to_with_points(device, device_points)
 
 
-async def get_device_by_id_internal(device_id: int) -> DeviceWithPoints | None:
-    """Backward-compatible helper to get a device by ID."""
-    session_factory = get_async_session_factory()
-    async with session_factory() as session:
-        result = await session.execute(
-            select(Device).where(Device.device_id == device_id, Device.deleted_at.is_(None))
-        )
-        device = result.scalar_one_or_none()
-        if device is None:
-            return None
-        points_result = await session.execute(
-            select(DevicePoint).where(
-                DevicePoint.device_id == device.device_id,
-                DevicePoint.deleted_at.is_(None),
-            )
-        )
-        return _device_to_with_points(device, _group_points(points_result.scalars().all()))
-
-
-async def get_device_id_by_name(device_name: str) -> int | None:
-    session_factory = get_async_session_factory()
-    async with session_factory() as session:
-        result = await session.execute(
-            select(Device.device_id).where(
-                Device.name == device_name,
-                Device.deleted_at.is_(None),
-            )
-        )
-        return result.scalar_one_or_none()
-
-
-async def get_device_id_by_name_internal(device_name: str) -> int | None:
-    return await get_device_id_by_name(device_name)
-
-
 async def update_device(device_id: int, device_update: DeviceUpdate, site_id: int) -> DeviceWithPoints:
     session_factory = get_async_session_factory()
     async with session_factory() as session:
@@ -312,6 +283,10 @@ async def update_device(device_id: int, device_update: DeviceUpdate, site_id: in
             else:
                 logger.error(f"Database integrity error updating device: {e}")
                 raise ValidationError(f"Database integrity error: {e}") from e
+        except AppError:
+            # Our own NotFound/Conflict errors carry the right status; don't wrap them as 500.
+            await session.rollback()
+            raise
         except Exception as e:
             await session.rollback()
             logger.error(f"Database error updating device: {e}")
@@ -420,6 +395,10 @@ async def restore_device(device_id: int, site_id: int) -> DeviceWithPoints | Non
             await session.commit()
             logger.info(f"Restored device {device_id} and its points")
 
+        except AppError:
+            # Our own NotFound/Conflict errors carry the right status; don't wrap them as 500.
+            await session.rollback()
+            raise
         except Exception as e:
             await session.rollback()
             logger.error(f"Database error restoring device: {e}")

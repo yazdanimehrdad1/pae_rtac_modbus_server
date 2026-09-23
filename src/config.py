@@ -45,13 +45,13 @@ class Settings(BaseSettings):
 
     # Cache Configuration
     cache_default_ttl: int = Field(default=3600, alias="CACHE_DEFAULT_TTL")  # 1 hour default
-    cache_key_prefix: str = Field(default="rtac_modbus", alias="CACHE_KEY_PREFIX")
+    cache_key_prefix: str = Field(default="pae_backend_ot", alias="CACHE_KEY_PREFIX")
 
     # Database Configuration
     postgres_host: str = Field(default="localhost", alias="POSTGRES_HOST")
     postgres_port: int = Field(default=5432, alias="POSTGRES_PORT")
-    postgres_db: str = Field(default="rtac_modbus", alias="POSTGRES_DB")
-    postgres_user: str = Field(default="rtac_user", alias="POSTGRES_USER")
+    postgres_db: str = Field(default="pae_backend_ot", alias="POSTGRES_DB")
+    postgres_user: str = Field(default="pae_backend_ot_user", alias="POSTGRES_USER")
     # Secret: no default on purpose — a missing POSTGRES_PASSWORD must fail loudly at
     # startup rather than silently connect with a known-bad value. Supplied via .env
     # locally and a k8s Secret (from GCP Secret Manager) in the cluster.
@@ -73,14 +73,9 @@ class Settings(BaseSettings):
 
     # Polling Job Configuration
     poll_interval_seconds: int = Field(default=10, alias="POLL_INTERVAL_SECONDS")
-    poll_cache_ttl: int = Field(default=3600, alias="POLL_CACHE_TTL")  # 1 hour default
-    poll_device_name: str = Field(default="main-sel-751", alias="POLL_DEVICE_NAME")  # Device name for polling and database storage
 
     # Pod identification (for Kubernetes)
     pod_name: str = Field(default="", alias="POD_NAME")  # Falls back to HOSTNAME if not set
-
-    # DAS API Configuration
-    das_api_base_url: str = Field(default="http://pae-das-api:8080", alias="DAS_API_BASE_URL")
 
 
 # Global settings instance

@@ -84,8 +84,8 @@ async def read_device_registers(
     else:
         modbus_utils = get_direct_modbus_utils(host, port)
 
-    if kind not in {"holding", "input", "coils", "discretes"}:
-        raise ValueError(f"Invalid register kind: {kind}. Must be 'holding', 'input', 'coils', or 'discretes'")
+    if kind not in {"holding", "input", "coils"}:
+        raise ValueError(f"Invalid register kind: {kind}. Must be 'holding', 'input', or 'coils'")
 
     if kind == "holding":
         modbus_data = modbus_utils.read_holding_registers(
@@ -103,16 +103,8 @@ async def read_device_registers(
             host,
             port
         )
-    elif kind == "coils":
-        modbus_data = modbus_utils.read_coils(
-            address,
-            count,
-            server_id,
-            host,
-            port
-        )
     else:
-        modbus_data = modbus_utils.read_discrete_inputs(
+        modbus_data = modbus_utils.read_coils(
             address,
             count,
             server_id,

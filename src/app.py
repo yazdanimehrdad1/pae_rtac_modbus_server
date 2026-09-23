@@ -20,7 +20,6 @@ from api.routers import (
     health,
     live_stream_raw_registers,
     live_stream_register_snapshot,
-    readings_raw_modbus,
     sites,
 )
 
@@ -42,7 +41,7 @@ logger = get_logger(__name__)
 async def lifespan(_: FastAPI):
     """Manage application startup and shutdown."""
     # --- startup ---
-    logger.info("Starting PAE RTAC Server")
+    logger.info("Starting PAE Backend OT")
 
     try:
         await get_redis_client()
@@ -70,7 +69,7 @@ async def lifespan(_: FastAPI):
     yield
 
     # --- shutdown ---
-    logger.info("Shutting down PAE RTAC Server")
+    logger.info("Shutting down PAE Backend OT")
     await stop_scheduler()
     await close_redis_client()
     await close_all_db_connections()
@@ -84,7 +83,7 @@ def create_app() -> FastAPI:
         Configured FastAPI app instance
     """
     app = FastAPI(
-        title="PAE RTAC Server",
+        title="PAE Backend OT",
         description="Modbus TCP service for polling and storing time-series data",
         version="1.0.0",
         lifespan=lifespan,
@@ -94,7 +93,6 @@ def create_app() -> FastAPI:
 
     # Mount routers with /api prefix
     app.include_router(health.router, prefix="/api", tags=["health"])
-    app.include_router(readings_raw_modbus.router, prefix="/api", tags=["raw-modbus"])
     app.include_router(cache.router, prefix="/api", tags=["cache"])
     app.include_router(devices.router, prefix="/api", tags=["devices"])
     app.include_router(sites.router, prefix="/api", tags=["sites"])
